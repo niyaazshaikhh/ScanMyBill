@@ -1,0 +1,110 @@
+'use client';
+
+import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import { useState } from 'react';
+
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { apiRequest } from '@/lib/api';
+import { setAuthSession } from '@/lib/auth';
+
+type TokenResponse = {
+  access_token: string;
+  token_type: string;
+  user: {
+    id: string;
+    email: string;
+    full_name: string;
+    role: 'admin' | 'user';
+  };
+};
+
+export default function SignUpPage() {
+  const router = useRouter();
+
+  const [fullName, setFullName] = useState('');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const onSubmit = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setLoading(true);
+    setError(null);
+
+    try {
+      const data = await apiRequest<TokenResponse>('/auth/register', {
+        method: 'POST',
+        auth: false,
+        body: { full_name: fullName, email, password }
+      });
+      setAuthSession(data.access_token, data.user);
+      router.push('/dashboard');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unable to sign up');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <Card className='border-teal-200 bg-white/90'>
+      <CardHeader>
+        <CardTitle className='font-[var(--font-space)] text-2xl'>Create Account</CardTitle>
+        <CardDescription>Start managing invoices in minutes.</CardDescription>
+      </CardHeader>
+      <CardContent className='space-y-5'>
+        <form className='space-y-4' onSubmit={onSubmit}>
+          <div className='space-y-2'>
+            <Label htmlFor='name'>Full Name</Label>
+            <Input
+              id='name'
+              value={fullName}
+              onChange={(event) => setFullName(event.target.value)}
+              placeholder='Your name'
+              required
+            />
+          </div>
+          <div className='space-y-2'>
+            <Label htmlFor='email'>Email</Label>
+            <Input
+              id='email'
+              type='email'
+              value={email}
+              onChange={(event) => setEmail(event.target.value)}
+              placeholder='you@company.com'
+              required
+            />
+          </div>
+          <div className='space-y-2'>
+            <Label htmlFor='password'>Password</Label>
+            <Input
+              id='password'
+              type='password'
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+              placeholder='Minimum 8 characters'
+              minLength={8}
+              required
+            />
+          </div>
+          {error ? <p className='text-sm text-destructive'>{error}</p> : null}
+          <Button className='w-full' type='submit' disabled={loading}>
+            {loading ? 'Creating Account...' : 'Create Account'}
+          </Button>
+        </form>
+
+        <p className='text-center text-sm text-muted-foreground'>
+          Already have an account?{' '}
+          <Link href='/signin' className='font-medium text-primary'>
+            Sign in
+          </Link>
+        </p>
+      </CardContent>
+    </Card>
+  );
+}

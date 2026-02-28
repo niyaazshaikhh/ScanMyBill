@@ -1,0 +1,57 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background: 39 48% 97%;
+  --foreground: 26 29% 18%;
+  --card: 0 0% 100%;
+  --card-foreground: 26 29% 18%;
+  --primary: 17 88% 45%;
+  --primary-foreground: 0 0% 100%;
+  --secondary: 42 55% 90%;
+  --secondary-foreground: 26 29% 18%;
+  --muted: 45 28% 92%;
+  --muted-foreground: 26 15% 35%;
+  --accent: 191 62% 47%;
+  --accent-foreground: 0 0% 100%;
+  --destructive: 0 79% 55%;
+  --border: 30 28% 83%;
+  --ring: 17 88% 45%;
+  --radius: 0.8rem;
+}
+
+* {
+  @apply border-border;
+}
+
+body {
+  @apply bg-background text-foreground;
+  background-image:
+    radial-gradient(circle at 10% 20%, rgba(251, 146, 60, 0.2), transparent 36%),
+    radial-gradient(circle at 90% 10%, rgba(34, 197, 94, 0.14), transparent 30%),
+    linear-gradient(120deg, rgba(255, 255, 255, 0.6), rgba(255, 255, 255, 0.95));
+  min-height: 100vh;
+}
+
+.hero-grid {
+  background-image:
+    linear-gradient(to right, rgba(120, 113, 108, 0.14) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(120, 113, 108, 0.14) 1px, transparent 1px);
+  background-size: 44px 44px;
+}
+
+.fade-up {
+  animation: fadeUp 0.65s ease both;
+}
+
+@keyframes fadeUp {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
