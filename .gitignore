@@ -1,18 +1,19 @@
-# Python
-__pycache__/
-*.pyc
-backend/.venv/
-backend/.env
-
-# Node
-frontend/node_modules/
-frontend/.next/
-frontend/.env
-
-# Uploads
-backend/uploads/*
-!backend/uploads/.gitkeep
-
 # OS
 .DS_Store
 Thumbs.db
+
+# Editors/IDEs
+.idea/
+.vscode/
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Local env files
+.env
+
+# Coverage
+coverage/

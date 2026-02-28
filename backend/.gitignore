@@ -1,0 +1,23 @@
+# Python cache/bytecode
+__pycache__/
+*.py[cod]
+
+# Virtual envs
+.venv/
+venv/
+
+# Environment files
+.env
+
+# Test/build artifacts
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+dist/
+build/
+
+# Runtime uploads (keep placeholder)
+uploads/*
+!uploads/.gitkeep
