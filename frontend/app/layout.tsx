@@ -16,6 +16,9 @@ const spaceGrotesk = Space_Grotesk({
 
 export const metadata: Metadata = {
   metadataBase: new URL(process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'),
+  applicationName: 'ScanMyBill.in',
+  authors: [{ name: 'Niyaz Shaikh' }],
+  creator: 'Niyaz Shaikh',
   title: {
     default: 'ScanMyBill.in | Smart Bill Management for Indian SMBs',
     template: '%s | ScanMyBill.in'

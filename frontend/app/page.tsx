@@ -134,6 +134,36 @@ export default function LandingPage() {
           <div>
             <h4 className='font-semibold'>Contact</h4>
             <p className='mt-2 text-muted-foreground'>support@scanmybill.in</p>
+            <p className='mt-1 text-muted-foreground'>
+              Personal: <a className='text-primary' href='mailto:neyazshaikh777@gmail.com'>neyazshaikh777@gmail.com</a>
+            </p>
+            <p className='mt-1 text-muted-foreground'>Built by Niyaz Shaikh</p>
+            <div className='mt-2 flex flex-wrap gap-3 text-xs'>
+              <a
+                className='text-primary hover:underline'
+                href='https://x.com/niyaazshaikhh'
+                target='_blank'
+                rel='noreferrer'
+              >
+                X
+              </a>
+              <a
+                className='text-primary hover:underline'
+                href='https://www.linkedin.com/in/niyaazshaikhh/'
+                target='_blank'
+                rel='noreferrer'
+              >
+                LinkedIn
+              </a>
+              <a
+                className='text-primary hover:underline'
+                href='https://www.instagram.com/whyniyaaz/'
+                target='_blank'
+                rel='noreferrer'
+              >
+                Instagram
+              </a>
+            </div>
           </div>
           <div>
             <h4 className='font-semibold'>Terms</h4>
