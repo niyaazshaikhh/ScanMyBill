@@ -2,13 +2,13 @@
 
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { Bell, FileText, LayoutDashboard, Menu, PlusCircle, Settings, Users, X } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import { Bell, FileText, LayoutDashboard, Menu, PlusCircle, Settings, UserCircle2, Users, X } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
 
 import { Button } from '@/components/ui/button';
 import { apiRequest } from '@/lib/api';
 import { Input } from '@/components/ui/input';
-import { clearAuthSession } from '@/lib/auth';
+import { clearAuthSession, getAuthUser } from '@/lib/auth';
 import { useAuthGuard } from '@/hooks/useAuthGuard';
 import { cn } from '@/lib/utils';
 
@@ -26,8 +26,20 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
   const [open, setOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
+  const [displayName, setDisplayName] = useState('User');
 
   useAuthGuard();
+
+  useEffect(() => {
+    const syncUser = () => {
+      const user = getAuthUser();
+      setDisplayName(user?.full_name || user?.email || 'User');
+    };
+
+    syncUser();
+    window.addEventListener('storage', syncUser);
+    return () => window.removeEventListener('storage', syncUser);
+  }, []);
 
   const title = useMemo(() => {
     return nav.find((item) => pathname.startsWith(item.href))?.label || 'Dashboard';
@@ -58,21 +70,30 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
     <div className='flex min-h-screen'>
       <aside
         className={cn(
-          'fixed inset-y-0 left-0 z-40 w-64 border-r border-border bg-white/95 p-4 transition-transform lg:static lg:translate-x-0',
+          'fixed inset-y-0 left-0 z-40 flex w-64 min-h-0 flex-col border-r border-border bg-white/95 p-4 transition-transform lg:static lg:translate-x-0',
           open ? 'translate-x-0' : '-translate-x-full',
           collapsed && 'lg:w-20'
         )}
       >
         <div className='mb-6 flex items-center justify-between'>
-          <Link href='/dashboard' className={cn('font-[var(--font-space)] text-xl font-semibold text-primary', collapsed && 'lg:hidden')}>
-            ScanMyBill.in
+          <Link
+            href='/dashboard'
+            className={cn(
+              'font-[var(--font-space)] text-primary',
+              collapsed
+                ? 'grid h-10 w-10 place-items-center rounded-md border border-primary/20 bg-primary/10 text-sm font-bold tracking-wide lg:mx-auto'
+                : 'text-xl font-semibold'
+            )}
+            aria-label={collapsed ? 'SMB' : 'ScanMyBill.in'}
+          >
+            {collapsed ? 'SMB' : 'ScanMyBill.in'}
           </Link>
           <Button variant='ghost' size='icon' className='lg:hidden' onClick={() => setOpen(false)}>
             <X className='h-5 w-5' />
           </Button>
         </div>
 
-        <nav className='space-y-1'>
+        <nav className='flex-1 space-y-1'>
           {nav.map((item) => {
             const Icon = item.icon;
             const active = pathname.startsWith(item.href);
@@ -94,10 +115,20 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
           })}
         </nav>
 
-        <div className='mt-8'>
+        <div className='shrink-0 space-y-3 pt-6'>
+          <div
+            className={cn(
+              'flex items-center gap-2 rounded-md border border-border bg-background/60 px-3 py-2 text-sm',
+              collapsed && 'lg:justify-center lg:px-0'
+            )}
+            title={displayName}
+          >
+            <UserCircle2 className='h-4 w-4 shrink-0 text-muted-foreground' />
+            <span className={cn('truncate font-medium', collapsed && 'lg:hidden')}>{displayName}</span>
+          </div>
           <Button onClick={logout} disabled={loggingOut} variant='outline' className={cn('w-full', collapsed && 'lg:px-0')}>
-            <span className={cn(collapsed && 'lg:hidden')}>{loggingOut ? 'Signing Out...' : 'Sign Out'}</span>
-            <span className={cn('hidden', collapsed && 'lg:inline')}>Out</span>
+            <span className={cn(collapsed && 'lg:hidden')}>{loggingOut ? 'Logging out...' : 'Logout'}</span>
+            <span className={cn('hidden', collapsed && 'lg:inline')}>Logout</span>
           </Button>
         </div>
       </aside>

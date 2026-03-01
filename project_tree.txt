@@ -1559,29 +1559,45 @@ D:.
     │   │       └───server-production
     │   ├───server
     │   │   ├───app
+    │   │   │   ├───(app)
+    │   │   │   │   ├───clients
+    │   │   │   │   ├───create
+    │   │   │   │   ├───dashboard
+    │   │   │   │   ├───invoices
+    │   │   │   │   └───settings
     │   │   │   └───(auth)
-    │   │   │       ├───signin
-    │   │   │       └───signup
+    │   │   │       └───signin
     │   │   ├───static
     │   │   │   └───webpack
     │   │   └───vendor-chunks
     │   ├───static
     │   │   ├───chunks
     │   │   │   └───app
+    │   │   │       ├───(app)
+    │   │   │       │   ├───clients
+    │   │   │       │   ├───create
+    │   │   │       │   ├───dashboard
+    │   │   │       │   ├───invoices
+    │   │   │       │   └───settings
     │   │   │       └───(auth)
-    │   │   │           ├───signin
-    │   │   │           └───signup
+    │   │   │           └───signin
     │   │   ├───css
     │   │   │   └───app
     │   │   ├───development
     │   │   ├───media
     │   │   └───webpack
     │   │       └───app
+    │   │           └───(app)
     │   └───types
     │       └───app
+    │           ├───(app)
+    │           │   ├───clients
+    │           │   ├───create
+    │           │   ├───dashboard
+    │           │   ├───invoices
+    │           │   └───settings
     │           └───(auth)
-    │               ├───signin
-    │               └───signup
+    │               └───signin
     ├───app
     │   ├───(app)
     │   │   ├───clients
@@ -1601,6 +1617,7 @@ D:.
     │   ├───landing
     │   ├───layout
     │   └───ui
+    ├───hooks
     ├───lib
     ├───node_modules
     │   ├───.bin
