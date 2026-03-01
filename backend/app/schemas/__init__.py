@@ -1,4 +1,5 @@
 from app.schemas.auth import (
+    CreateAccountRequest,
     ForgotPasswordRequest,
     ForgotPasswordResponse,
     GoogleAuthRequest,
@@ -28,6 +29,7 @@ from app.schemas.payment import (
 
 __all__ = [
     'GoogleAuthRequest',
+    'CreateAccountRequest',
     'ForgotPasswordRequest',
     'ForgotPasswordResponse',
     'ResetPasswordRequest',

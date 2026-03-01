@@ -48,7 +48,27 @@ const faqs = [
   }
 ];
 
+const pricingHighlights = [
+  {
+    name: 'Standard',
+    price: 'Rs 1 / month',
+    description: 'Basic plan for solo users getting started with bill uploads and GST tracking.'
+  },
+  {
+    name: 'Pro',
+    price: 'Rs 101 / month',
+    description: 'Popular plan for growing teams that need regular OCR and dashboard insights.'
+  },
+  {
+    name: 'Business',
+    price: 'Rs 1001 / month',
+    description: 'Advanced plan for high-volume operations with deeper workflow support.'
+  }
+];
+
 export default function LandingPage() {
+  const currentYear = new Date().getFullYear();
+
   return (
     <div className='min-h-screen'>
       <header className='sticky top-0 z-50 border-b border-border/60 bg-background/95 backdrop-blur'>
@@ -129,7 +149,7 @@ export default function LandingPage() {
 
         <section id='pricing' className='mx-auto w-full max-w-7xl px-4 py-10 sm:px-6 lg:px-8'>
           <Card className='border-teal-200 bg-teal-50/70'>
-            <CardContent className='grid gap-6 p-6 md:grid-cols-[1fr_auto] md:items-center'>
+            <CardContent className='space-y-6 p-6'>
               <div>
                 <h3 className='font-[var(--font-space)] text-2xl font-semibold'>Pricing and Payments</h3>
                 <p className='mt-2 text-sm text-muted-foreground'>
@@ -139,7 +159,21 @@ export default function LandingPage() {
                   Monthly plan with GST invoicing support, OCR processing, dashboard analytics, and invoice exports.
                 </p>
               </div>
-              <RazorpayCheckoutButton className='w-full sm:w-auto' />
+              <div className='grid gap-3 md:grid-cols-3'>
+                {pricingHighlights.map((plan) => (
+                  <div key={plan.name} className='rounded-lg border border-teal-200 bg-white/80 p-4'>
+                    <p className='font-semibold'>{plan.name}</p>
+                    <p className='mt-1 text-sm font-semibold text-primary'>{plan.price}</p>
+                    <p className='mt-2 text-xs text-muted-foreground'>{plan.description}</p>
+                  </div>
+                ))}
+              </div>
+              <div className='flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between'>
+                <Link href='/pricing' className='text-sm font-semibold text-primary'>
+                  View full pricing options
+                </Link>
+                <RazorpayCheckoutButton className='w-full sm:w-auto' />
+              </div>
             </CardContent>
           </Card>
         </section>
@@ -185,7 +219,7 @@ export default function LandingPage() {
       </main>
 
       <footer id='contact' className='border-t border-border/70 bg-white/80'>
-        <div className='mx-auto grid w-full max-w-7xl gap-6 px-4 py-8 text-sm sm:px-6 md:grid-cols-4 lg:px-8'>
+        <div className='mx-auto grid w-full max-w-7xl gap-6 px-4 py-8 text-sm sm:px-6 md:grid-cols-3 lg:px-8'>
           <div>
             <h4 className='font-semibold'>Contact</h4>
             <p className='mt-2 text-muted-foreground'>support@scanmybill.in</p>
@@ -237,11 +271,13 @@ export default function LandingPage() {
               transit, access-controlled, and never sold to third parties.
             </p>
           </div>
-          <div>
-            <h4 className='font-semibold'>Support</h4>
-            <p className='mt-2 text-muted-foreground'>
-              Need help with onboarding, OCR extraction quality, or GST analytics? Contact support for guided setup.
-            </p>
+        </div>
+        <div className='border-t border-border/70'>
+          <div className='mx-auto flex w-full max-w-7xl items-center justify-between gap-3 px-4 py-4 sm:px-6 lg:px-8'>
+            <span className='flex h-8 w-8 items-center justify-center rounded-md bg-primary font-[var(--font-space)] text-xs font-bold text-primary-foreground'>
+              SMB
+            </span>
+            <p className='text-xs text-muted-foreground'>© {currentYear} ScanMyBill.in. All rights reserved.</p>
           </div>
         </div>
       </footer>

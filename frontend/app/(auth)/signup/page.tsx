@@ -37,7 +37,7 @@ export default function SignUpPage() {
     setError(null);
 
     try {
-      const data = await apiRequest<TokenResponse>('/auth/register', {
+      const data = await apiRequest<TokenResponse>('/auth/create-account', {
         method: 'POST',
         auth: false,
         body: { full_name: fullName, email, password }

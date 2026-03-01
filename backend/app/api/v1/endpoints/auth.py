@@ -22,6 +22,7 @@ from app.models.password_reset_token import PasswordResetToken
 from app.models.revoked_token import RevokedToken
 from app.models.user import User, UserRole
 from app.schemas.auth import (
+    CreateAccountRequest,
     ForgotPasswordRequest,
     ForgotPasswordResponse,
     GoogleAuthRequest,
@@ -37,42 +38,79 @@ router = APIRouter()
 PASSWORD_RESET_TOKEN_EXPIRE_MINUTES = 30
 
 
-@router.post('/register', response_model=TokenResponse)
-def register(payload: RegisterRequest, db: Session = Depends(get_db)) -> TokenResponse:
-    existing = db.scalar(select(User).where(User.email == payload.email.lower()))
+def _normalize_email(email: str) -> str:
+    return email.strip().lower()
+
+
+def _create_local_account(email: str, password: str, full_name: str, db: Session) -> User:
+    normalized_email = _normalize_email(email)
+    normalized_name = full_name.strip()
+    existing = db.scalar(select(User).where(User.email == normalized_email))
     if existing:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Email already exists')
+        if existing.hashed_password:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Email already exists')
+
+        # Upgrade OAuth-only account to include password login.
+        existing.full_name = normalized_name
+        existing.hashed_password = get_password_hash(password)
+        db.commit()
+        db.refresh(existing)
+        return existing
 
     user = User(
-        email=payload.email.lower(),
-        full_name=payload.full_name,
-        hashed_password=get_password_hash(payload.password),
+        email=normalized_email,
+        full_name=normalized_name,
+        hashed_password=get_password_hash(password),
         role=UserRole.USER,
     )
     db.add(user)
     db.commit()
     db.refresh(user)
+    return user
 
+
+def _auth_response(user: User) -> TokenResponse:
     token = create_access_token(subject=user.id, role=user.role.value)
     return TokenResponse(access_token=token, user=UserPublic.model_validate(user))
 
 
+@router.post('/create-account', response_model=TokenResponse)
+def create_account(payload: CreateAccountRequest, db: Session = Depends(get_db)) -> TokenResponse:
+    user = _create_local_account(
+        email=str(payload.email),
+        password=payload.password,
+        full_name=payload.full_name,
+        db=db,
+    )
+    return _auth_response(user)
+
+
+@router.post('/register', response_model=TokenResponse)
+def register(payload: RegisterRequest, db: Session = Depends(get_db)) -> TokenResponse:
+    user = _create_local_account(
+        email=str(payload.email),
+        password=payload.password,
+        full_name=payload.full_name,
+        db=db,
+    )
+    return _auth_response(user)
+
+
 @router.post('/login', response_model=TokenResponse)
 def login(payload: LoginRequest, db: Session = Depends(get_db)) -> TokenResponse:
-    user = db.scalar(select(User).where(User.email == payload.email.lower()))
+    user = db.scalar(select(User).where(User.email == _normalize_email(str(payload.email))))
     if not user or not user.hashed_password:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail='Invalid credentials')
     if not verify_password(payload.password, user.hashed_password):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail='Invalid credentials')
 
-    token = create_access_token(subject=user.id, role=user.role.value)
-    return TokenResponse(access_token=token, user=UserPublic.model_validate(user))
+    return _auth_response(user)
 
 
 @router.post('/forgot-password', response_model=ForgotPasswordResponse)
 def forgot_password(payload: ForgotPasswordRequest, db: Session = Depends(get_db)) -> ForgotPasswordResponse:
     generic_message = 'If an account with that email exists, a password reset link has been generated.'
-    user = db.scalar(select(User).where(User.email == payload.email.lower()))
+    user = db.scalar(select(User).where(User.email == _normalize_email(str(payload.email))))
     if not user:
         return ForgotPasswordResponse(message=generic_message)
 
@@ -160,7 +198,7 @@ def google_auth(payload: GoogleAuthRequest, db: Session = Depends(get_db)) -> To
     if not audiences.intersection(allowed_client_ids):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail='Invalid Google token audience')
 
-    email = (token_info.get('email') or '').lower()
+    email = _normalize_email(token_info.get('email') or '')
     name = token_info.get('name') or email.split('@')[0]
     if not email:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Google account email missing')
