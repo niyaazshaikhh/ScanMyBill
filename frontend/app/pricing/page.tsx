@@ -1,29 +1,29 @@
-import Link from 'next/link';
+import Link from "next/link";
 
-import { RazorpayCheckoutButton } from '@/components/landing/razorpay-checkout-button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { PricingPlanCards } from "@/components/landing/pricing-plan-cards";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 export const metadata = {
-  title: 'Pricing'
+  title: "Pricing",
 };
 
 export default function PricingPage() {
   return (
-    <main className='mx-auto max-w-4xl px-4 py-14 sm:px-6'>
-      <Card className='border-teal-200 bg-white/90'>
+    <main className="mx-auto max-w-4xl px-4 py-14 sm:px-6">
+      <Card className="border-teal-200 bg-white/90">
         <CardHeader>
-          <CardTitle className='font-[var(--font-space)] text-3xl'>Pricing</CardTitle>
+          <CardTitle className="font-[var(--font-space)] text-3xl">
+            Pricing
+          </CardTitle>
         </CardHeader>
-        <CardContent className='space-y-4 text-sm'>
+        <CardContent className="space-y-4 text-sm">
           <p>
-            Start your ScanMyBill.in subscription with secure Razorpay checkout. Ensure your backend has
-            `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET`, and at least one plan in `RAZORPAY_PLAN_IDS` (or
-            `RAZORPAY_PLAN_ID`) configured.
+            Start your ScanMyBill.in subscription with secure Razorpay checkout.
           </p>
-          <RazorpayCheckoutButton className='w-full sm:w-auto' showPlanSelector />
+          <PricingPlanCards />
           <p>
-            Need an account first? Continue to{' '}
-            <Link href='/signup' className='text-primary'>
+            Need an account first? Continue to{" "}
+            <Link href="/signup" className="text-primary">
               sign up
             </Link>
             .
