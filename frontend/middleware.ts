@@ -1,7 +1,15 @@
 import { NextResponse, type NextRequest } from 'next/server';
 
-const protectedPaths = ['/dashboard', '/invoices', '/clients', '/create', '/settings'];
+const protectedPaths = ['/dashboard', '/invoices', '/clients', '/create', '/settings', '/upload', '/bills'];
 const authPaths = ['/signin', '/signup'];
+const noCacheValue = 'no-store, no-cache, must-revalidate';
+
+function withNoCache(response: NextResponse) {
+  response.headers.set('Cache-Control', noCacheValue);
+  response.headers.set('Pragma', 'no-cache');
+  response.headers.set('Expires', '0');
+  return response;
+}
 
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
@@ -13,16 +21,31 @@ export function middleware(request: NextRequest) {
   if (requiresAuth && !token) {
     const url = new URL('/signin', request.url);
     url.searchParams.set('next', pathname);
-    return NextResponse.redirect(url);
+    return withNoCache(NextResponse.redirect(url));
   }
 
   if (isAuthPage && token) {
-    return NextResponse.redirect(new URL('/dashboard', request.url));
+    return withNoCache(NextResponse.redirect(new URL('/dashboard', request.url)));
   }
 
-  return NextResponse.next();
+  const response = NextResponse.next();
+  if (requiresAuth || isAuthPage) {
+    return withNoCache(response);
+  }
+
+  return response;
 }
 
 export const config = {
-  matcher: ['/dashboard/:path*', '/invoices/:path*', '/clients/:path*', '/create/:path*', '/settings/:path*', '/signin', '/signup']
+  matcher: [
+    '/dashboard/:path*',
+    '/invoices/:path*',
+    '/clients/:path*',
+    '/create/:path*',
+    '/settings/:path*',
+    '/upload/:path*',
+    '/bills/:path*',
+    '/signin',
+    '/signup',
+  ]
 };

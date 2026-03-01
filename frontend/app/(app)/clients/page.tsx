@@ -2,11 +2,14 @@
 
 import { useEffect, useState } from 'react';
 
+export const dynamic = "force-dynamic";
+
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { useAuthGuard } from '@/hooks/useAuthGuard';
 import { apiRequest } from '@/lib/api';
 
 type ClientRow = {
@@ -27,6 +30,8 @@ type ClientsOverview = {
 };
 
 export default function ClientsPage() {
+  useAuthGuard();
+
   const [clients, setClients] = useState<ClientRow[]>([]);
   const [overview, setOverview] = useState<ClientsOverview | null>(null);
   const [loading, setLoading] = useState(true);

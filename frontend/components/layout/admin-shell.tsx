@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button';
 import { apiRequest } from '@/lib/api';
 import { Input } from '@/components/ui/input';
 import { clearAuthSession } from '@/lib/auth';
+import { useAuthGuard } from '@/hooks/useAuthGuard';
 import { cn } from '@/lib/utils';
 
 const nav = [
@@ -26,6 +27,8 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
   const [collapsed, setCollapsed] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
 
+  useAuthGuard();
+
   const title = useMemo(() => {
     return nav.find((item) => pathname.startsWith(item.href))?.label || 'Dashboard';
   }, [pathname]);
@@ -38,8 +41,15 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
       // Always clear local auth state even if revoke call fails.
     } finally {
       clearAuthSession();
+      if (typeof window !== 'undefined') {
+        localStorage.removeItem('scanmybill_token');
+        window.history.pushState(null, '', '/signin');
+      }
       router.replace('/signin');
       router.refresh();
+      if (typeof window !== 'undefined') {
+        window.location.replace('/signin');
+      }
       setLoggingOut(false);
     }
   };

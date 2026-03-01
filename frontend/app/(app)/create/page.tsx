@@ -3,12 +3,15 @@
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
 import { useEffect, useMemo, useState } from 'react';
 
+export const dynamic = "force-dynamic";
+
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
+import { useAuthGuard } from '@/hooks/useAuthGuard';
 import { apiRequest } from '@/lib/api';
 
 type Client = {
@@ -24,6 +27,8 @@ type LineItem = {
 };
 
 export default function CreateInvoicePage() {
+  useAuthGuard();
+
   const [clients, setClients] = useState<Client[]>([]);
   const [clientId, setClientId] = useState('');
   const [invoiceNumber, setInvoiceNumber] = useState('');

@@ -2,8 +2,11 @@
 
 import { useEffect, useState } from 'react';
 
+export const dynamic = "force-dynamic";
+
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { useAuthGuard } from '@/hooks/useAuthGuard';
 import { apiRequest } from '@/lib/api';
 
 type CurrentUser = {
@@ -15,6 +18,8 @@ type CurrentUser = {
 };
 
 export default function SettingsPage() {
+  useAuthGuard();
+
   const [user, setUser] = useState<CurrentUser | null>(null);
 
   useEffect(() => {

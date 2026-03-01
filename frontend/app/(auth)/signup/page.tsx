@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
+import { GoogleLogin } from '@react-oauth/google';
 
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -97,6 +98,36 @@ export default function SignUpPage() {
             {loading ? 'Creating Account...' : 'Create Account'}
           </Button>
         </form>
+
+        <div className='space-y-2'>
+          <p className='text-center text-xs text-muted-foreground'>or continue with Google</p>
+          {process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID ? (
+            <div className='flex justify-center'>
+              <GoogleLogin
+                text='continue_with'
+                onSuccess={async (credentialResponse) => {
+                  if (!credentialResponse.credential) return;
+                  try {
+                    const data = await apiRequest<TokenResponse>('/auth/google', {
+                      method: 'POST',
+                      auth: false,
+                      body: { id_token: credentialResponse.credential }
+                    });
+                    setAuthSession(data.access_token, data.user);
+                    router.push('/dashboard');
+                  } catch (err) {
+                    setError(err instanceof Error ? err.message : 'Google login failed');
+                  }
+                }}
+                onError={() => setError('Google login failed')}
+              />
+            </div>
+          ) : (
+            <p className='text-center text-xs text-muted-foreground'>
+              Set `NEXT_PUBLIC_GOOGLE_CLIENT_ID` to enable Google login.
+            </p>
+          )}
+        </div>
 
         <p className='text-center text-sm text-muted-foreground'>
           Already have an account?{' '}

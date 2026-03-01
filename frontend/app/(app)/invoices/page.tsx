@@ -2,12 +2,15 @@
 
 import { useEffect, useMemo, useState } from 'react';
 
+export const dynamic = "force-dynamic";
+
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { Select } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { useAuthGuard } from '@/hooks/useAuthGuard';
 import { apiRequest } from '@/lib/api';
 
 type Invoice = {
@@ -35,6 +38,8 @@ function toBucket(dateString: string, period: string) {
 }
 
 export default function InvoicesPage() {
+  useAuthGuard();
+
   const [period, setPeriod] = useState('quarterly');
   const [invoiceType, setInvoiceType] = useState<'sales' | 'purchase'>('sales');
   const [selectedFolder, setSelectedFolder] = useState('Q1');

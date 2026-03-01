@@ -2,6 +2,8 @@
 
 import { useEffect, useMemo, useState } from 'react';
 
+export const dynamic = "force-dynamic";
+
 import { GstPieChart } from '@/components/charts/gst-pie';
 import { SalesPurchaseLineChart } from '@/components/charts/sales-purchase-line';
 import { Badge } from '@/components/ui/badge';
@@ -10,6 +12,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select } from '@/components/ui/select';
+import { useAuthGuard } from '@/hooks/useAuthGuard';
 import { apiRequest } from '@/lib/api';
 
 type DashboardData = {
@@ -25,6 +28,8 @@ type DashboardData = {
 const periodOptions = ['monthly', 'quarterly', 'semi-annually', 'annually'];
 
 export default function DashboardPage() {
+  useAuthGuard();
+
   const [period, setPeriod] = useState('monthly');
   const [summary, setSummary] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
