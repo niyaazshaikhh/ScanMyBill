@@ -33,18 +33,24 @@ export default function LandingPage() {
             ScanMyBill.in
           </Link>
           <nav className='hidden items-center gap-5 text-sm font-medium md:flex'>
-            <Link href='/signin'>Sign In</Link>
-            <Link href='/signup'>Sign Up</Link>
             <a href='#about'>About Us</a>
             <a href='#pricing'>Pricing</a>
             <a href='#contact'>Contact Us</a>
             <Button asChild size='sm' variant='outline'>
-              <Link href='/signin?provider=google'>Google Sign-In</Link>
+              <Link href='/signin'>Log in</Link>
+            </Button>
+            <Button asChild size='sm'>
+              <Link href='/signup'>Sign up</Link>
             </Button>
           </nav>
-          <Button asChild size='sm' className='md:hidden'>
-            <Link href='/signin'>Sign In</Link>
-          </Button>
+          <div className='flex items-center gap-2 md:hidden'>
+            <Button asChild size='sm' variant='outline'>
+              <Link href='/signin'>Log in</Link>
+            </Button>
+            <Button asChild size='sm'>
+              <Link href='/signup'>Sign up</Link>
+            </Button>
+          </div>
         </div>
       </header>
 

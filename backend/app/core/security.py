@@ -1,5 +1,7 @@
 from datetime import datetime, timedelta, timezone
+from hashlib import sha256
 from typing import Any
+from uuid import uuid4
 
 from jose import jwt
 from passlib.context import CryptContext
@@ -10,11 +12,26 @@ pwd_context = CryptContext(schemes=['bcrypt'], deprecated='auto')
 
 
 def create_access_token(subject: str, role: str, expires_delta: timedelta | None = None) -> str:
+    now = datetime.now(timezone.utc)
     expire = datetime.now(timezone.utc) + (
         expires_delta or timedelta(minutes=settings.access_token_expire_minutes)
     )
-    to_encode: dict[str, Any] = {'sub': subject, 'role': role, 'exp': expire}
+    to_encode: dict[str, Any] = {
+        'sub': subject,
+        'role': role,
+        'exp': expire,
+        'iat': now,
+        'jti': str(uuid4()),
+    }
     return jwt.encode(to_encode, settings.secret_key, algorithm=settings.jwt_algorithm)
+
+
+def decode_access_token(token: str) -> dict[str, Any]:
+    return jwt.decode(token, settings.secret_key, algorithms=[settings.jwt_algorithm])
+
+
+def hash_token(token: str) -> str:
+    return sha256(token.encode('utf-8')).hexdigest()
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:

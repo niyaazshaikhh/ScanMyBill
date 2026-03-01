@@ -33,6 +33,8 @@ class Settings(BaseSettings):
     aws_s3_bucket: str | None = None
 
     google_client_id: str | None = None
+    google_client_ids: list[str] | str | None = None
+    next_public_google_client_id: str | None = None
 
     razorpay_key_id: str | None = None
     razorpay_key_secret: str | None = None
@@ -51,6 +53,37 @@ class Settings(BaseSettings):
         if isinstance(value, str):
             return [item.strip() for item in value.split(',') if item.strip()]
         return value
+
+    @field_validator('google_client_ids', mode='before')
+    @classmethod
+    def parse_google_client_ids(cls, value: Any) -> Any:
+        if isinstance(value, str):
+            return [item.strip() for item in value.split(',') if item.strip()]
+        return value
+
+    @property
+    def allowed_google_client_ids(self) -> list[str]:
+        values: list[str] = []
+
+        if isinstance(self.google_client_ids, list):
+            values.extend(self.google_client_ids)
+        elif isinstance(self.google_client_ids, str):
+            values.extend([item.strip() for item in self.google_client_ids.split(',') if item.strip()])
+
+        if self.google_client_id:
+            values.extend([item.strip() for item in self.google_client_id.split(',') if item.strip()])
+
+        if self.next_public_google_client_id:
+            values.append(self.next_public_google_client_id.strip())
+
+        # Preserve order while removing duplicates.
+        seen: set[str] = set()
+        unique: list[str] = []
+        for value in values:
+            if value and value not in seen:
+                seen.add(value)
+                unique.append(value)
+        return unique
 
 
 @lru_cache

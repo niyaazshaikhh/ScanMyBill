@@ -6,6 +6,7 @@ import { Bell, FileText, LayoutDashboard, Menu, PlusCircle, Settings, Users, X }
 import { useMemo, useState } from 'react';
 
 import { Button } from '@/components/ui/button';
+import { apiRequest } from '@/lib/api';
 import { Input } from '@/components/ui/input';
 import { clearAuthSession } from '@/lib/auth';
 import { cn } from '@/lib/utils';
@@ -23,14 +24,24 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
+  const [loggingOut, setLoggingOut] = useState(false);
 
   const title = useMemo(() => {
     return nav.find((item) => pathname.startsWith(item.href))?.label || 'Dashboard';
   }, [pathname]);
 
-  const logout = () => {
-    clearAuthSession();
-    router.push('/signin');
+  const logout = async () => {
+    setLoggingOut(true);
+    try {
+      await apiRequest('/auth/logout', { method: 'POST' });
+    } catch {
+      // Always clear local auth state even if revoke call fails.
+    } finally {
+      clearAuthSession();
+      router.replace('/signin');
+      router.refresh();
+      setLoggingOut(false);
+    }
   };
 
   return (
@@ -74,8 +85,8 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
         </nav>
 
         <div className='mt-8'>
-          <Button onClick={logout} variant='outline' className={cn('w-full', collapsed && 'lg:px-0')}>
-            <span className={cn(collapsed && 'lg:hidden')}>Sign Out</span>
+          <Button onClick={logout} disabled={loggingOut} variant='outline' className={cn('w-full', collapsed && 'lg:px-0')}>
+            <span className={cn(collapsed && 'lg:hidden')}>{loggingOut ? 'Signing Out...' : 'Sign Out'}</span>
             <span className={cn('hidden', collapsed && 'lg:inline')}>Out</span>
           </Button>
         </div>
