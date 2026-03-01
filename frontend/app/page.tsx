@@ -60,7 +60,8 @@ export default function LandingPage() {
             <span className='font-[var(--font-space)] text-xl font-bold tracking-tight text-primary'>ScanMyBill.in</span>
           </Link>
           <nav className='hidden items-center gap-5 text-sm font-medium md:flex'>
-            <a href='#about'>About Us</a>
+            <Link href='/about'>About Us</Link>
+            <a href='#features'>Features</a>
             <a href='#pricing'>Pricing</a>
             <a href='#faq'>FAQ</a>
             <a href='#contact'>Contact Us</a>
@@ -72,6 +73,9 @@ export default function LandingPage() {
             </Button>
           </nav>
           <div className='flex items-center gap-2 md:hidden'>
+            <Button asChild size='sm' variant='ghost'>
+              <Link href='/about'>About</Link>
+            </Button>
             <Button asChild size='sm' variant='outline'>
               <Link href='/signin'>Log in</Link>
             </Button>
@@ -104,7 +108,7 @@ export default function LandingPage() {
           </div>
         </section>
 
-        <section id='about' className='mx-auto w-full max-w-7xl px-4 py-10 sm:px-6 lg:px-8'>
+        <section id='features' className='mx-auto w-full max-w-7xl px-4 py-10 sm:px-6 lg:px-8'>
           <div className='mb-6 flex items-end justify-between'>
             <h2 className='font-[var(--font-space)] text-3xl font-semibold'>Key Features</h2>
             <Link href='/signup' className='text-sm font-semibold text-primary'>

@@ -30,6 +30,25 @@ class GoogleAuthRequest(BaseModel):
     id_token: str
 
 
+class ForgotPasswordRequest(BaseModel):
+    email: EmailStr
+
+
+class ForgotPasswordResponse(BaseModel):
+    message: str
+    reset_token: str | None = None
+    expires_at: datetime | None = None
+
+
+class ResetPasswordRequest(BaseModel):
+    token: str = Field(min_length=16, max_length=255)
+    new_password: str = Field(min_length=8, max_length=128)
+
+
+class MessageResponse(BaseModel):
+    message: str
+
+
 class TokenResponse(BaseModel):
     access_token: str
     token_type: str = 'bearer'

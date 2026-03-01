@@ -28,3 +28,4 @@ class User(Base):
     invoices = relationship('Invoice', back_populates='owner', cascade='all,delete-orphan')
     bill_uploads = relationship('BillUpload', back_populates='owner', cascade='all,delete-orphan')
     payments = relationship('PaymentEvent', back_populates='owner', cascade='all,delete-orphan')
+    password_reset_tokens = relationship('PasswordResetToken', cascade='all,delete-orphan')

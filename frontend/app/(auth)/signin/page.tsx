@@ -51,7 +51,7 @@ export default function SignInPage() {
       setAuthSession(data.access_token, data.user);
       router.push(nextPath);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unable to sign in');
+      setError(err instanceof Error ? err.message : 'Unable to log in');
     } finally {
       setLoading(false);
     }
@@ -60,7 +60,7 @@ export default function SignInPage() {
   return (
     <Card className='border-orange-200 bg-white/90'>
       <CardHeader>
-        <CardTitle className='font-[var(--font-space)] text-2xl'>Sign In</CardTitle>
+        <CardTitle className='font-[var(--font-space)] text-2xl'>Log in</CardTitle>
         <CardDescription>Access your ScanMyBill.in workspace.</CardDescription>
       </CardHeader>
       <CardContent className='space-y-5'>
@@ -77,7 +77,12 @@ export default function SignInPage() {
             />
           </div>
           <div className='space-y-2'>
-            <Label htmlFor='password'>Password</Label>
+            <div className='flex items-center justify-between'>
+              <Label htmlFor='password'>Password</Label>
+              <Link href='/forgot-password' className='text-xs font-medium text-primary'>
+                Forgot password?
+              </Link>
+            </div>
             <Input
               id='password'
               type='password'
@@ -89,7 +94,7 @@ export default function SignInPage() {
           </div>
           {error ? <p className='text-sm text-destructive'>{error}</p> : null}
           <Button className='w-full' type='submit' disabled={loading}>
-            {loading ? 'Signing In...' : 'Sign In'}
+            {loading ? 'Logging in...' : 'Log in'}
           </Button>
         </form>
 
@@ -98,6 +103,7 @@ export default function SignInPage() {
           {process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID ? (
             <div className='flex justify-center'>
               <GoogleLogin
+                text='continue_with'
                 onSuccess={async (credentialResponse) => {
                   if (!credentialResponse.credential) return;
                   try {
@@ -109,15 +115,15 @@ export default function SignInPage() {
                     setAuthSession(data.access_token, data.user);
                     router.push(nextPath);
                   } catch (err) {
-                    setError(err instanceof Error ? err.message : 'Google sign-in failed');
+                    setError(err instanceof Error ? err.message : 'Google login failed');
                   }
                 }}
-                onError={() => setError('Google sign-in failed')}
+                onError={() => setError('Google login failed')}
               />
             </div>
           ) : (
             <p className='text-center text-xs text-muted-foreground'>
-              Set `NEXT_PUBLIC_GOOGLE_CLIENT_ID` to enable Google Sign-In.
+              Set `NEXT_PUBLIC_GOOGLE_CLIENT_ID` to enable Google login.
             </p>
           )}
         </div>

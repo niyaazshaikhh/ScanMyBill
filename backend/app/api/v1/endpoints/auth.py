@@ -1,4 +1,5 @@
-from datetime import datetime, timezone
+import secrets
+from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Response, status
 from google.auth.transport import requests
@@ -17,11 +18,23 @@ from app.core.security import (
     hash_token,
     verify_password,
 )
+from app.models.password_reset_token import PasswordResetToken
 from app.models.revoked_token import RevokedToken
 from app.models.user import User, UserRole
-from app.schemas.auth import GoogleAuthRequest, LoginRequest, RegisterRequest, TokenResponse, UserPublic
+from app.schemas.auth import (
+    ForgotPasswordRequest,
+    ForgotPasswordResponse,
+    GoogleAuthRequest,
+    LoginRequest,
+    MessageResponse,
+    RegisterRequest,
+    ResetPasswordRequest,
+    TokenResponse,
+    UserPublic,
+)
 
 router = APIRouter()
+PASSWORD_RESET_TOKEN_EXPIRE_MINUTES = 30
 
 
 @router.post('/register', response_model=TokenResponse)
@@ -54,6 +67,64 @@ def login(payload: LoginRequest, db: Session = Depends(get_db)) -> TokenResponse
 
     token = create_access_token(subject=user.id, role=user.role.value)
     return TokenResponse(access_token=token, user=UserPublic.model_validate(user))
+
+
+@router.post('/forgot-password', response_model=ForgotPasswordResponse)
+def forgot_password(payload: ForgotPasswordRequest, db: Session = Depends(get_db)) -> ForgotPasswordResponse:
+    generic_message = 'If an account with that email exists, a password reset link has been generated.'
+    user = db.scalar(select(User).where(User.email == payload.email.lower()))
+    if not user:
+        return ForgotPasswordResponse(message=generic_message)
+
+    expires_at = datetime.now(timezone.utc) + timedelta(minutes=PASSWORD_RESET_TOKEN_EXPIRE_MINUTES)
+    raw_token = secrets.token_urlsafe(32)
+
+    db.add(
+        PasswordResetToken(
+            user_id=user.id,
+            token_hash=hash_token(raw_token),
+            expires_at=expires_at,
+        )
+    )
+    db.commit()
+
+    # Email delivery is not configured yet, so token is returned for frontend use.
+    return ForgotPasswordResponse(message=generic_message, reset_token=raw_token, expires_at=expires_at)
+
+
+@router.post('/reset-password', response_model=MessageResponse)
+def reset_password(payload: ResetPasswordRequest, db: Session = Depends(get_db)) -> MessageResponse:
+    now = datetime.now(timezone.utc)
+
+    reset_token = db.scalar(
+        select(PasswordResetToken).where(
+            PasswordResetToken.token_hash == hash_token(payload.token),
+            PasswordResetToken.used_at.is_(None),
+            PasswordResetToken.expires_at > now,
+        )
+    )
+    if not reset_token:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Invalid or expired reset token')
+
+    user = db.scalar(select(User).where(User.id == reset_token.user_id))
+    if not user:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Invalid reset token')
+
+    user.hashed_password = get_password_hash(payload.new_password)
+    reset_token.used_at = now
+
+    active_user_tokens = db.scalars(
+        select(PasswordResetToken).where(
+            PasswordResetToken.user_id == user.id,
+            PasswordResetToken.used_at.is_(None),
+            PasswordResetToken.id != reset_token.id,
+        )
+    ).all()
+    for token in active_user_tokens:
+        token.used_at = now
+
+    db.commit()
+    return MessageResponse(message='Password reset successful. You can now log in.')
 
 
 @router.post('/google', response_model=TokenResponse)

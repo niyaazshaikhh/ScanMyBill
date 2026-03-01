@@ -28,6 +28,12 @@ export default function sitemap(): MetadataRoute.Sitemap {
       lastModified: now,
       changeFrequency: 'monthly',
       priority: 0.7
+    },
+    {
+      url: `${base}/about`,
+      lastModified: now,
+      changeFrequency: 'monthly',
+      priority: 0.6
     }
   ];
 }

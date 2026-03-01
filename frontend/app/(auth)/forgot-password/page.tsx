@@ -9,66 +9,52 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { apiRequest } from '@/lib/api';
-import { setAuthSession } from '@/lib/auth';
 
-type TokenResponse = {
-  access_token: string;
-  token_type: string;
-  user: {
-    id: string;
-    email: string;
-    full_name: string;
-    role: 'admin' | 'user';
-  };
+type ForgotPasswordResponse = {
+  message: string;
+  reset_token?: string | null;
 };
 
-export default function SignUpPage() {
+export default function ForgotPasswordPage() {
   const router = useRouter();
 
-  const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [message, setMessage] = useState<string | null>(null);
 
   const onSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
     setLoading(true);
     setError(null);
+    setMessage(null);
 
     try {
-      const data = await apiRequest<TokenResponse>('/auth/register', {
+      const data = await apiRequest<ForgotPasswordResponse>('/auth/forgot-password', {
         method: 'POST',
         auth: false,
-        body: { full_name: fullName, email, password }
+        body: { email }
       });
-      setAuthSession(data.access_token, data.user);
-      router.push('/dashboard');
+
+      setMessage(data.message);
+      if (data.reset_token) {
+        router.push(`/reset-password?token=${encodeURIComponent(data.reset_token)}`);
+      }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unable to sign up');
+      setError(err instanceof Error ? err.message : 'Unable to process request');
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <Card className='border-teal-200 bg-white/90'>
+    <Card className='border-orange-200 bg-white/90'>
       <CardHeader>
-        <CardTitle className='font-[var(--font-space)] text-2xl'>Create Account</CardTitle>
-        <CardDescription>Start managing invoices in minutes.</CardDescription>
+        <CardTitle className='font-[var(--font-space)] text-2xl'>Forgot Password</CardTitle>
+        <CardDescription>Enter your account email to generate a reset link.</CardDescription>
       </CardHeader>
       <CardContent className='space-y-5'>
         <form className='space-y-4' onSubmit={onSubmit}>
-          <div className='space-y-2'>
-            <Label htmlFor='name'>Full Name</Label>
-            <Input
-              id='name'
-              value={fullName}
-              onChange={(event) => setFullName(event.target.value)}
-              placeholder='Your name'
-              required
-            />
-          </div>
           <div className='space-y-2'>
             <Label htmlFor='email'>Email</Label>
             <Input
@@ -80,26 +66,15 @@ export default function SignUpPage() {
               required
             />
           </div>
-          <div className='space-y-2'>
-            <Label htmlFor='password'>Password</Label>
-            <Input
-              id='password'
-              type='password'
-              value={password}
-              onChange={(event) => setPassword(event.target.value)}
-              placeholder='Minimum 8 characters'
-              minLength={8}
-              required
-            />
-          </div>
           {error ? <p className='text-sm text-destructive'>{error}</p> : null}
+          {message ? <p className='text-sm text-green-700'>{message}</p> : null}
           <Button className='w-full' type='submit' disabled={loading}>
-            {loading ? 'Creating Account...' : 'Create Account'}
+            {loading ? 'Generating reset link...' : 'Send reset link'}
           </Button>
         </form>
 
         <p className='text-center text-sm text-muted-foreground'>
-          Already have an account?{' '}
+          Remember your password?{' '}
           <Link href='/signin' className='font-medium text-primary'>
             Log in
           </Link>
