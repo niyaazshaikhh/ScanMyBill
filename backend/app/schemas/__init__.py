@@ -9,7 +9,7 @@ from app.schemas.invoice import (
     InvoiceListResponse,
     InvoiceResponse,
 )
-from app.schemas.payment import RazorpayConfigResponse, SubscriptionDemoResponse
+from app.schemas.payment import RazorpayConfigResponse, SubscriptionResponse
 
 __all__ = [
     'GoogleAuthRequest',
@@ -31,5 +31,5 @@ __all__ = [
     'InvoiceListResponse',
     'InvoiceResponse',
     'RazorpayConfigResponse',
-    'SubscriptionDemoResponse',
+    'SubscriptionResponse',
 ]

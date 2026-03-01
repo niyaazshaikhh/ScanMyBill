@@ -1,7 +1,8 @@
 import Link from 'next/link';
+import { Instagram, Linkedin, Twitter } from 'lucide-react';
 
 import { DraggableBills } from '@/components/landing/draggable-bills';
-import { RazorpayDemoButton } from '@/components/landing/razorpay-demo-button';
+import { RazorpayCheckoutButton } from '@/components/landing/razorpay-checkout-button';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 
@@ -24,17 +25,44 @@ const features = [
   }
 ];
 
+const faqs = [
+  {
+    question: 'How does ScanMyBill.in pricing work?',
+    answer:
+      'Pricing is subscription-based through Razorpay. You can start checkout from this page and billing will follow your selected plan cycle.'
+  },
+  {
+    question: 'Can I cancel my subscription anytime?',
+    answer:
+      'Yes. You can cancel before your next billing cycle to stop future charges. Your existing paid period remains active until it ends.'
+  },
+  {
+    question: 'Is invoice data secure?',
+    answer:
+      'We use encrypted transport, access-controlled accounts, and audit-ready data handling practices for business invoices and GST-related records.'
+  },
+  {
+    question: 'Do I need technical setup to upload bills?',
+    answer:
+      'No. You can upload PDFs or images directly, and OCR extraction will map key invoice fields for faster bookkeeping.'
+  }
+];
+
 export default function LandingPage() {
   return (
     <div className='min-h-screen'>
       <header className='sticky top-0 z-50 border-b border-border/60 bg-background/95 backdrop-blur'>
         <div className='mx-auto flex w-full max-w-7xl items-center justify-between px-4 py-3 sm:px-6 lg:px-8'>
-          <Link href='/' className='font-[var(--font-space)] text-xl font-bold tracking-tight text-primary'>
-            ScanMyBill.in
+          <Link href='/' className='flex items-center gap-3'>
+            <span className='flex h-10 w-10 items-center justify-center rounded-md bg-primary font-[var(--font-space)] text-sm font-bold text-primary-foreground'>
+              SMB
+            </span>
+            <span className='font-[var(--font-space)] text-xl font-bold tracking-tight text-primary'>ScanMyBill.in</span>
           </Link>
           <nav className='hidden items-center gap-5 text-sm font-medium md:flex'>
             <a href='#about'>About Us</a>
             <a href='#pricing'>Pricing</a>
+            <a href='#faq'>FAQ</a>
             <a href='#contact'>Contact Us</a>
             <Button asChild size='sm' variant='outline'>
               <Link href='/signin'>Log in</Link>
@@ -67,14 +95,9 @@ export default function LandingPage() {
               ScanMyBill.in helps Indian businesses process bills faster with OCR, track GST exposure,
               and export grouped invoices in one click.
             </p>
-            <div className='flex flex-col gap-3 sm:flex-row'>
-              <Button asChild size='lg'>
-                <Link href='/signup'>Start Free Trial</Link>
-              </Button>
-              <Button asChild size='lg' variant='outline'>
-                <Link href='/dashboard'>Open Demo Dashboard</Link>
-              </Button>
-            </div>
+            <Button asChild size='lg' className='w-full sm:max-w-md'>
+              <Link href='/signup'>Sign up</Link>
+            </Button>
           </div>
           <div className='fade-up'>
             <DraggableBills />
@@ -106,10 +129,32 @@ export default function LandingPage() {
               <div>
                 <h3 className='font-[var(--font-space)] text-2xl font-semibold'>Pricing and Payments</h3>
                 <p className='mt-2 text-sm text-muted-foreground'>
-                  Run a Razorpay subscription checkout with test credentials to validate your billing flow.
+                  Activate a secure Razorpay subscription checkout for your ScanMyBill.in plan.
+                </p>
+                <p className='mt-2 text-sm text-muted-foreground'>
+                  Monthly plan with GST invoicing support, OCR processing, dashboard analytics, and invoice exports.
                 </p>
               </div>
-              <RazorpayDemoButton />
+              <RazorpayCheckoutButton className='w-full sm:w-auto' />
+            </CardContent>
+          </Card>
+        </section>
+
+        <section id='faq' className='mx-auto w-full max-w-7xl px-4 py-10 sm:px-6 lg:px-8'>
+          <Card className='border-sky-200 bg-sky-50/60'>
+            <CardContent className='space-y-4 p-6'>
+              <h3 className='font-[var(--font-space)] text-2xl font-semibold'>Frequently Asked Questions</h3>
+              <div className='space-y-3'>
+                {faqs.map((faq) => (
+                  <details key={faq.question} className='group rounded-md border border-sky-200 bg-white/80'>
+                    <summary className='flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 text-sm font-semibold'>
+                      {faq.question}
+                      <span className='text-base text-muted-foreground transition group-open:rotate-180'>⌄</span>
+                    </summary>
+                    <p className='px-4 pb-4 text-sm text-muted-foreground'>{faq.answer}</p>
+                  </details>
+                ))}
+              </div>
             </CardContent>
           </Card>
         </section>
@@ -144,44 +189,55 @@ export default function LandingPage() {
               Personal: <a className='text-primary' href='mailto:neyazshaikh777@gmail.com'>neyazshaikh777@gmail.com</a>
             </p>
             <p className='mt-1 text-muted-foreground'>Built by Niyaz Shaikh</p>
-            <div className='mt-2 flex flex-wrap gap-3 text-xs'>
+            <div className='mt-3 flex flex-wrap gap-2'>
               <a
-                className='text-primary hover:underline'
+                className='inline-flex items-center gap-2 rounded-md border border-border bg-white px-3 py-1.5 text-xs font-medium text-primary hover:bg-muted'
                 href='https://x.com/niyaazshaikhh'
                 target='_blank'
                 rel='noreferrer'
               >
+                <Twitter className='h-3.5 w-3.5' />
                 X
               </a>
               <a
-                className='text-primary hover:underline'
+                className='inline-flex items-center gap-2 rounded-md border border-border bg-white px-3 py-1.5 text-xs font-medium text-primary hover:bg-muted'
                 href='https://www.linkedin.com/in/niyaazshaikhh/'
                 target='_blank'
                 rel='noreferrer'
               >
+                <Linkedin className='h-3.5 w-3.5' />
                 LinkedIn
               </a>
               <a
-                className='text-primary hover:underline'
+                className='inline-flex items-center gap-2 rounded-md border border-border bg-white px-3 py-1.5 text-xs font-medium text-primary hover:bg-muted'
                 href='https://www.instagram.com/whyniyaaz/'
                 target='_blank'
                 rel='noreferrer'
               >
+                <Instagram className='h-3.5 w-3.5' />
                 Instagram
               </a>
             </div>
           </div>
           <div>
-            <h4 className='font-semibold'>Terms</h4>
-            <p className='mt-2 text-muted-foreground'>Standard SaaS terms available on signup.</p>
+            <h4 className='font-semibold'>Terms & Conditions</h4>
+            <p className='mt-2 text-muted-foreground'>
+              By using ScanMyBill.in, you agree to subscription billing, fair usage limits, and acceptable use
+              rules. Subscriptions auto-renew until canceled before the next billing date.
+            </p>
           </div>
           <div>
             <h4 className='font-semibold'>Privacy</h4>
-            <p className='mt-2 text-muted-foreground'>Data encrypted in transit and role-protected.</p>
+            <p className='mt-2 text-muted-foreground'>
+              We process account, billing, and invoice data only to operate the service. Data is encrypted in
+              transit, access-controlled, and never sold to third parties.
+            </p>
           </div>
           <div>
-            <h4 className='font-semibold'>FAQ</h4>
-            <p className='mt-2 text-muted-foreground'>OCR accuracy, exports, and GST analytics support.</p>
+            <h4 className='font-semibold'>Support</h4>
+            <p className='mt-2 text-muted-foreground'>
+              Need help with onboarding, OCR extraction quality, or GST analytics? Contact support for guided setup.
+            </p>
           </div>
         </div>
       </footer>

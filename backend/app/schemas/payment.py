@@ -5,11 +5,10 @@ class RazorpayConfigResponse(BaseModel):
     key_id: str | None
 
 
-class SubscriptionDemoResponse(BaseModel):
+class SubscriptionResponse(BaseModel):
     subscription_id: str
     status: str
     short_url: str | None = None
-    mock: bool = False
 
 
 class PaymentVerifyRequest(BaseModel):

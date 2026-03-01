@@ -1,6 +1,6 @@
 import Link from 'next/link';
 
-import { RazorpayDemoButton } from '@/components/landing/razorpay-demo-button';
+import { RazorpayCheckoutButton } from '@/components/landing/razorpay-checkout-button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 
 export const metadata = {
@@ -16,11 +16,12 @@ export default function PricingPage() {
         </CardHeader>
         <CardContent className='space-y-4 text-sm'>
           <p>
-            Demo setup includes Razorpay subscription flow. Configure your API keys and plan id to enable live test mode checkout.
+            Start your ScanMyBill.in subscription with secure Razorpay checkout. Ensure your backend has
+            `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET`, and `RAZORPAY_PLAN_ID` configured.
           </p>
-          <RazorpayDemoButton />
+          <RazorpayCheckoutButton className='w-full sm:w-auto' />
           <p>
-            Need full billing setup? Continue to{' '}
+            Need an account first? Continue to{' '}
             <Link href='/signup' className='text-primary'>
               sign up
             </Link>

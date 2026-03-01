@@ -4,11 +4,12 @@ interface RazorpayOptions {
   name?: string;
   description?: string;
   theme?: { color?: string };
+  notes?: Record<string, string>;
   handler?: (response: {
     razorpay_payment_id: string;
     razorpay_subscription_id: string;
     razorpay_signature: string;
-  }) => void;
+  }) => void | Promise<void>;
   modal?: { ondismiss?: () => void };
   prefill?: { name?: string; email?: string };
 }
