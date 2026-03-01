@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 
 import { Button } from '@/components/ui/button';
 import { apiRequest } from '@/lib/api';
@@ -18,7 +18,18 @@ async function loadRazorpayScript() {
   });
 }
 
-type ConfigResponse = { key_id: string | null };
+type RazorpayPlanOption = {
+  id: string;
+  item_name?: string | null;
+  interval?: number | null;
+  period?: string | null;
+  amount?: number | null;
+  currency?: string | null;
+};
+type PaymentConfigResponse = {
+  key_id: string | null;
+  plans: RazorpayPlanOption[];
+};
 type SubscriptionResponse = {
   subscription_id: string;
   status: string;
@@ -26,8 +37,55 @@ type SubscriptionResponse = {
 };
 type VerifyResponse = { verified: boolean };
 
-export function RazorpayCheckoutButton({ className }: { className?: string }) {
+function formatPlanLabel(plan: RazorpayPlanOption) {
+  const amount =
+    typeof plan.amount === 'number' ? `Rs ${(plan.amount / 100).toLocaleString('en-IN')}` : 'Custom price';
+  const cycle =
+    plan.period && plan.interval ? ` / every ${plan.interval} ${plan.period}${plan.interval > 1 ? 's' : ''}` : '';
+  return `${plan.item_name || 'Subscription Plan'} (${amount}${cycle})`;
+}
+
+type RazorpayCheckoutButtonProps = {
+  className?: string;
+  showPlanSelector?: boolean;
+  defaultPlanId?: string;
+};
+
+export function RazorpayCheckoutButton({
+  className,
+  showPlanSelector = false,
+  defaultPlanId
+}: RazorpayCheckoutButtonProps) {
   const [loading, setLoading] = useState(false);
+  const [plans, setPlans] = useState<RazorpayPlanOption[]>([]);
+  const [selectedPlanId, setSelectedPlanId] = useState(defaultPlanId || '');
+  const [configError, setConfigError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!showPlanSelector) return;
+
+    let active = true;
+    const loadPlans = async () => {
+      try {
+        const config = await apiRequest<PaymentConfigResponse>('/payments/config', { auth: false });
+        if (!active) return;
+        setPlans(config.plans || []);
+
+        const fallbackPlanId = config.plans?.[0]?.id || '';
+        const nextPlanId =
+          defaultPlanId && config.plans.some((plan) => plan.id === defaultPlanId) ? defaultPlanId : fallbackPlanId;
+        setSelectedPlanId(nextPlanId);
+      } catch (error) {
+        if (!active) return;
+        setConfigError(error instanceof Error ? error.message : 'Unable to load plan options');
+      }
+    };
+
+    void loadPlans();
+    return () => {
+      active = false;
+    };
+  }, [showPlanSelector, defaultPlanId]);
 
   const launch = async () => {
     if (loading) return;
@@ -45,14 +103,20 @@ export function RazorpayCheckoutButton({ className }: { className?: string }) {
         throw new Error('Failed to load Razorpay checkout script.');
       }
 
-      const config = await apiRequest<ConfigResponse>('/payments/config', { auth: false });
+      const config = await apiRequest<PaymentConfigResponse>('/payments/config', { auth: false });
       const checkoutKey = config.key_id || process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID;
       if (!checkoutKey) {
         throw new Error('Razorpay public key is missing.');
       }
 
+      const planId = defaultPlanId || selectedPlanId || config.plans?.[0]?.id;
+      if (!planId) {
+        throw new Error('No Razorpay plan is configured.');
+      }
+
       const subscription = await apiRequest<SubscriptionResponse>('/payments/subscriptions', {
-        method: 'POST'
+        method: 'POST',
+        body: { plan_id: planId }
       });
 
       if (!window.Razorpay) {
@@ -99,8 +163,32 @@ export function RazorpayCheckoutButton({ className }: { className?: string }) {
   };
 
   return (
-    <Button onClick={launch} className={className}>
-      {loading ? 'Launching Checkout...' : 'Start Secure Checkout'}
-    </Button>
+    <div className='space-y-2'>
+      {showPlanSelector ? (
+        <>
+          <label className='block text-sm font-medium text-foreground' htmlFor='plan-select'>
+            Choose plan
+          </label>
+          <select
+            id='plan-select'
+            value={selectedPlanId}
+            onChange={(event) => setSelectedPlanId(event.target.value)}
+            className='h-10 w-full rounded-md border border-border bg-background px-3 text-sm'
+          >
+            {plans.length === 0 ? <option value=''>No plans found</option> : null}
+            {plans.map((plan) => (
+              <option key={plan.id} value={plan.id}>
+                {formatPlanLabel(plan)}
+              </option>
+            ))}
+          </select>
+          {configError ? <p className='text-xs text-destructive'>{configError}</p> : null}
+        </>
+      ) : null}
+
+      <Button onClick={launch} className={className} disabled={loading || (showPlanSelector && !selectedPlanId)}>
+        {loading ? 'Launching Checkout...' : 'Start Secure Checkout'}
+      </Button>
+    </div>
   );
 }

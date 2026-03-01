@@ -17,9 +17,10 @@ export default function PricingPage() {
         <CardContent className='space-y-4 text-sm'>
           <p>
             Start your ScanMyBill.in subscription with secure Razorpay checkout. Ensure your backend has
-            `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET`, and `RAZORPAY_PLAN_ID` configured.
+            `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET`, and at least one plan in `RAZORPAY_PLAN_IDS` (or
+            `RAZORPAY_PLAN_ID`) configured.
           </p>
-          <RazorpayCheckoutButton className='w-full sm:w-auto' />
+          <RazorpayCheckoutButton className='w-full sm:w-auto' showPlanSelector />
           <p>
             Need an account first? Continue to{' '}
             <Link href='/signup' className='text-primary'>

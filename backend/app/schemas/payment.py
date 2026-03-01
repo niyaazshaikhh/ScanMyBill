@@ -1,14 +1,28 @@
 from pydantic import BaseModel
 
 
+class RazorpayPlanOption(BaseModel):
+    id: str
+    item_name: str | None = None
+    interval: int | None = None
+    period: str | None = None
+    amount: int | None = None
+    currency: str | None = None
+
+
 class RazorpayConfigResponse(BaseModel):
     key_id: str | None
+    plans: list[RazorpayPlanOption] = []
 
 
 class SubscriptionResponse(BaseModel):
     subscription_id: str
     status: str
     short_url: str | None = None
+
+
+class CreateSubscriptionRequest(BaseModel):
+    plan_id: str | None = None
 
 
 class PaymentVerifyRequest(BaseModel):

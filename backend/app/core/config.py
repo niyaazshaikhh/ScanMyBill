@@ -39,6 +39,7 @@ class Settings(BaseSettings):
     razorpay_key_id: str | None = None
     razorpay_key_secret: str | None = None
     razorpay_plan_id: str | None = None
+    razorpay_plan_ids: list[str] | str | None = None
 
     @property
     def database_url(self) -> str:
@@ -61,6 +62,13 @@ class Settings(BaseSettings):
             return [item.strip() for item in value.split(',') if item.strip()]
         return value
 
+    @field_validator('razorpay_plan_ids', mode='before')
+    @classmethod
+    def parse_razorpay_plan_ids(cls, value: Any) -> Any:
+        if isinstance(value, str):
+            return [item.strip() for item in value.split(',') if item.strip()]
+        return value
+
     @property
     def allowed_google_client_ids(self) -> list[str]:
         values: list[str] = []
@@ -77,6 +85,26 @@ class Settings(BaseSettings):
             values.append(self.next_public_google_client_id.strip())
 
         # Preserve order while removing duplicates.
+        seen: set[str] = set()
+        unique: list[str] = []
+        for value in values:
+            if value and value not in seen:
+                seen.add(value)
+                unique.append(value)
+        return unique
+
+    @property
+    def allowed_razorpay_plan_ids(self) -> list[str]:
+        values: list[str] = []
+
+        if isinstance(self.razorpay_plan_ids, list):
+            values.extend(self.razorpay_plan_ids)
+        elif isinstance(self.razorpay_plan_ids, str):
+            values.extend([item.strip() for item in self.razorpay_plan_ids.split(',') if item.strip()])
+
+        if self.razorpay_plan_id:
+            values.extend([item.strip() for item in self.razorpay_plan_id.split(',') if item.strip()])
+
         seen: set[str] = set()
         unique: list[str] = []
         for value in values:
