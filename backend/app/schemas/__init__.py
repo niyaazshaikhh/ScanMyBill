@@ -19,6 +19,7 @@ from app.schemas.invoice import (
     InvoiceListResponse,
     InvoiceResponse,
 )
+from app.schemas.newsletter import NewsletterCreate, NewsletterSubscribeResponse
 from app.schemas.payment import (
     CreateSubscriptionRequest,
     PaymentVerifyRequest,
@@ -51,6 +52,8 @@ __all__ = [
     'InvoiceItemResponse',
     'InvoiceListResponse',
     'InvoiceResponse',
+    'NewsletterCreate',
+    'NewsletterSubscribeResponse',
     'CreateSubscriptionRequest',
     'PaymentVerifyRequest',
     'RazorpayConfigResponse',

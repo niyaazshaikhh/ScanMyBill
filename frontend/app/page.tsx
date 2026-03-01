@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { Instagram, Linkedin, Twitter } from 'lucide-react';
 
 import { DraggableBills } from '@/components/landing/draggable-bills';
+import { NewsletterForm } from '@/components/landing/newsletter-form';
 import { RazorpayCheckoutButton } from '@/components/landing/razorpay-checkout-button';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -204,15 +205,7 @@ export default function LandingPage() {
               <p className='text-sm text-muted-foreground'>
                 Get product updates on OCR, GST compliance, and automation workflows.
               </p>
-              <form className='flex flex-col gap-3 sm:flex-row'>
-                <input
-                  type='email'
-                  required
-                  placeholder='you@company.com'
-                  className='h-10 w-full rounded-md border border-border bg-white px-3 text-sm sm:max-w-sm'
-                />
-                <Button type='submit'>Subscribe</Button>
-              </form>
+              <NewsletterForm />
             </CardContent>
           </Card>
         </section>
