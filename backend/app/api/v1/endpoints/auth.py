@@ -33,9 +33,15 @@ from app.schemas.auth import (
     TokenResponse,
     UserPublic,
 )
+from app.schemas.user import (
+    ForgotPasswordRequest as UserForgotPasswordRequest,
+    ResetPasswordRequest as UserResetPasswordRequest,
+    UserCreate,
+    UserLogin,
+)
 
-router = APIRouter()
-PASSWORD_RESET_TOKEN_EXPIRE_MINUTES = 30
+router = APIRouter(prefix='/auth')
+PASSWORD_RESET_TOKEN_EXPIRE_MINUTES = 15
 
 
 def _normalize_email(email: str) -> str:
@@ -86,7 +92,7 @@ def create_account(payload: CreateAccountRequest, db: Session = Depends(get_db))
 
 
 @router.post('/register', response_model=TokenResponse)
-def register(payload: RegisterRequest, db: Session = Depends(get_db)) -> TokenResponse:
+def register(payload: UserCreate, db: Session = Depends(get_db)) -> TokenResponse:
     user = _create_local_account(
         email=str(payload.email),
         password=payload.password,
@@ -97,7 +103,7 @@ def register(payload: RegisterRequest, db: Session = Depends(get_db)) -> TokenRe
 
 
 @router.post('/login', response_model=TokenResponse)
-def login(payload: LoginRequest, db: Session = Depends(get_db)) -> TokenResponse:
+def login(payload: UserLogin, db: Session = Depends(get_db)) -> TokenResponse:
     user = db.scalar(select(User).where(User.email == _normalize_email(str(payload.email))))
     if not user or not user.hashed_password:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail='Invalid credentials')
@@ -108,7 +114,10 @@ def login(payload: LoginRequest, db: Session = Depends(get_db)) -> TokenResponse
 
 
 @router.post('/forgot-password', response_model=ForgotPasswordResponse)
-def forgot_password(payload: ForgotPasswordRequest, db: Session = Depends(get_db)) -> ForgotPasswordResponse:
+def forgot_password(
+    payload: UserForgotPasswordRequest,
+    db: Session = Depends(get_db),
+) -> ForgotPasswordResponse:
     generic_message = 'If an account with that email exists, a password reset link has been generated.'
     user = db.scalar(select(User).where(User.email == _normalize_email(str(payload.email))))
     if not user:
@@ -117,13 +126,8 @@ def forgot_password(payload: ForgotPasswordRequest, db: Session = Depends(get_db
     expires_at = datetime.now(timezone.utc) + timedelta(minutes=PASSWORD_RESET_TOKEN_EXPIRE_MINUTES)
     raw_token = secrets.token_urlsafe(32)
 
-    db.add(
-        PasswordResetToken(
-            user_id=user.id,
-            token_hash=hash_token(raw_token),
-            expires_at=expires_at,
-        )
-    )
+    user.reset_token = hash_token(raw_token)
+    user.reset_token_expiry = expires_at
     db.commit()
 
     # Email delivery is not configured yet, so token is returned for frontend use.
@@ -131,35 +135,22 @@ def forgot_password(payload: ForgotPasswordRequest, db: Session = Depends(get_db
 
 
 @router.post('/reset-password', response_model=MessageResponse)
-def reset_password(payload: ResetPasswordRequest, db: Session = Depends(get_db)) -> MessageResponse:
+def reset_password(payload: UserResetPasswordRequest, db: Session = Depends(get_db)) -> MessageResponse:
     now = datetime.now(timezone.utc)
 
-    reset_token = db.scalar(
-        select(PasswordResetToken).where(
-            PasswordResetToken.token_hash == hash_token(payload.token),
-            PasswordResetToken.used_at.is_(None),
-            PasswordResetToken.expires_at > now,
+    user = db.scalar(
+        select(User).where(
+            User.reset_token == hash_token(payload.token),
+            User.reset_token_expiry.is_not(None),
+            User.reset_token_expiry > now,
         )
     )
-    if not reset_token:
+    if not user:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Invalid or expired reset token')
 
-    user = db.scalar(select(User).where(User.id == reset_token.user_id))
-    if not user:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Invalid reset token')
-
     user.hashed_password = get_password_hash(payload.new_password)
-    reset_token.used_at = now
-
-    active_user_tokens = db.scalars(
-        select(PasswordResetToken).where(
-            PasswordResetToken.user_id == user.id,
-            PasswordResetToken.used_at.is_(None),
-            PasswordResetToken.id != reset_token.id,
-        )
-    ).all()
-    for token in active_user_tokens:
-        token.used_at = now
+    user.reset_token = None
+    user.reset_token_expiry = None
 
     db.commit()
     return MessageResponse(message='Password reset successful. You can now log in.')

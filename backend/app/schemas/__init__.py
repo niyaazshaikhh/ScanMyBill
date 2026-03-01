@@ -27,6 +27,14 @@ from app.schemas.payment import (
     RazorpayPlanOption,
     SubscriptionResponse,
 )
+from app.schemas.user import (
+    ForgotPasswordRequest as UserForgotPasswordRequest,
+    ResetPasswordRequest as UserResetPasswordRequest,
+    TokenResponse as UserTokenResponse,
+    UserCreate,
+    UserLogin,
+    UserResponse,
+)
 
 __all__ = [
     'GoogleAuthRequest',
@@ -59,4 +67,10 @@ __all__ = [
     'RazorpayConfigResponse',
     'RazorpayPlanOption',
     'SubscriptionResponse',
+    'UserCreate',
+    'UserLogin',
+    'UserResponse',
+    'UserTokenResponse',
+    'UserForgotPasswordRequest',
+    'UserResetPasswordRequest',
 ]

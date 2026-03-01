@@ -1,4 +1,5 @@
 from enum import Enum
+from datetime import datetime
 from uuid import uuid4
 
 from sqlalchemy import Boolean, DateTime, Enum as SqlEnum, String
@@ -17,12 +18,19 @@ class User(Base):
     __tablename__ = 'users'
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    full_name: Mapped[str] = mapped_column(String(255))
     email: Mapped[str] = mapped_column(String(255), unique=True, index=True)
     hashed_password: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    full_name: Mapped[str] = mapped_column(String(255))
     role: Mapped[UserRole] = mapped_column(SqlEnum(UserRole), default=UserRole.USER)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
-    created_at: Mapped[DateTime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    reset_token: Mapped[str | None] = mapped_column(String(255), nullable=True, unique=True, index=True)
+    reset_token_expiry: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
 
     clients = relationship('Client', back_populates='owner', cascade='all,delete-orphan')
     invoices = relationship('Invoice', back_populates='owner', cascade='all,delete-orphan')
