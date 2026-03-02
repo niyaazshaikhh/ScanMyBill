@@ -2,6 +2,8 @@ from uuid import UUID
 
 from pydantic import BaseModel, EmailStr, Field
 
+from app.models.user import SubscriptionPlan, SubscriptionStatus
+
 
 class UserCreate(BaseModel):
     full_name: str = Field(min_length=2, max_length=255)
@@ -18,6 +20,16 @@ class UserResponse(BaseModel):
     id: UUID
     full_name: str
     email: EmailStr
+
+    model_config = {'from_attributes': True}
+
+
+class CurrentUserResponse(BaseModel):
+    id: str
+    full_name: str
+    email: EmailStr
+    subscription_plan: SubscriptionPlan
+    subscription_status: SubscriptionStatus
 
     model_config = {'from_attributes': True}
 

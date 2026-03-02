@@ -40,6 +40,7 @@ class Settings(BaseSettings):
     razorpay_key_secret: str | None = None
     razorpay_plan_id: str | None = None
     razorpay_plan_ids: list[str] | str | None = None
+    razorpay_webhook_secret: str | None = None
 
     @property
     def database_url(self) -> str:

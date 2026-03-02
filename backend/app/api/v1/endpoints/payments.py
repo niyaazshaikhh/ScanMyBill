@@ -1,14 +1,19 @@
+import hashlib
+import hmac
 import json
+from datetime import datetime, timezone
+from typing import Any
 
 import razorpay
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.core.database import get_db
 from app.core.deps import get_current_user
 from app.models.payment_event import PaymentEvent
-from app.models.user import User
+from app.models.user import SubscriptionPlan, SubscriptionStatus, User
 from app.schemas.payment import (
     CreateSubscriptionRequest,
     PaymentVerifyRequest,
@@ -43,6 +48,157 @@ def _build_plan_options(client: razorpay.Client | None = None) -> list[RazorpayP
     return plan_options
 
 
+def _to_utc_datetime(value: Any) -> datetime | None:
+    if isinstance(value, (int, float)) and value > 0:
+        return datetime.fromtimestamp(value, tz=timezone.utc)
+    return None
+
+
+def _plan_from_text(value: str | None) -> SubscriptionPlan | None:
+    if not value:
+        return None
+    normalized = value.strip().lower()
+    if 'business' in normalized:
+        return SubscriptionPlan.BUSINESS
+    if ' pro' in f' {normalized} ':
+        return SubscriptionPlan.PRO
+    if 'standard' in normalized:
+        return SubscriptionPlan.STANDARD
+    if 'free' in normalized:
+        return SubscriptionPlan.FREE
+    return None
+
+
+def _resolve_subscription_plan(
+    plan_id: str | None,
+    client: razorpay.Client | None,
+    *,
+    plan_name_hint: str | None = None,
+) -> SubscriptionPlan:
+    hinted = _plan_from_text(plan_name_hint)
+    if hinted and hinted != SubscriptionPlan.FREE:
+        return hinted
+
+    if client and plan_id:
+        try:
+            plan = client.plan.fetch(plan_id)
+            item = plan.get('item') if isinstance(plan.get('item'), dict) else {}
+            candidates = [
+                item.get('name') if isinstance(item, dict) else None,
+                item.get('description') if isinstance(item, dict) else None,
+            ]
+            for candidate in candidates:
+                mapped = _plan_from_text(candidate)
+                if mapped and mapped != SubscriptionPlan.FREE:
+                    return mapped
+        except Exception:
+            pass
+
+    return SubscriptionPlan.STANDARD if plan_id else SubscriptionPlan.FREE
+
+
+def _resolve_user_for_subscription(db: Session, subscription: dict[str, Any]) -> User | None:
+    notes = subscription.get('notes')
+    if isinstance(notes, dict):
+        notes_user_id = notes.get('user_id')
+        if isinstance(notes_user_id, str) and notes_user_id:
+            user = db.get(User, notes_user_id)
+            if user:
+                return user
+
+    subscription_id = subscription.get('id')
+    if isinstance(subscription_id, str) and subscription_id:
+        user = db.scalar(select(User).where(User.razorpay_subscription_id == subscription_id))
+        if user:
+            return user
+
+        payment_event = db.scalar(
+            select(PaymentEvent)
+            .where(
+                PaymentEvent.provider == 'razorpay',
+                PaymentEvent.provider_payment_id == subscription_id,
+            )
+            .order_by(PaymentEvent.created_at.desc())
+            .limit(1)
+        )
+        if payment_event:
+            return db.get(User, payment_event.owner_id)
+
+    return None
+
+
+def _activate_subscription(
+    user: User,
+    *,
+    plan: SubscriptionPlan,
+    subscription_id: str | None,
+    started_at: datetime | None,
+    expires_at: datetime | None,
+) -> None:
+    user.subscription_plan = plan
+    user.subscription_status = SubscriptionStatus.ACTIVE
+    if subscription_id:
+        user.razorpay_subscription_id = subscription_id
+    user.subscription_started_at = started_at or user.subscription_started_at or datetime.now(timezone.utc)
+    user.subscription_expires_at = expires_at
+
+
+def _cancel_subscription(user: User, *, expires_at: datetime | None) -> None:
+    user.subscription_plan = SubscriptionPlan.FREE
+    user.subscription_status = SubscriptionStatus.CANCELLED
+    user.subscription_expires_at = expires_at or user.subscription_expires_at or datetime.now(timezone.utc)
+
+
+def _expire_subscription(user: User) -> None:
+    user.subscription_plan = SubscriptionPlan.FREE
+    user.subscription_status = SubscriptionStatus.EXPIRED
+    user.subscription_expires_at = user.subscription_expires_at or datetime.now(timezone.utc)
+
+
+def _sync_user_subscription_from_entity(
+    user: User,
+    subscription: dict[str, Any],
+    client: razorpay.Client | None,
+) -> None:
+    notes = subscription.get('notes') if isinstance(subscription.get('notes'), dict) else {}
+    plan_hint = notes.get('selected_plan_name') if isinstance(notes, dict) else None
+    plan_id = subscription.get('plan_id') if isinstance(subscription.get('plan_id'), str) else None
+    status_value = str(subscription.get('status') or '').lower()
+    subscription_id = subscription.get('id') if isinstance(subscription.get('id'), str) else None
+    started_at = _to_utc_datetime(subscription.get('current_start') or subscription.get('start_at'))
+    expires_at = _to_utc_datetime(
+        subscription.get('current_end') or subscription.get('ended_at') or subscription.get('charge_at')
+    )
+
+    if status_value in {'cancelled', 'halted'}:
+        _cancel_subscription(user, expires_at=expires_at)
+        return
+
+    if status_value in {'completed', 'expired'}:
+        _expire_subscription(user)
+        return
+
+    _activate_subscription(
+        user,
+        plan=_resolve_subscription_plan(plan_id, client, plan_name_hint=plan_hint),
+        subscription_id=subscription_id,
+        started_at=started_at,
+        expires_at=expires_at,
+    )
+
+
+def _verify_webhook_signature(payload: bytes, signature: str) -> bool:
+    if not settings.razorpay_webhook_secret:
+        return False
+
+    generated = hmac.new(
+        settings.razorpay_webhook_secret.encode('utf-8'),
+        payload,
+        hashlib.sha256,
+    ).hexdigest()
+    return hmac.compare_digest(generated, signature)
+
+
 @router.get('/config', response_model=RazorpayConfigResponse)
 def payment_config() -> RazorpayConfigResponse:
     plan_options: list[RazorpayPlanOption] = []
@@ -74,6 +230,15 @@ def create_subscription(
     plan_id = requested_plan_id or allowed_plan_ids[0]
     client = razorpay.Client(auth=(settings.razorpay_key_id, settings.razorpay_key_secret))
 
+    selected_plan_name: str | None = None
+    try:
+        selected_plan = client.plan.fetch(plan_id)
+        item = selected_plan.get('item') if isinstance(selected_plan.get('item'), dict) else {}
+        if isinstance(item, dict):
+            selected_plan_name = item.get('name')
+    except Exception:
+        selected_plan_name = None
+
     try:
         subscription_payload = {
             'plan_id': plan_id,
@@ -84,16 +249,21 @@ def create_subscription(
                 'user_id': current_user.id,
                 'user_email': current_user.email,
                 'selected_plan_id': plan_id,
+                'selected_plan_name': selected_plan_name or '',
             },
         }
         subscription = client.subscription.create(subscription_payload)
     except Exception as exc:
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail='Razorpay API error') from exc
 
+    subscription_id = subscription.get('id', '')
+    if isinstance(subscription_id, str) and subscription_id:
+        current_user.razorpay_subscription_id = subscription_id
+
     event = PaymentEvent(
         owner_id=current_user.id,
         provider='razorpay',
-        provider_payment_id=subscription.get('id', ''),
+        provider_payment_id=subscription_id,
         status=subscription.get('status', 'created'),
         payload=json.dumps(subscription),
     )
@@ -101,7 +271,7 @@ def create_subscription(
     db.commit()
 
     return SubscriptionResponse(
-        subscription_id=subscription.get('id', ''),
+        subscription_id=subscription_id,
         status=subscription.get('status', 'created'),
         short_url=subscription.get('short_url'),
     )
@@ -135,14 +305,116 @@ def verify_payment(
     except Exception:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail='Invalid Razorpay signature')
 
+    subscription_data: dict[str, Any] = {}
+    if payload.razorpay_subscription_id:
+        try:
+            fetched = client.subscription.fetch(payload.razorpay_subscription_id)
+            if isinstance(fetched, dict):
+                subscription_data = fetched
+        except Exception:
+            subscription_data = {}
+
+    if subscription_data:
+        _sync_user_subscription_from_entity(current_user, subscription_data, client)
+    else:
+        _activate_subscription(
+            current_user,
+            plan=SubscriptionPlan.STANDARD,
+            subscription_id=payload.razorpay_subscription_id,
+            started_at=datetime.now(timezone.utc),
+            expires_at=None,
+        )
+
+    event_payload = {
+        'verify_payload': payload.model_dump(),
+        'subscription': subscription_data or None,
+    }
     event = PaymentEvent(
         owner_id=current_user.id,
         provider='razorpay',
         provider_payment_id=payload.razorpay_subscription_id or payload.razorpay_payment_id or '',
         status='verified',
-        payload=json.dumps(payload.model_dump()),
+        payload=json.dumps(event_payload),
     )
     db.add(event)
     db.commit()
 
     return {'verified': True}
+
+
+@router.post('/webhook')
+async def razorpay_webhook(
+    request: Request,
+    db: Session = Depends(get_db),
+) -> dict[str, bool]:
+    if not settings.razorpay_webhook_secret:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail='Razorpay webhook secret is not configured.',
+        )
+
+    signature = request.headers.get('X-Razorpay-Signature')
+    if not signature:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail='Missing Razorpay webhook signature')
+
+    payload_bytes = await request.body()
+    if not _verify_webhook_signature(payload_bytes, signature):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail='Invalid Razorpay webhook signature')
+
+    try:
+        data = json.loads(payload_bytes.decode('utf-8'))
+    except json.JSONDecodeError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Invalid webhook payload') from exc
+
+    event_name = str(data.get('event') or '').lower()
+    payload = data.get('payload')
+    if not isinstance(payload, dict):
+        return {'received': True}
+
+    subscription_wrapper = payload.get('subscription')
+    if not isinstance(subscription_wrapper, dict):
+        return {'received': True}
+
+    subscription_data = subscription_wrapper.get('entity')
+    if not isinstance(subscription_data, dict):
+        return {'received': True}
+
+    user = _resolve_user_for_subscription(db, subscription_data)
+    if not user:
+        return {'received': True}
+
+    razorpay_client: razorpay.Client | None = None
+    if settings.razorpay_key_id and settings.razorpay_key_secret:
+        razorpay_client = razorpay.Client(auth=(settings.razorpay_key_id, settings.razorpay_key_secret))
+
+    subscription_status = str(subscription_data.get('status') or '').lower()
+    if event_name in {'subscription.cancelled', 'subscription.halted'} or subscription_status in {'cancelled', 'halted'}:
+        expires_at = _to_utc_datetime(subscription_data.get('ended_at') or subscription_data.get('current_end'))
+        _cancel_subscription(user, expires_at=expires_at)
+    elif event_name in {'subscription.completed'} or subscription_status in {'completed', 'expired'}:
+        _expire_subscription(user)
+    elif event_name in {
+        'subscription.activated',
+        'subscription.authenticated',
+        'subscription.charged',
+        'subscription.pending',
+    } or subscription_status in {'active', 'authenticated', 'pending'}:
+        _sync_user_subscription_from_entity(user, subscription_data, razorpay_client)
+
+    payment_wrapper = payload.get('payment')
+    payment_entity = payment_wrapper.get('entity') if isinstance(payment_wrapper, dict) else {}
+    payment_id = payment_entity.get('id') if isinstance(payment_entity, dict) else None
+    subscription_id = subscription_data.get('id') if isinstance(subscription_data.get('id'), str) else None
+
+    db.add(
+        PaymentEvent(
+            owner_id=user.id,
+            provider='razorpay',
+            provider_payment_id=subscription_id or payment_id or f'webhook:{event_name or "event"}',
+            status=event_name or subscription_status or 'webhook',
+            payload=payload_bytes.decode('utf-8'),
+        )
+    )
+    db.commit()
+
+    return {'received': True}

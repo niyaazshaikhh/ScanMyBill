@@ -6,6 +6,8 @@ export type AuthUser = {
   email: string;
   full_name: string;
   role: 'admin' | 'user';
+  subscription_plan?: 'FREE' | 'STANDARD' | 'PRO' | 'BUSINESS';
+  subscription_status?: 'ACTIVE' | 'CANCELLED' | 'EXPIRED';
 };
 
 export function setAuthSession(token: string, user: AuthUser) {

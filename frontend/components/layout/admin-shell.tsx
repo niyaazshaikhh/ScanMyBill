@@ -5,10 +5,11 @@ import { usePathname, useRouter } from 'next/navigation';
 import { Bell, FileText, LayoutDashboard, Menu, PlusCircle, Settings, UserCircle2, Users, X } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 
+import { SubscriptionBadge, type SubscriptionPlan } from '@/components/SubscriptionBadge';
 import { Button } from '@/components/ui/button';
 import { apiRequest } from '@/lib/api';
 import { Input } from '@/components/ui/input';
-import { clearAuthSession, getAuthUser } from '@/lib/auth';
+import { clearAuthSession, getAuthToken, getAuthUser } from '@/lib/auth';
 import { useAuthGuard } from '@/hooks/useAuthGuard';
 import { cn } from '@/lib/utils';
 
@@ -27,18 +28,50 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
   const [collapsed, setCollapsed] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
   const [displayName, setDisplayName] = useState('User');
+  const [subscriptionPlan, setSubscriptionPlan] = useState<SubscriptionPlan>('FREE');
 
   useAuthGuard();
 
   useEffect(() => {
-    const syncUser = () => {
+    let active = true;
+
+    const syncUser = async () => {
       const user = getAuthUser();
       setDisplayName(user?.full_name || user?.email || 'User');
+
+      if (!getAuthToken()) {
+        setSubscriptionPlan('FREE');
+        return;
+      }
+
+      try {
+        const profile = await apiRequest<{
+          id: string;
+          full_name: string;
+          email: string;
+          subscription_plan: SubscriptionPlan;
+          subscription_status: 'ACTIVE' | 'CANCELLED' | 'EXPIRED';
+        }>('/users/me');
+        if (!active) return;
+
+        setDisplayName(profile.full_name || profile.email || 'User');
+        setSubscriptionPlan(profile.subscription_plan || 'FREE');
+      } catch {
+        if (!active) return;
+        setSubscriptionPlan('FREE');
+      }
     };
 
-    syncUser();
-    window.addEventListener('storage', syncUser);
-    return () => window.removeEventListener('storage', syncUser);
+    void syncUser();
+    const onStorage = () => {
+      void syncUser();
+    };
+
+    window.addEventListener('storage', onStorage);
+    return () => {
+      active = false;
+      window.removeEventListener('storage', onStorage);
+    };
   }, []);
 
   const title = useMemo(() => {
@@ -124,7 +157,10 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
             title={displayName}
           >
             <UserCircle2 className='h-4 w-4 shrink-0 text-muted-foreground' />
-            <span className={cn('truncate font-medium', collapsed && 'lg:hidden')}>{displayName}</span>
+            <div className={cn('flex min-w-0 items-center gap-2', collapsed && 'lg:hidden')}>
+              <span className='truncate font-medium'>{displayName}</span>
+              <SubscriptionBadge plan={subscriptionPlan} />
+            </div>
           </div>
           <Button onClick={logout} disabled={loggingOut} variant='outline' className={cn('w-full', collapsed && 'lg:px-0')}>
             <span className={cn(collapsed && 'lg:hidden')}>{loggingOut ? 'Logging out...' : 'Logout'}</span>

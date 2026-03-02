@@ -4,9 +4,10 @@ import { useState } from 'react';
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { apiRequest } from '@/lib/api';
+import { getApiBaseUrl } from '@/lib/api';
 
 type NewsletterSubscribeResponse = {
+  success: boolean;
   message: string;
 };
 
@@ -25,15 +26,22 @@ export function NewsletterForm() {
     setErrorMessage(null);
 
     try {
-      const response = await apiRequest<NewsletterSubscribeResponse>('/newsletter/subscribe', {
+      const res = await fetch(`${getApiBaseUrl()}/newsletter/subscribe`, {
         method: 'POST',
-        auth: false,
-        body: { email }
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email })
       });
-      setSuccessMessage(response.message || 'Subscribed successfully');
+      const data = (await res.json()) as NewsletterSubscribeResponse;
+
+      if (!res.ok) {
+        setErrorMessage(data.message || `API Error (${res.status})`);
+        return;
+      }
+
+      setSuccessMessage(data.message || 'Subscribed successfully');
       setEmail('');
-    } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : 'Unable to subscribe right now');
+    } catch {
+      setErrorMessage('Unable to subscribe right now');
     } finally {
       setLoading(false);
     }

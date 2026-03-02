@@ -14,6 +14,19 @@ class UserRole(str, Enum):
     USER = 'user'
 
 
+class SubscriptionPlan(str, Enum):
+    FREE = 'FREE'
+    STANDARD = 'STANDARD'
+    PRO = 'PRO'
+    BUSINESS = 'BUSINESS'
+
+
+class SubscriptionStatus(str, Enum):
+    ACTIVE = 'ACTIVE'
+    CANCELLED = 'CANCELLED'
+    EXPIRED = 'EXPIRED'
+
+
 class User(Base):
     __tablename__ = 'users'
 
@@ -23,6 +36,19 @@ class User(Base):
     hashed_password: Mapped[str | None] = mapped_column(String(255), nullable=True)
     role: Mapped[UserRole] = mapped_column(SqlEnum(UserRole), default=UserRole.USER)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    subscription_plan: Mapped[SubscriptionPlan] = mapped_column(
+        SqlEnum(SubscriptionPlan, name='subscription_plan_enum'),
+        default=SubscriptionPlan.FREE,
+        nullable=False,
+    )
+    subscription_status: Mapped[SubscriptionStatus] = mapped_column(
+        SqlEnum(SubscriptionStatus, name='subscription_status_enum'),
+        default=SubscriptionStatus.EXPIRED,
+        nullable=False,
+    )
+    razorpay_subscription_id: Mapped[str | None] = mapped_column(String(120), nullable=True, index=True)
+    subscription_started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    subscription_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     reset_token: Mapped[str | None] = mapped_column(String(255), nullable=True, unique=True, index=True)
     reset_token_expiry: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

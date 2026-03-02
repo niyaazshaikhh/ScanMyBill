@@ -2,7 +2,7 @@ from datetime import datetime
 
 from pydantic import BaseModel, EmailStr, Field
 
-from app.models.user import UserRole
+from app.models.user import SubscriptionPlan, SubscriptionStatus, UserRole
 
 
 class UserPublic(BaseModel):
@@ -10,6 +10,8 @@ class UserPublic(BaseModel):
     email: EmailStr
     full_name: str
     role: UserRole
+    subscription_plan: SubscriptionPlan
+    subscription_status: SubscriptionStatus
     created_at: datetime
 
     model_config = {'from_attributes': True}

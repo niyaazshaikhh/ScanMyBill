@@ -28,6 +28,7 @@ from app.schemas.payment import (
     SubscriptionResponse,
 )
 from app.schemas.user import (
+    CurrentUserResponse,
     ForgotPasswordRequest as UserForgotPasswordRequest,
     ResetPasswordRequest as UserResetPasswordRequest,
     TokenResponse as UserTokenResponse,
@@ -70,6 +71,7 @@ __all__ = [
     'UserCreate',
     'UserLogin',
     'UserResponse',
+    'CurrentUserResponse',
     'UserTokenResponse',
     'UserForgotPasswordRequest',
     'UserResetPasswordRequest',
