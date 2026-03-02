@@ -6,4 +6,5 @@ class NewsletterCreate(BaseModel):
 
 
 class NewsletterSubscribeResponse(BaseModel):
+    success: bool
     message: str
