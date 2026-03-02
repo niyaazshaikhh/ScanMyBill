@@ -1,25 +1,29 @@
 import secrets
 from datetime import datetime, timedelta, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, Response, status
+from fastapi import APIRouter, Cookie, Depends, Request, Response, status
 from google.auth.transport import requests
 from google.oauth2 import id_token
-from jose import JWTError
+from jose import ExpiredSignatureError, JWTError
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
+from app.core.auth_exceptions import AuthException
 from app.core.config import settings
 from app.core.database import get_db
-from app.core.deps import get_current_user, oauth2_scheme
+from app.core.deps import get_current_user
 from app.core.security import (
+    REFRESH_TOKEN_EXPIRE_DAYS,
     create_access_token,
-    decode_access_token,
+    create_refresh_token,
+    decode_token,
     get_password_hash,
     hash_token,
     verify_password,
 )
 from app.models.password_reset_token import PasswordResetToken
 from app.models.revoked_token import RevokedToken
+from app.models.token_blacklist import TokenBlacklist
 from app.models.user import User, UserRole
 from app.schemas.auth import (
     CreateAccountRequest,
@@ -42,6 +46,21 @@ from app.schemas.user import (
 
 router = APIRouter(prefix='/auth')
 PASSWORD_RESET_TOKEN_EXPIRE_MINUTES = 15
+REFRESH_COOKIE_NAME = 'refresh_token'
+REFRESH_COOKIE_MAX_AGE = REFRESH_TOKEN_EXPIRE_DAYS * 24 * 60 * 60
+
+
+def _auth_error(
+    message: str,
+    status_code: int = status.HTTP_401_UNAUTHORIZED,
+    *,
+    headers: dict[str, str] | None = None,
+) -> AuthException:
+    return AuthException(
+        message=message,
+        status_code=status_code,
+        headers=headers or {},
+    )
 
 
 def _normalize_email(email: str) -> str:
@@ -54,7 +73,7 @@ def _create_local_account(email: str, password: str, full_name: str, db: Session
     existing = db.scalar(select(User).where(User.email == normalized_email))
     if existing:
         if existing.hashed_password:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Email already exists')
+            raise _auth_error('Email already exists', status.HTTP_400_BAD_REQUEST)
 
         # Upgrade OAuth-only account to include password login.
         existing.full_name = normalized_name
@@ -75,42 +94,124 @@ def _create_local_account(email: str, password: str, full_name: str, db: Session
     return user
 
 
-def _auth_response(user: User) -> TokenResponse:
-    token = create_access_token(subject=user.id, role=user.role.value)
-    return TokenResponse(access_token=token, user=UserPublic.model_validate(user))
+def _set_refresh_cookie(response: Response, refresh_token: str) -> None:
+    response.set_cookie(
+        key=REFRESH_COOKIE_NAME,
+        value=refresh_token,
+        httponly=True,
+        secure=False,
+        samesite='lax',
+        max_age=REFRESH_COOKIE_MAX_AGE,
+        expires=REFRESH_COOKIE_MAX_AGE,
+        path='/',
+    )
+
+
+def _clear_refresh_cookie(response: Response) -> None:
+    response.delete_cookie(key=REFRESH_COOKIE_NAME, path='/')
+
+
+def _extract_expiry(payload: dict) -> datetime:
+    exp_raw = payload.get('exp')
+    if isinstance(exp_raw, (int, float)):
+        return datetime.fromtimestamp(exp_raw, tz=timezone.utc)
+    return datetime.now(timezone.utc)
+
+
+def _is_jti_blacklisted(db: Session, jti: str) -> bool:
+    if db.scalar(select(TokenBlacklist.id).where(TokenBlacklist.token == jti)):
+        return True
+    return db.scalar(select(RevokedToken.id).where(RevokedToken.jti == jti)) is not None
+
+
+def _blacklist_jti(db: Session, jti: str) -> None:
+    existing = db.scalar(select(TokenBlacklist.id).where(TokenBlacklist.token == jti))
+    if not existing:
+        db.add(TokenBlacklist(token=jti))
+
+
+def _blacklist_legacy_token(db: Session, user_id: str, token: str, payload: dict) -> None:
+    token_hash = hash_token(token)
+    jti = payload.get('jti') if isinstance(payload.get('jti'), str) else None
+
+    existing_conditions = [RevokedToken.token_hash == token_hash]
+    if jti:
+        existing_conditions.append(RevokedToken.jti == jti)
+
+    existing = db.scalar(select(RevokedToken.id).where(or_(*existing_conditions)))
+    if existing:
+        return
+
+    db.add(
+        RevokedToken(
+            user_id=user_id,
+            token_hash=token_hash,
+            jti=jti,
+            expires_at=_extract_expiry(payload),
+        )
+    )
+
+
+def _create_session_response(user: User, response: Response) -> TokenResponse:
+    access_token = create_access_token(subject=user.id, role=user.role.value)
+    refresh_token = create_refresh_token(subject=user.id, role=user.role.value)
+    _set_refresh_cookie(response, refresh_token)
+    return TokenResponse(access_token=access_token, user=UserPublic.model_validate(user))
 
 
 @router.post('/create-account', response_model=TokenResponse)
-def create_account(payload: CreateAccountRequest, db: Session = Depends(get_db)) -> TokenResponse:
+def create_account(
+    payload: CreateAccountRequest,
+    response: Response,
+    db: Session = Depends(get_db),
+) -> TokenResponse:
     user = _create_local_account(
         email=str(payload.email),
         password=payload.password,
         full_name=payload.full_name,
         db=db,
     )
-    return _auth_response(user)
+    return _create_session_response(user, response)
 
 
 @router.post('/register', response_model=TokenResponse)
-def register(payload: UserCreate, db: Session = Depends(get_db)) -> TokenResponse:
+def register(
+    payload: UserCreate,
+    response: Response,
+    db: Session = Depends(get_db),
+) -> TokenResponse:
     user = _create_local_account(
         email=str(payload.email),
         password=payload.password,
         full_name=payload.full_name,
         db=db,
     )
-    return _auth_response(user)
+    return _create_session_response(user, response)
 
 
 @router.post('/login', response_model=TokenResponse)
-def login(payload: UserLogin, db: Session = Depends(get_db)) -> TokenResponse:
+def login(
+    payload: UserLogin,
+    response: Response,
+    db: Session = Depends(get_db),
+) -> TokenResponse:
     user = db.scalar(select(User).where(User.email == _normalize_email(str(payload.email))))
     if not user or not user.hashed_password:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail='Invalid credentials')
+        raise _auth_error(
+            'Invalid credentials',
+            status.HTTP_401_UNAUTHORIZED,
+            headers={'WWW-Authenticate': 'Bearer'},
+        )
     if not verify_password(payload.password, user.hashed_password):
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail='Invalid credentials')
+        raise _auth_error(
+            'Invalid credentials',
+            status.HTTP_401_UNAUTHORIZED,
+            headers={'WWW-Authenticate': 'Bearer'},
+        )
+    if not user.is_active:
+        raise _auth_error('User account is inactive', status.HTTP_401_UNAUTHORIZED)
 
-    return _auth_response(user)
+    return _create_session_response(user, response)
 
 
 @router.post('/forgot-password', response_model=ForgotPasswordResponse)
@@ -146,7 +247,7 @@ def reset_password(payload: UserResetPasswordRequest, db: Session = Depends(get_
         )
     )
     if not user:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Invalid or expired reset token')
+        raise _auth_error('Invalid or expired reset token', status.HTTP_400_BAD_REQUEST)
 
     user.hashed_password = get_password_hash(payload.new_password)
     user.reset_token = None
@@ -157,13 +258,14 @@ def reset_password(payload: UserResetPasswordRequest, db: Session = Depends(get_
 
 
 @router.post('/google', response_model=TokenResponse)
-def google_auth(payload: GoogleAuthRequest, db: Session = Depends(get_db)) -> TokenResponse:
+def google_auth(
+    payload: GoogleAuthRequest,
+    response: Response,
+    db: Session = Depends(get_db),
+) -> TokenResponse:
     allowed_client_ids = settings.allowed_google_client_ids
     if not allowed_client_ids:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail='Google OAuth is not configured',
-        )
+        raise _auth_error('Google OAuth is not configured', status.HTTP_400_BAD_REQUEST)
 
     try:
         token_info = id_token.verify_oauth2_token(
@@ -173,7 +275,11 @@ def google_auth(payload: GoogleAuthRequest, db: Session = Depends(get_db)) -> To
             clock_skew_in_seconds=30,
         )
     except Exception as exc:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail='Invalid Google token') from exc
+        raise _auth_error(
+            'Invalid Google token',
+            status.HTTP_401_UNAUTHORIZED,
+            headers={'WWW-Authenticate': 'Bearer'},
+        ) from exc
 
     audiences: set[str] = set()
     aud = token_info.get('aud')
@@ -187,12 +293,12 @@ def google_auth(payload: GoogleAuthRequest, db: Session = Depends(get_db)) -> To
         audiences.add(azp)
 
     if not audiences.intersection(allowed_client_ids):
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail='Invalid Google token audience')
+        raise _auth_error('Invalid Google token audience', status.HTTP_401_UNAUTHORIZED)
 
     email = _normalize_email(token_info.get('email') or '')
     name = token_info.get('name') or email.split('@')[0]
     if not email:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Google account email missing')
+        raise _auth_error('Google account email missing', status.HTTP_400_BAD_REQUEST)
 
     user = db.scalar(select(User).where(User.email == email))
     if not user:
@@ -200,9 +306,10 @@ def google_auth(payload: GoogleAuthRequest, db: Session = Depends(get_db)) -> To
         db.add(user)
         db.commit()
         db.refresh(user)
+    elif not user.is_active:
+        raise _auth_error('User account is inactive', status.HTTP_401_UNAUTHORIZED)
 
-    token = create_access_token(subject=user.id, role=user.role.value)
-    return TokenResponse(access_token=token, user=UserPublic.model_validate(user))
+    return _create_session_response(user, response)
 
 
 @router.get('/me', response_model=UserPublic)
@@ -210,41 +317,128 @@ def me(current_user: User = Depends(get_current_user)) -> UserPublic:
     return UserPublic.model_validate(current_user)
 
 
-@router.post('/logout', status_code=status.HTTP_204_NO_CONTENT)
-def logout(
-    token: str = Depends(oauth2_scheme),
-    current_user: User = Depends(get_current_user),
+@router.post('/refresh', response_model=TokenResponse)
+def refresh(
+    response: Response,
     db: Session = Depends(get_db),
-) -> Response:
+    refresh_token: str | None = Cookie(default=None, alias=REFRESH_COOKIE_NAME),
+) -> TokenResponse:
+    if not refresh_token:
+        raise _auth_error(
+            'Refresh token missing',
+            status.HTTP_401_UNAUTHORIZED,
+            headers={'WWW-Authenticate': 'Bearer'},
+        )
+
     try:
-        payload = decode_access_token(token)
+        payload = decode_token(refresh_token)
+    except ExpiredSignatureError as exc:
+        _clear_refresh_cookie(response)
+        raise _auth_error(
+            'Refresh token has expired',
+            status.HTTP_401_UNAUTHORIZED,
+            headers={'WWW-Authenticate': 'Bearer'},
+        ) from exc
     except JWTError as exc:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail='Invalid token') from exc
+        _clear_refresh_cookie(response)
+        raise _auth_error(
+            'Invalid refresh token',
+            status.HTTP_401_UNAUTHORIZED,
+            headers={'WWW-Authenticate': 'Bearer'},
+        ) from exc
 
-    exp_raw = payload.get('exp')
-    if isinstance(exp_raw, (int, float)):
-        expires_at = datetime.fromtimestamp(exp_raw, tz=timezone.utc)
-    else:
-        expires_at = datetime.now(timezone.utc)
+    if payload.get('type') != 'refresh':
+        _clear_refresh_cookie(response)
+        raise _auth_error('Invalid token type', status.HTTP_401_UNAUTHORIZED)
 
-    token_hash = hash_token(token)
+    user_id = payload.get('sub')
     jti = payload.get('jti') if isinstance(payload.get('jti'), str) else None
+    if not isinstance(user_id, str) or not user_id or not jti:
+        _clear_refresh_cookie(response)
+        raise _auth_error('Invalid refresh token', status.HTTP_401_UNAUTHORIZED)
 
-    existing_conditions = [RevokedToken.token_hash == token_hash]
-    if jti:
-        existing_conditions.append(RevokedToken.jti == jti)
-
-    existing = db.scalar(select(RevokedToken).where(or_(*existing_conditions)))
-
-    if not existing:
-        db.add(
-            RevokedToken(
-                user_id=current_user.id,
-                token_hash=token_hash,
-                jti=jti,
-                expires_at=expires_at,
+    refresh_token_hash = hash_token(refresh_token)
+    revoked = db.scalar(
+        select(RevokedToken.id).where(
+            or_(
+                RevokedToken.token_hash == refresh_token_hash,
+                RevokedToken.jti == jti,
             )
         )
+    )
+    if revoked or _is_jti_blacklisted(db, jti):
+        _clear_refresh_cookie(response)
+        raise _auth_error('Refresh token has been revoked', status.HTTP_401_UNAUTHORIZED)
+
+    user = db.get(User, user_id)
+    if not user or not user.is_active:
+        _clear_refresh_cookie(response)
+        raise _auth_error('Invalid session user', status.HTTP_401_UNAUTHORIZED)
+
+    _blacklist_jti(db, jti)
+    _blacklist_legacy_token(db, user_id=user_id, token=refresh_token, payload=payload)
+    db.commit()
+
+    return _create_session_response(user, response)
+
+
+@router.post('/logout')
+def logout(
+    request: Request,
+    response: Response,
+    db: Session = Depends(get_db),
+    refresh_token: str | None = Cookie(default=None, alias=REFRESH_COOKIE_NAME),
+) -> dict[str, bool | str]:
+    did_blacklist = False
+
+    auth_header = request.headers.get('Authorization') or ''
+    access_token = ''
+    if auth_header.lower().startswith('bearer '):
+        access_token = auth_header.split(' ', 1)[1].strip()
+
+    if access_token:
+        try:
+            access_payload = decode_token(access_token)
+            if access_payload.get('type') in (None, 'access'):
+                jti = access_payload.get('jti')
+                sub = access_payload.get('sub')
+                if isinstance(jti, str) and jti:
+                    _blacklist_jti(db, jti)
+                    did_blacklist = True
+                if isinstance(sub, str) and sub:
+                    _blacklist_legacy_token(
+                        db,
+                        user_id=sub,
+                        token=access_token,
+                        payload=access_payload,
+                    )
+                    did_blacklist = True
+        except JWTError:
+            pass
+
+    if refresh_token:
+        try:
+            refresh_payload = decode_token(refresh_token)
+            if refresh_payload.get('type') == 'refresh':
+                jti = refresh_payload.get('jti')
+                sub = refresh_payload.get('sub')
+                if isinstance(jti, str) and jti:
+                    _blacklist_jti(db, jti)
+                    did_blacklist = True
+                if isinstance(sub, str) and sub:
+                    _blacklist_legacy_token(
+                        db,
+                        user_id=sub,
+                        token=refresh_token,
+                        payload=refresh_payload,
+                    )
+                    did_blacklist = True
+        except JWTError:
+            pass
+
+    if did_blacklist:
         db.commit()
 
-    return Response(status_code=status.HTTP_204_NO_CONTENT)
+    _clear_refresh_cookie(response)
+
+    return {'success': True, 'message': 'Logged out successfully'}
