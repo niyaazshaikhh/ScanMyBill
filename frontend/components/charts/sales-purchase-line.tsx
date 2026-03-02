@@ -1,6 +1,7 @@
 'use client';
 
 import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
+import { formatAccountingAmount } from '@/lib/number-format';
 
 type TrendPoint = {
   label: string;
@@ -15,8 +16,8 @@ export function SalesPurchaseLineChart({ data }: { data: TrendPoint[] }) {
         <LineChart data={data}>
           <CartesianGrid strokeDasharray='3 3' stroke='#e7dcca' />
           <XAxis dataKey='label' />
-          <YAxis />
-          <Tooltip />
+          <YAxis tickFormatter={(value) => formatAccountingAmount(Number(value))} />
+          <Tooltip formatter={(value) => `Rs ${formatAccountingAmount(Number(value))}`} />
           <Line type='monotone' dataKey='sales' stroke='#ea580c' strokeWidth={2.5} />
           <Line type='monotone' dataKey='purchases' stroke='#0f766e' strokeWidth={2.5} />
         </LineChart>

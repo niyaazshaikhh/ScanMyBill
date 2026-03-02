@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { Bell, FileText, LayoutDashboard, Menu, PlusCircle, Settings, UserCircle2, Users, X } from 'lucide-react';
+import { BarChart3, Bell, FileText, LayoutDashboard, Menu, PlusCircle, Settings, UserCircle2, Users, X } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 
 import { SubscriptionBadge, type SubscriptionPlan } from '@/components/SubscriptionBadge';
@@ -16,6 +16,7 @@ import { cn } from '@/lib/utils';
 const nav = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/invoices', label: 'Invoices', icon: FileText },
+  { href: '/client-analytics', label: 'Client Analytics', icon: BarChart3 },
   { href: '/clients', label: 'Clients', icon: Users },
   { href: '/create', label: 'Create', icon: PlusCircle },
   { href: '/settings', label: 'Settings', icon: Settings }

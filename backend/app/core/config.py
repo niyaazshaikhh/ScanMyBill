@@ -18,8 +18,13 @@ class Settings(BaseSettings):
     postgres_db: str = 'scanmybill'
 
     secret_key: str = 'change-this-in-production'
-    access_token_expire_minutes: int = 60 * 24 * 7
+    access_token_expire_minutes: int = 15
+    refresh_token_expire_days: int = 7
+    session_inactivity_timeout_minutes: int = 30
+    access_token_refresh_threshold_minutes: int = 3
     jwt_algorithm: str = 'HS256'
+    cookie_secure: bool = False
+    cookie_samesite: str = 'lax'
 
     cors_origins: list[str] | str = ['http://localhost:3000']
 

@@ -63,7 +63,12 @@ def _extract_text_from_pdf(path: Path) -> str:
     return '\n'.join(text_parts)
 
 
-def extract_structured_data(text: str, fallback_type: InvoiceType) -> dict:
+def extract_structured_data(
+    text: str,
+    fallback_type: InvoiceType,
+    company_name: str | None = None,
+    company_gstin: str | None = None,
+) -> dict:
     normalized_text = text or ''
     lowered = normalized_text.lower()
 
@@ -74,8 +79,19 @@ def extract_structured_data(text: str, fallback_type: InvoiceType) -> dict:
     inferred_type = fallback_type
     sale_keywords = ['sales invoice', 'tax invoice', 'outward', 'billed to']
     purchase_keywords = ['purchase', 'supplier', 'vendor bill', 'inward']
+    normalized_company_gstin = _normalize_gstin(company_gstin)
+    normalized_detected_gstin = _normalize_gstin(gst_number)
+    normalized_company_name = (company_name or '').strip().lower()
 
-    if any(keyword in lowered for keyword in sale_keywords):
+    if normalized_company_gstin and normalized_detected_gstin:
+        inferred_type = (
+            InvoiceType.SALES
+            if normalized_company_gstin == normalized_detected_gstin
+            else InvoiceType.PURCHASE
+        )
+    elif normalized_company_name and len(normalized_company_name) >= 3 and normalized_company_name in lowered:
+        inferred_type = InvoiceType.SALES
+    elif any(keyword in lowered for keyword in sale_keywords):
         inferred_type = InvoiceType.SALES
     elif any(keyword in lowered for keyword in purchase_keywords):
         inferred_type = InvoiceType.PURCHASE
@@ -106,6 +122,12 @@ def _extract_date(text: str) -> date | None:
 def _extract_gst_number(text: str) -> str | None:
     match = GST_REGEX.search(text.upper())
     return match.group(0) if match else None
+
+
+def _normalize_gstin(value: str | None) -> str:
+    if not value:
+        return ''
+    return re.sub(r'[^A-Z0-9]', '', value.upper())
 
 
 def _extract_total_amount(text: str) -> float:

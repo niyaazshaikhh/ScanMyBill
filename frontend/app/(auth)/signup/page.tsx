@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { GoogleLogin } from '@react-oauth/google';
+import { X } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -53,7 +54,12 @@ export default function SignUpPage() {
   };
 
   return (
-    <Card className='border-teal-200 bg-white/90'>
+    <Card className='relative border-teal-200 bg-white/90'>
+      <Button asChild type='button' variant='ghost' size='icon' className='absolute right-3 top-3 h-8 w-8' aria-label='Close and go to home'>
+        <Link href='/'>
+          <X className='h-4 w-4' />
+        </Link>
+      </Button>
       <CardHeader>
         <CardTitle className='font-[var(--font-space)] text-2xl'>Create Account</CardTitle>
         <CardDescription>Start managing invoices in minutes.</CardDescription>

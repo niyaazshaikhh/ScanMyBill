@@ -1,5 +1,6 @@
 import secrets
 from datetime import datetime, timedelta, timezone
+from uuid import uuid4
 
 from fastapi import APIRouter, Cookie, Depends, Request, Response, status
 from google.auth.transport import requests
@@ -14,17 +15,22 @@ from app.core.database import get_db
 from app.core.deps import get_current_user
 from app.core.security import (
     REFRESH_TOKEN_EXPIRE_DAYS,
+    REFRESH_COOKIE_NAME,
     create_access_token,
     create_refresh_token,
+    datetime_from_claim,
     decode_token,
     get_password_hash,
     hash_token,
+    inactivity_timeout_delta,
+    utc_now,
     verify_password,
 )
 from app.models.password_reset_token import PasswordResetToken
 from app.models.revoked_token import RevokedToken
 from app.models.token_blacklist import TokenBlacklist
 from app.models.user import User, UserRole
+from app.models.user_session import UserSession
 from app.schemas.auth import (
     CreateAccountRequest,
     ForgotPasswordRequest,
@@ -46,7 +52,6 @@ from app.schemas.user import (
 
 router = APIRouter(prefix='/auth')
 PASSWORD_RESET_TOKEN_EXPIRE_MINUTES = 15
-REFRESH_COOKIE_NAME = 'refresh_token'
 REFRESH_COOKIE_MAX_AGE = REFRESH_TOKEN_EXPIRE_DAYS * 24 * 60 * 60
 
 
@@ -95,12 +100,16 @@ def _create_local_account(email: str, password: str, full_name: str, db: Session
 
 
 def _set_refresh_cookie(response: Response, refresh_token: str) -> None:
+    same_site = settings.cookie_samesite.lower()
+    if same_site not in {'lax', 'strict', 'none'}:
+        same_site = 'lax'
+
     response.set_cookie(
         key=REFRESH_COOKIE_NAME,
         value=refresh_token,
         httponly=True,
-        secure=False,
-        samesite='lax',
+        secure=settings.cookie_secure,
+        samesite=same_site,
         max_age=REFRESH_COOKIE_MAX_AGE,
         expires=REFRESH_COOKIE_MAX_AGE,
         path='/',
@@ -112,10 +121,10 @@ def _clear_refresh_cookie(response: Response) -> None:
 
 
 def _extract_expiry(payload: dict) -> datetime:
-    exp_raw = payload.get('exp')
-    if isinstance(exp_raw, (int, float)):
-        return datetime.fromtimestamp(exp_raw, tz=timezone.utc)
-    return datetime.now(timezone.utc)
+    exp_at = datetime_from_claim(payload, 'exp')
+    if exp_at is not None:
+        return exp_at
+    return utc_now()
 
 
 def _is_jti_blacklisted(db: Session, jti: str) -> bool:
@@ -152,11 +161,53 @@ def _blacklist_legacy_token(db: Session, user_id: str, token: str, payload: dict
     )
 
 
-def _create_session_response(user: User, response: Response) -> TokenResponse:
-    access_token = create_access_token(subject=user.id, role=user.role.value)
-    refresh_token = create_refresh_token(subject=user.id, role=user.role.value)
+def _create_session_response(user: User, response: Response, db: Session) -> TokenResponse:
+    now = utc_now()
+    session_id = str(uuid4())
+    access_token = create_access_token(subject=user.id, role=user.role.value, data={'sid': session_id})
+    refresh_token = create_refresh_token(subject=user.id, role=user.role.value, data={'sid': session_id})
+
+    refresh_payload = decode_token(refresh_token)
+    refresh_jti = refresh_payload.get('jti')
+    if not isinstance(refresh_jti, str) or not refresh_jti:
+        raise _auth_error('Could not create login session', status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    db.add(
+        UserSession(
+            id=session_id,
+            user_id=user.id,
+            refresh_jti=refresh_jti,
+            refresh_token_hash=hash_token(refresh_token),
+            last_activity_at=now,
+            inactive_expires_at=now + inactivity_timeout_delta(),
+            refresh_expires_at=_extract_expiry(refresh_payload),
+            is_active=True,
+        )
+    )
+    db.commit()
+
     _set_refresh_cookie(response, refresh_token)
     return TokenResponse(access_token=access_token, user=UserPublic.model_validate(user))
+
+
+def _load_active_session(
+    db: Session,
+    *,
+    session_id: str,
+    user_id: str,
+) -> UserSession | None:
+    return db.scalar(
+        select(UserSession).where(
+            UserSession.id == session_id,
+            UserSession.user_id == user_id,
+            UserSession.is_active.is_(True),
+        )
+    )
+
+
+def _revoke_session(db: Session, session: UserSession, *, when: datetime | None = None) -> None:
+    session.revoke()
+    session.revoked_at = when or utc_now()
 
 
 @router.post('/create-account', response_model=TokenResponse)
@@ -171,7 +222,7 @@ def create_account(
         full_name=payload.full_name,
         db=db,
     )
-    return _create_session_response(user, response)
+    return _create_session_response(user, response, db)
 
 
 @router.post('/register', response_model=TokenResponse)
@@ -186,7 +237,7 @@ def register(
         full_name=payload.full_name,
         db=db,
     )
-    return _create_session_response(user, response)
+    return _create_session_response(user, response, db)
 
 
 @router.post('/login', response_model=TokenResponse)
@@ -211,7 +262,7 @@ def login(
     if not user.is_active:
         raise _auth_error('User account is inactive', status.HTTP_401_UNAUTHORIZED)
 
-    return _create_session_response(user, response)
+    return _create_session_response(user, response, db)
 
 
 @router.post('/forgot-password', response_model=ForgotPasswordResponse)
@@ -309,7 +360,7 @@ def google_auth(
     elif not user.is_active:
         raise _auth_error('User account is inactive', status.HTTP_401_UNAUTHORIZED)
 
-    return _create_session_response(user, response)
+    return _create_session_response(user, response, db)
 
 
 @router.get('/me', response_model=UserPublic)
@@ -352,12 +403,41 @@ def refresh(
         raise _auth_error('Invalid token type', status.HTTP_401_UNAUTHORIZED)
 
     user_id = payload.get('sub')
+    session_id = payload.get('sid')
     jti = payload.get('jti') if isinstance(payload.get('jti'), str) else None
-    if not isinstance(user_id, str) or not user_id or not jti:
+    if (
+        not isinstance(user_id, str)
+        or not user_id
+        or not isinstance(session_id, str)
+        or not session_id
+        or not jti
+    ):
         _clear_refresh_cookie(response)
         raise _auth_error('Invalid refresh token', status.HTTP_401_UNAUTHORIZED)
 
     refresh_token_hash = hash_token(refresh_token)
+    now = utc_now()
+    session = _load_active_session(db, session_id=session_id, user_id=user_id)
+    if not session:
+        _clear_refresh_cookie(response)
+        raise _auth_error('Refresh token has been revoked', status.HTTP_401_UNAUTHORIZED)
+
+    if (
+        session.refresh_jti != jti
+        or session.refresh_token_hash != refresh_token_hash
+        or session.inactive_expires_at <= now
+        or session.refresh_expires_at <= now
+    ):
+        _revoke_session(db, session, when=now)
+        _blacklist_jti(db, jti)
+        _blacklist_legacy_token(db, user_id=user_id, token=refresh_token, payload=payload)
+        db.commit()
+        _clear_refresh_cookie(response)
+
+        if session.inactive_expires_at <= now:
+            raise _auth_error('Session expired due to inactivity', status.HTTP_401_UNAUTHORIZED)
+        raise _auth_error('Refresh token has expired', status.HTTP_401_UNAUTHORIZED)
+
     revoked = db.scalar(
         select(RevokedToken.id).where(
             or_(
@@ -367,19 +447,45 @@ def refresh(
         )
     )
     if revoked or _is_jti_blacklisted(db, jti):
+        _revoke_session(db, session, when=now)
+        db.commit()
         _clear_refresh_cookie(response)
         raise _auth_error('Refresh token has been revoked', status.HTTP_401_UNAUTHORIZED)
 
     user = db.get(User, user_id)
     if not user or not user.is_active:
+        _revoke_session(db, session, when=now)
+        db.commit()
         _clear_refresh_cookie(response)
         raise _auth_error('Invalid session user', status.HTTP_401_UNAUTHORIZED)
 
+    access_token = create_access_token(subject=user.id, role=user.role.value, data={'sid': session_id})
+    new_refresh_token = create_refresh_token(
+        subject=user.id,
+        role=user.role.value,
+        data={'sid': session_id},
+    )
+    new_refresh_payload = decode_token(new_refresh_token)
+    new_jti = new_refresh_payload.get('jti')
+    if not isinstance(new_jti, str) or not new_jti:
+        raise _auth_error('Could not refresh session', status.HTTP_500_INTERNAL_SERVER_ERROR)
+
     _blacklist_jti(db, jti)
     _blacklist_legacy_token(db, user_id=user_id, token=refresh_token, payload=payload)
+
+    session.refresh_jti = new_jti
+    session.refresh_token_hash = hash_token(new_refresh_token)
+    session.last_activity_at = now
+    session.inactive_expires_at = now + inactivity_timeout_delta()
+    session.refresh_expires_at = _extract_expiry(new_refresh_payload)
+    session.is_active = True
+    session.revoked_at = None
+
     db.commit()
 
-    return _create_session_response(user, response)
+    _set_refresh_cookie(response, new_refresh_token)
+
+    return TokenResponse(access_token=access_token, user=UserPublic.model_validate(user))
 
 
 @router.post('/logout')
@@ -390,6 +496,7 @@ def logout(
     refresh_token: str | None = Cookie(default=None, alias=REFRESH_COOKIE_NAME),
 ) -> dict[str, bool | str]:
     did_blacklist = False
+    session_ids_to_revoke: set[tuple[str, str]] = set()
 
     auth_header = request.headers.get('Authorization') or ''
     access_token = ''
@@ -398,10 +505,11 @@ def logout(
 
     if access_token:
         try:
-            access_payload = decode_token(access_token)
+            access_payload = decode_token(access_token, verify_exp=False)
             if access_payload.get('type') in (None, 'access'):
                 jti = access_payload.get('jti')
                 sub = access_payload.get('sub')
+                sid = access_payload.get('sid')
                 if isinstance(jti, str) and jti:
                     _blacklist_jti(db, jti)
                     did_blacklist = True
@@ -413,15 +521,18 @@ def logout(
                         payload=access_payload,
                     )
                     did_blacklist = True
+                    if isinstance(sid, str) and sid:
+                        session_ids_to_revoke.add((sid, sub))
         except JWTError:
             pass
 
     if refresh_token:
         try:
-            refresh_payload = decode_token(refresh_token)
+            refresh_payload = decode_token(refresh_token, verify_exp=False)
             if refresh_payload.get('type') == 'refresh':
                 jti = refresh_payload.get('jti')
                 sub = refresh_payload.get('sub')
+                sid = refresh_payload.get('sid')
                 if isinstance(jti, str) and jti:
                     _blacklist_jti(db, jti)
                     did_blacklist = True
@@ -433,8 +544,16 @@ def logout(
                         payload=refresh_payload,
                     )
                     did_blacklist = True
+                    if isinstance(sid, str) and sid:
+                        session_ids_to_revoke.add((sid, sub))
         except JWTError:
             pass
+
+    for session_id, user_id in session_ids_to_revoke:
+        session = _load_active_session(db, session_id=session_id, user_id=user_id)
+        if session:
+            _revoke_session(db, session)
+            did_blacklist = True
 
     if did_blacklist:
         db.commit()

@@ -4,9 +4,11 @@ from app.models.invoice import Invoice, InvoiceItem, InvoiceSource, InvoiceType
 from app.models.newsletter_subscriber import NewsletterSubscriber
 from app.models.password_reset_token import PasswordResetToken
 from app.models.payment_event import PaymentEvent
+from app.models.personal_details import PersonalDetails
 from app.models.revoked_token import RevokedToken
 from app.models.token_blacklist import TokenBlacklist
 from app.models.user import SubscriptionPlan, SubscriptionStatus, User, UserRole
+from app.models.user_session import UserSession
 
 __all__ = [
     'User',
@@ -21,7 +23,9 @@ __all__ = [
     'BillUpload',
     'NewsletterSubscriber',
     'PaymentEvent',
+    'PersonalDetails',
     'PasswordResetToken',
     'RevokedToken',
     'TokenBlacklist',
+    'UserSession',
 ]

@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from 'next/server';
 
-const protectedPaths = ['/dashboard', '/invoices', '/clients', '/create', '/settings', '/upload', '/bills'];
+const protectedPaths = ['/dashboard', '/invoices', '/client-analytics', '/clients', '/create', '/settings', '/upload', '/bills'];
 const authPaths = ['/signin', '/signup'];
 const noCacheValue = 'no-store, no-cache, must-revalidate';
 
@@ -40,6 +40,7 @@ export const config = {
   matcher: [
     '/dashboard/:path*',
     '/invoices/:path*',
+    '/client-analytics/:path*',
     '/clients/:path*',
     '/create/:path*',
     '/settings/:path*',

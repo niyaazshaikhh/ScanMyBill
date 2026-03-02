@@ -11,11 +11,22 @@ from app.schemas.dashboard import DashboardSummary, GSTRingPoint, TrendPoint
 VALID_PERIODS = {'monthly', 'quarterly', 'semi-annually', 'annually'}
 
 
-def build_dashboard_summary(db: Session, user_id: str, period: str) -> DashboardSummary:
+def build_dashboard_summary(
+    db: Session,
+    user_id: str,
+    period: str,
+    year: int | None = None,
+    financial_year_start: int | None = None,
+) -> DashboardSummary:
     normalized_period = period if period in VALID_PERIODS else 'monthly'
 
     invoices = db.scalars(select(Invoice).where(Invoice.owner_id == user_id)).all()
-    filtered = _filter_by_period(invoices, normalized_period)
+    filtered = _filter_by_period(
+        invoices,
+        normalized_period,
+        year=year,
+        financial_year_start=financial_year_start,
+    )
 
     total_sales = sum(item.total_amount for item in filtered if item.type == InvoiceType.SALES)
     total_purchases = sum(item.total_amount for item in filtered if item.type == InvoiceType.PURCHASE)
@@ -40,12 +51,30 @@ def build_dashboard_summary(db: Session, user_id: str, period: str) -> Dashboard
     )
 
 
-def _filter_by_period(invoices: list[Invoice], period: str) -> list[Invoice]:
-    if period == 'annually':
+def _filter_by_period(
+    invoices: list[Invoice],
+    period: str,
+    year: int | None = None,
+    financial_year_start: int | None = None,
+) -> list[Invoice]:
+    if financial_year_start is not None:
+        return [
+            invoice
+            for invoice in invoices
+            if (
+                (invoice.invoice_date.year == financial_year_start and invoice.invoice_date.month >= 4)
+                or (invoice.invoice_date.year == financial_year_start + 1 and invoice.invoice_date.month <= 3)
+            )
+        ]
+
+    selected_year = year
+    if selected_year is None and period != 'annually':
+        selected_year = date.today().year
+
+    if selected_year is None:
         return invoices
 
-    current_year = date.today().year
-    return [invoice for invoice in invoices if invoice.invoice_date.year == current_year]
+    return [invoice for invoice in invoices if invoice.invoice_date.year == selected_year]
 
 
 def _build_trend(invoices: list[Invoice], period: str) -> list[TrendPoint]:

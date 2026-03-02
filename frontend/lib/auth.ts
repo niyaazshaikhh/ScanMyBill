@@ -22,6 +22,41 @@ export function getAuthToken(): string | null {
   return localStorage.getItem(TOKEN_KEY);
 }
 
+function decodeJwtPayload(token: string): Record<string, unknown> | null {
+  const parts = token.split('.');
+  if (parts.length < 2) return null;
+
+  try {
+    const base64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+    const padded = base64.padEnd(Math.ceil(base64.length / 4) * 4, '=');
+    const payload = atob(padded);
+    return JSON.parse(payload) as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+}
+
+export function getAuthTokenExpiryMs(tokenInput?: string | null): number | null {
+  const token = tokenInput ?? getAuthToken();
+  if (!token) return null;
+
+  const payload = decodeJwtPayload(token);
+  if (!payload) return null;
+
+  const expRaw = payload.exp;
+  const expSeconds =
+    typeof expRaw === 'number' ? expRaw : typeof expRaw === 'string' ? Number(expRaw) : NaN;
+
+  if (!Number.isFinite(expSeconds)) return null;
+  return expSeconds * 1000;
+}
+
+export function isAuthTokenExpired(tokenInput?: string | null): boolean {
+  const expiryMs = getAuthTokenExpiryMs(tokenInput);
+  if (!expiryMs) return true;
+  return Date.now() >= expiryMs;
+}
+
 export function getAuthUser(): AuthUser | null {
   if (typeof window === 'undefined') return null;
   const raw = localStorage.getItem(USER_KEY);
@@ -38,4 +73,12 @@ export function clearAuthSession() {
   localStorage.removeItem(TOKEN_KEY);
   localStorage.removeItem(USER_KEY);
   document.cookie = 'token=; path=/; max-age=0; SameSite=Lax';
+}
+
+export function logoutToLanding() {
+  if (typeof window === 'undefined') return;
+  clearAuthSession();
+  if (window.location.pathname !== '/') {
+    window.location.replace('/');
+  }
 }

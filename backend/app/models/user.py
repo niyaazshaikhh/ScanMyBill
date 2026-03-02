@@ -63,3 +63,10 @@ class User(Base):
     bill_uploads = relationship('BillUpload', back_populates='owner', cascade='all,delete-orphan')
     payments = relationship('PaymentEvent', back_populates='owner', cascade='all,delete-orphan')
     password_reset_tokens = relationship('PasswordResetToken', cascade='all,delete-orphan')
+    personal_details = relationship(
+        'PersonalDetails',
+        back_populates='owner',
+        uselist=False,
+        cascade='all,delete-orphan',
+    )
+    auth_sessions = relationship('UserSession', back_populates='owner', cascade='all,delete-orphan')

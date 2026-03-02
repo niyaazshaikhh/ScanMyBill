@@ -1,187 +1,394 @@
-'use client';
+"use client";
 
-import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
-import { useEffect, useMemo, useState } from 'react';
+import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
+import { useSearchParams } from "next/navigation";
+import { useEffect, useMemo, useState } from "react";
 
 export const dynamic = "force-dynamic";
 
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Select } from '@/components/ui/select';
-import { Textarea } from '@/components/ui/textarea';
-import { useAuthGuard } from '@/hooks/useAuthGuard';
-import { apiRequest } from '@/lib/api';
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Select } from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
+import { useAuthGuard } from "@/hooks/useAuthGuard";
+import { apiRequest } from "@/lib/api";
+import { formatAccountingAmount } from "@/lib/number-format";
+import { INDIAN_STATES_AND_UTS, getStateCodeByName } from "@/lib/validation/business-details";
+import {
+  buildDefaultInvoiceNumber,
+  formatFinancialYearInvoicePrefix,
+  sanitizeDecimalInput,
+  sanitizeHsnSacInput,
+  sanitizeInvoiceNumberInput,
+  sanitizeItemDescriptionInput,
+  toNumber,
+  validateHsnSac,
+  validateInvoiceNumber,
+  validateItemDescription,
+  validateQuantity,
+  validateRate,
+  validateTaxRate,
+} from "@/lib/validation/invoice";
 
 type Client = {
   id: string;
   name: string;
 };
 
-type LineItem = {
+type LineItemInput = {
   description: string;
-  quantity: number;
-  price: number;
-  gst_percent: number;
+  hsn_sac: string;
+  quantity: string;
+  rate: string;
+  tax_rate: string;
 };
+
+type LineItemComputed = {
+  amountBeforeTax: number;
+  cgst: number;
+  sgstUtgst: number;
+  totalTaxAmount: number;
+  grandTotal: number;
+};
+
+const INITIAL_ITEM: LineItemInput = {
+  description: "",
+  hsn_sac: "",
+  quantity: "1",
+  rate: "0",
+  tax_rate: "18",
+};
+
+const DEFAULT_PLACE_OF_SUPPLY = "Maharashtra";
+const DEFAULT_PLACE_OF_SUPPLY_CODE = getStateCodeByName(DEFAULT_PLACE_OF_SUPPLY) || "27";
+
+function round2(value: number): number {
+  return Math.round(value * 100) / 100;
+}
+
+function computeLine(item: LineItemInput): LineItemComputed {
+  const quantity = toNumber(item.quantity);
+  const rate = toNumber(item.rate);
+  const taxRate = toNumber(item.tax_rate);
+  const amountBeforeTax = quantity * rate;
+  const totalTaxAmount = amountBeforeTax * (taxRate / 100);
+  const cgst = totalTaxAmount / 2;
+  const sgstUtgst = totalTaxAmount / 2;
+  const grandTotal = amountBeforeTax + totalTaxAmount;
+  return {
+    amountBeforeTax: round2(amountBeforeTax),
+    cgst: round2(cgst),
+    sgstUtgst: round2(sgstUtgst),
+    totalTaxAmount: round2(totalTaxAmount),
+    grandTotal: round2(grandTotal),
+  };
+}
 
 export default function CreateInvoicePage() {
   useAuthGuard();
+  const searchParams = useSearchParams();
+  const requestedClientId = searchParams.get("client_id") || "";
 
   const [clients, setClients] = useState<Client[]>([]);
-  const [clientId, setClientId] = useState('');
-  const [invoiceNumber, setInvoiceNumber] = useState('');
-  const [invoiceDate, setInvoiceDate] = useState(new Date().toISOString().split('T')[0]);
-  const [invoiceType, setInvoiceType] = useState<'sales' | 'purchase'>('sales');
-  const [gstNumber, setGstNumber] = useState('');
-  const [notes, setNotes] = useState('');
-  const [items, setItems] = useState<LineItem[]>([
-    { description: '', quantity: 1, price: 0, gst_percent: 18 }
-  ]);
+  const [clientId, setClientId] = useState("");
+  const [invoiceDate, setInvoiceDate] = useState(
+    new Date().toISOString().split("T")[0],
+  );
+  const [invoiceNumber, setInvoiceNumber] = useState(
+    buildDefaultInvoiceNumber(new Date().toISOString().split("T")[0]),
+  );
+  const [placeOfSupply, setPlaceOfSupply] = useState(DEFAULT_PLACE_OF_SUPPLY);
+  const [placeOfSupplyCode, setPlaceOfSupplyCode] = useState(DEFAULT_PLACE_OF_SUPPLY_CODE);
+  const [notes, setNotes] = useState("");
+  const [items, setItems] = useState<LineItemInput[]>([{ ...INITIAL_ITEM }]);
   const [saving, setSaving] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
 
   useEffect(() => {
-    apiRequest<Client[]>('/clients')
-      .then((data) => setClients(data))
+    apiRequest<Client[]>("/clients")
+      .then((data) => {
+        setClients(data);
+        if (
+          requestedClientId &&
+          data.some((client) => client.id === requestedClientId)
+        ) {
+          setClientId(requestedClientId);
+        }
+      })
       .catch(() => setClients([]));
-  }, []);
+  }, [requestedClientId]);
+
+  const computedLines = useMemo(
+    () => items.map((item) => computeLine(item)),
+    [items],
+  );
 
   const totals = useMemo(() => {
-    let subtotal = 0;
-    let gst = 0;
+    let amountBeforeTax = 0;
+    let cgst = 0;
+    let sgstUtgst = 0;
+    let totalTaxAmount = 0;
+    let grandTotal = 0;
 
-    items.forEach((item) => {
-      const base = item.quantity * item.price;
-      subtotal += base;
-      gst += base * (item.gst_percent / 100);
+    computedLines.forEach((line) => {
+      amountBeforeTax += line.amountBeforeTax;
+      cgst += line.cgst;
+      sgstUtgst += line.sgstUtgst;
+      totalTaxAmount += line.totalTaxAmount;
+      grandTotal += line.grandTotal;
     });
 
     return {
-      subtotal,
-      gst,
-      total: subtotal + gst
+      amountBeforeTax: round2(amountBeforeTax),
+      cgst: round2(cgst),
+      sgstUtgst: round2(sgstUtgst),
+      totalTaxAmount: round2(totalTaxAmount),
+      grandTotal: round2(grandTotal),
     };
-  }, [items]);
+  }, [computedLines]);
 
-  const updateItem = (index: number, key: keyof LineItem, value: string) => {
+  const updateItem = (
+    index: number,
+    key: keyof LineItemInput,
+    value: string,
+  ) => {
     setItems((prev) =>
-      prev.map((item, i) => {
-        if (i !== index) return item;
-        if (key === 'description') return { ...item, description: value };
-        return { ...item, [key]: Number(value) };
-      })
+      prev.map((item, itemIndex) => {
+        if (itemIndex !== index) return item;
+        return { ...item, [key]: value };
+      }),
     );
   };
 
   const addItem = () => {
-    setItems((prev) => [...prev, { description: '', quantity: 1, price: 0, gst_percent: 18 }]);
+    setItems((prev) => [...prev, { ...INITIAL_ITEM }]);
   };
 
   const removeItem = (index: number) => {
-    setItems((prev) => prev.filter((_, i) => i !== index));
+    setItems((prev) => prev.filter((_, itemIndex) => itemIndex !== index));
+  };
+
+  const validateLine = (item: LineItemInput, index: number): string | null => {
+    const descriptionError = validateItemDescription(item.description);
+    if (descriptionError) return `Row ${index + 1}: ${descriptionError}`;
+
+    const hsnError = validateHsnSac(item.hsn_sac);
+    if (hsnError) return `Row ${index + 1}: ${hsnError}`;
+
+    const quantityError = validateQuantity(item.quantity);
+    if (quantityError) return `Row ${index + 1}: ${quantityError}`;
+
+    const rateError = validateRate(item.rate);
+    if (rateError) return `Row ${index + 1}: ${rateError}`;
+
+    const taxRateError = validateTaxRate(item.tax_rate);
+    if (taxRateError) return `Row ${index + 1}: ${taxRateError}`;
+
+    return null;
+  };
+
+  const validateForm = (): string | null => {
+    if (!clientId) return "Client is required.";
+    if (!invoiceDate) return "Invoice Date is required.";
+    if (!placeOfSupply) return "Place of Supply is required.";
+    if (!placeOfSupplyCode) return "Place of Supply Code is required.";
+
+    const invoiceNumberError = validateInvoiceNumber(invoiceNumber);
+    if (invoiceNumberError) return invoiceNumberError;
+
+    if (!items.length) return "At least one item is required.";
+    for (let index = 0; index < items.length; index += 1) {
+      const lineError = validateLine(items[index], index);
+      if (lineError) return lineError;
+    }
+
+    return null;
   };
 
   const exportPdf = async () => {
+    const validationError = validateForm();
+    if (validationError) {
+      setFormError(validationError);
+      return;
+    }
+
     const pdf = await PDFDocument.create();
     const page = pdf.addPage([595, 842]);
     const font = await pdf.embedFont(StandardFonts.Helvetica);
 
     let y = 800;
 
-    page.drawText('ScanMyBill.in Invoice Preview', {
+    page.drawText("ScanMyBill.in Invoice Preview", {
       x: 40,
       y,
       size: 20,
       font,
-      color: rgb(0.2, 0.2, 0.2)
+      color: rgb(0.2, 0.2, 0.2),
     });
 
-    y -= 40;
-    page.drawText(`Invoice Date: ${invoiceDate}`, { x: 40, y, size: 12, font });
-    y -= 20;
-    page.drawText(`Invoice Type: ${invoiceType}`, { x: 40, y, size: 12, font });
-    y -= 20;
-    page.drawText(`GST Number: ${gstNumber || 'N/A'}`, { x: 40, y, size: 12, font });
-    y -= 30;
+    y -= 32;
+    page.drawText(`Invoice Number: ${invoiceNumber}`, {
+      x: 40,
+      y,
+      size: 11,
+      font,
+    });
+    y -= 18;
+    page.drawText(`Invoice Date: ${invoiceDate}`, { x: 40, y, size: 11, font });
+    y -= 18;
+    page.drawText(
+      `Client: ${clients.find((client) => client.id === clientId)?.name || "N/A"}`,
+      {
+        x: 40,
+        y,
+        size: 11,
+        font,
+      },
+    );
+    y -= 18;
+    page.drawText(`Place of Supply: ${placeOfSupply} (${placeOfSupplyCode})`, {
+      x: 40,
+      y,
+      size: 11,
+      font,
+    });
+
+    y -= 26;
+    page.drawText("Items", { x: 40, y, size: 12, font });
+    y -= 16;
 
     items.forEach((item, index) => {
-      const lineTotal = item.quantity * item.price * (1 + item.gst_percent / 100);
+      const line = computeLine(item);
       page.drawText(
-        `${index + 1}. ${item.description || 'Item'} | Qty ${item.quantity} | Price ${item.price} | GST ${
-          item.gst_percent
-        }% | Total ${lineTotal.toFixed(2)}`,
-        { x: 40, y, size: 11, font }
+        `${index + 1}. ${item.description} | HSN/SAC ${item.hsn_sac} | Qty ${item.quantity} | Rate ${Number(
+          item.rate || 0,
+        ).toFixed(
+          2,
+        )} | Tax ${Number(item.tax_rate || 0).toFixed(2)}% | Total ${line.grandTotal.toFixed(2)}`,
+        { x: 40, y, size: 9, font },
       );
-      y -= 18;
+      y -= 14;
     });
 
-    y -= 20;
-    page.drawText(`Subtotal: Rs ${totals.subtotal.toFixed(2)}`, { x: 40, y, size: 12, font });
-    y -= 18;
-    page.drawText(`GST: Rs ${totals.gst.toFixed(2)}`, { x: 40, y, size: 12, font });
-    y -= 18;
-    page.drawText(`Total: Rs ${totals.total.toFixed(2)}`, { x: 40, y, size: 14, font });
+    y -= 10;
+    page.drawText(
+      `Amount (Before Tax): Rs ${formatAccountingAmount(totals.amountBeforeTax)}`,
+      { x: 40, y, size: 11, font },
+    );
+    y -= 16;
+    page.drawText(`CGST: Rs ${formatAccountingAmount(totals.cgst)}`, {
+      x: 40,
+      y,
+      size: 11,
+      font,
+    });
+    y -= 16;
+    page.drawText(
+      `SGST/UTGST: Rs ${formatAccountingAmount(totals.sgstUtgst)}`,
+      {
+        x: 40,
+        y,
+        size: 11,
+        font,
+      },
+    );
+    y -= 16;
+    page.drawText(
+      `Total Tax Amount: Rs ${formatAccountingAmount(totals.totalTaxAmount)}`,
+      {
+        x: 40,
+        y,
+        size: 11,
+        font,
+      },
+    );
+    y -= 16;
+    page.drawText(
+      `Grand Total: Rs ${formatAccountingAmount(totals.grandTotal)}`,
+      {
+        x: 40,
+        y,
+        size: 12,
+        font,
+      },
+    );
 
     const bytes = await pdf.save();
     const arrayBuffer = bytes.buffer.slice(
       bytes.byteOffset,
-      bytes.byteOffset + bytes.byteLength
+      bytes.byteOffset + bytes.byteLength,
     ) as ArrayBuffer;
-    const blob = new Blob([arrayBuffer], { type: 'application/pdf' });
+    const blob = new Blob([arrayBuffer], { type: "application/pdf" });
     const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
+    const link = document.createElement("a");
     link.href = url;
-    link.download = `${invoiceNumber || 'invoice-preview'}.pdf`;
+    link.download = `${invoiceNumber}.pdf`;
     link.click();
     URL.revokeObjectURL(url);
   };
 
   const uploadInvoice = async () => {
-    if (!items.length || items.some((item) => !item.description)) {
-      alert('Please complete all item descriptions before upload.');
+    const validationError = validateForm();
+    if (validationError) {
+      setFormError(validationError);
       return;
     }
 
     setSaving(true);
+    setFormError(null);
     try {
-      await apiRequest('/invoices/create', {
-        method: 'POST',
+      await apiRequest("/invoices/create", {
+        method: "POST",
         body: {
-          client_id: clientId || null,
-          invoice_number: invoiceNumber || null,
+          client_id: clientId,
+          invoice_number: invoiceNumber.trim(),
           invoice_date: invoiceDate,
-          gst_number: gstNumber || null,
-          type: invoiceType,
-          notes: notes || null,
-          items
-        }
+          place_of_supply: placeOfSupply,
+          place_of_supply_code: placeOfSupplyCode,
+          notes: notes.trim() || null,
+          items: items.map((item) => ({
+            description: item.description.trim(),
+            hsn_sac: item.hsn_sac.trim(),
+            quantity: toNumber(item.quantity),
+            rate: toNumber(item.rate),
+            tax_rate: toNumber(item.tax_rate),
+          })),
+        },
       });
-      alert('Invoice uploaded successfully.');
+      alert("Invoice uploaded successfully.");
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Upload failed');
+      setFormError(err instanceof Error ? err.message : "Upload failed");
     } finally {
       setSaving(false);
     }
   };
 
   return (
-    <div className='space-y-5'>
+    <div className="space-y-5">
       <div>
-        <h2 className='font-[var(--font-space)] text-2xl font-semibold'>Create Invoice</h2>
-        <p className='text-sm text-muted-foreground'>Build invoices, export to PDF, and save to database.</p>
+        <h2 className="font-[var(--font-space)] text-2xl font-semibold">
+          Create Invoice
+        </h2>
+        <p className="text-sm text-muted-foreground">
+          Create sales invoices with automatic tax split calculations.
+        </p>
       </div>
 
-      <Card className='bg-white/85'>
+      <Card className="bg-white/85">
         <CardHeader>
           <CardTitle>Invoice Builder</CardTitle>
         </CardHeader>
-        <CardContent className='space-y-5'>
-          <div className='grid gap-3 md:grid-cols-2 lg:grid-cols-3'>
-            <div className='space-y-1'>
+        <CardContent className="space-y-5">
+          <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-5">
+            <div className="space-y-1">
               <Label>Client</Label>
-              <Select value={clientId} onChange={(event) => setClientId(event.target.value)}>
-                <option value=''>Select client</option>
+              <Select
+                value={clientId}
+                onChange={(event) => setClientId(event.target.value)}
+              >
+                <option value="">Select client</option>
                 {clients.map((client) => (
                   <option key={client.id} value={client.id}>
                     {client.name}
@@ -189,99 +396,216 @@ export default function CreateInvoicePage() {
                 ))}
               </Select>
             </div>
-            <div className='space-y-1'>
+            <div className="space-y-1">
               <Label>Invoice Number</Label>
-              <Input value={invoiceNumber} onChange={(event) => setInvoiceNumber(event.target.value)} />
+              <Input
+                value={invoiceNumber}
+                onChange={(event) =>
+                  setInvoiceNumber(
+                    sanitizeInvoiceNumberInput(event.target.value),
+                  )
+                }
+                placeholder="YYYY-YY/NNN"
+                maxLength={11}
+              />
             </div>
-            <div className='space-y-1'>
+            <div className="space-y-1">
               <Label>Invoice Date</Label>
-              <Input type='date' value={invoiceDate} onChange={(event) => setInvoiceDate(event.target.value)} />
+              <Input
+                type="date"
+                value={invoiceDate}
+                onChange={(event) => {
+                  const nextDate = event.target.value;
+                  setInvoiceDate(nextDate);
+                  setInvoiceNumber((previous) => {
+                    if (!previous) return buildDefaultInvoiceNumber(nextDate);
+                    const prefix = formatFinancialYearInvoicePrefix(nextDate);
+                    if (validateInvoiceNumber(previous) === null) {
+                      return `${prefix}/${previous.slice(8)}`;
+                    }
+                    return previous;
+                  });
+                }}
+              />
             </div>
-            <div className='space-y-1'>
-              <Label>Type</Label>
+            <div className="space-y-1">
+              <Label>Place of Supply</Label>
               <Select
-                value={invoiceType}
-                onChange={(event) => setInvoiceType(event.target.value as 'sales' | 'purchase')}
+                value={placeOfSupply}
+                onChange={(event) => {
+                  const selectedState = event.target.value;
+                  setPlaceOfSupply(selectedState);
+                  setPlaceOfSupplyCode(getStateCodeByName(selectedState) || "");
+                }}
               >
-                <option value='sales'>Sales</option>
-                <option value='purchase'>Purchase</option>
+                {INDIAN_STATES_AND_UTS.map((stateOption) => (
+                  <option key={stateOption.name} value={stateOption.name}>
+                    {stateOption.name}
+                  </option>
+                ))}
               </Select>
             </div>
-            <div className='space-y-1'>
-              <Label>GST Number</Label>
-              <Input value={gstNumber} onChange={(event) => setGstNumber(event.target.value)} />
+            <div className="space-y-1">
+              <Label>Place of Supply Code</Label>
+              <Input value={placeOfSupplyCode} readOnly />
             </div>
           </div>
 
-          <div className='space-y-3'>
-            <div className='flex items-center justify-between'>
-              <h3 className='font-semibold'>Items</h3>
-              <Button variant='outline' onClick={addItem}>
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <h3 className="font-semibold">Items</h3>
+              <Button variant="outline" onClick={addItem}>
                 + Add Item
               </Button>
             </div>
 
-            <div className='space-y-2'>
+            <div className="space-y-3">
+              <div className="hidden gap-2 px-1 text-xs font-medium text-muted-foreground md:grid md:grid-cols-12">
+                <p className="md:col-span-3">Description</p>
+                <p className="md:col-span-2">HSN/SAC</p>
+                <p className="md:col-span-2">Quantity</p>
+                <p className="md:col-span-2">Rate</p>
+                <p className="md:col-span-2">Tax Rate % </p>
+              </div>
               {items.map((item, index) => (
-                <div key={index} className='grid gap-2 rounded-md border border-border bg-background p-3 md:grid-cols-12'>
-                  <Input
-                    className='md:col-span-4'
-                    placeholder='Description'
-                    value={item.description}
-                    onChange={(event) => updateItem(index, 'description', event.target.value)}
-                  />
-                  <Input
-                    className='md:col-span-2'
-                    type='number'
-                    min={1}
-                    value={item.quantity}
-                    onChange={(event) => updateItem(index, 'quantity', event.target.value)}
-                  />
-                  <Input
-                    className='md:col-span-2'
-                    type='number'
-                    min={0}
-                    value={item.price}
-                    onChange={(event) => updateItem(index, 'price', event.target.value)}
-                  />
-                  <Input
-                    className='md:col-span-2'
-                    type='number'
-                    min={0}
-                    max={100}
-                    value={item.gst_percent}
-                    onChange={(event) => updateItem(index, 'gst_percent', event.target.value)}
-                  />
-                  <Button
-                    variant='destructive'
-                    className='md:col-span-2'
-                    onClick={() => removeItem(index)}
-                    disabled={items.length === 1}
-                  >
-                    Remove
-                  </Button>
+                <div
+                  key={index}
+                  className="space-y-2 rounded-md border border-border bg-background p-3"
+                >
+                  <div className="grid gap-2 md:grid-cols-12">
+                    <Input
+                      className="md:col-span-3"
+                      placeholder="Description (Max 20)"
+                      value={item.description}
+                      onChange={(event) =>
+                        updateItem(
+                          index,
+                          "description",
+                          sanitizeItemDescriptionInput(event.target.value),
+                        )
+                      }
+                      maxLength={20}
+                    />
+                    <Input
+                      className="md:col-span-2"
+                      placeholder="HSN/SAC (8 digits)"
+                      value={item.hsn_sac}
+                      onChange={(event) =>
+                        updateItem(
+                          index,
+                          "hsn_sac",
+                          sanitizeHsnSacInput(event.target.value),
+                        )
+                      }
+                      maxLength={8}
+                    />
+                    <Input
+                      className="md:col-span-2"
+                      placeholder="Quantity"
+                      value={item.quantity}
+                      onChange={(event) =>
+                        updateItem(
+                          index,
+                          "quantity",
+                          sanitizeDecimalInput(event.target.value),
+                        )
+                      }
+                    />
+                    <Input
+                      className="md:col-span-2"
+                      placeholder="Rate (2 decimals)"
+                      value={item.rate}
+                      onChange={(event) =>
+                        updateItem(
+                          index,
+                          "rate",
+                          sanitizeDecimalInput(event.target.value),
+                        )
+                      }
+                    />
+                    <Input
+                      className="md:col-span-2"
+                      placeholder="Tax Rate % (2 decimals)"
+                      value={item.tax_rate}
+                      onChange={(event) =>
+                        updateItem(
+                          index,
+                          "tax_rate",
+                          sanitizeDecimalInput(event.target.value),
+                        )
+                      }
+                    />
+                    <Button
+                      variant="destructive"
+                      className="md:col-span-1"
+                      onClick={() => removeItem(index)}
+                      disabled={items.length === 1}
+                    >
+                      X
+                    </Button>
+                  </div>
+                  <div className="grid gap-2 text-xs text-muted-foreground md:grid-cols-5">
+                    <p>
+                      Amount: Rs{" "}
+                      {formatAccountingAmount(
+                        computedLines[index].amountBeforeTax,
+                      )}
+                    </p>
+                    <p>
+                      CGST: Rs{" "}
+                      {formatAccountingAmount(computedLines[index].cgst)}
+                    </p>
+                    <p>
+                      SGST/UTGST: Rs{" "}
+                      {formatAccountingAmount(computedLines[index].sgstUtgst)}
+                    </p>
+                    <p>
+                      Total Tax: Rs{" "}
+                      {formatAccountingAmount(
+                        computedLines[index].totalTaxAmount,
+                      )}
+                    </p>
+                    <p className="font-medium text-foreground">
+                      Grand Total: Rs{" "}
+                      {formatAccountingAmount(computedLines[index].grandTotal)}
+                    </p>
+                  </div>
                 </div>
               ))}
             </div>
           </div>
 
-          <div className='grid gap-4 rounded-md border border-border bg-muted/20 p-4 md:grid-cols-3'>
-            <p>Subtotal: Rs {totals.subtotal.toFixed(2)}</p>
-            <p>GST: Rs {totals.gst.toFixed(2)}</p>
-            <p className='font-semibold'>Total: Rs {totals.total.toFixed(2)}</p>
+          <div className="grid gap-3 rounded-md border border-border bg-muted/20 p-4 md:grid-cols-5">
+            <p>Amount: Rs {formatAccountingAmount(totals.amountBeforeTax)}</p>
+            <p>CGST: Rs {formatAccountingAmount(totals.cgst)}</p>
+            <p>SGST/UTGST: Rs {formatAccountingAmount(totals.sgstUtgst)}</p>
+            <p>
+              Total Tax Amount: Rs{" "}
+              {formatAccountingAmount(totals.totalTaxAmount)}
+            </p>
+            <p className="font-semibold">
+              Grand Total: Rs {formatAccountingAmount(totals.grandTotal)}
+            </p>
           </div>
 
-          <div className='space-y-1'>
-            <Label>Notes</Label>
-            <Textarea value={notes} onChange={(event) => setNotes(event.target.value)} />
+          <div className="space-y-1">
+            <Label>Note</Label>
+            <Textarea
+              value={notes}
+              onChange={(event) => setNotes(event.target.value)}
+            />
           </div>
 
-          <div className='flex flex-col gap-3 sm:flex-row'>
-            <Button onClick={exportPdf} variant='outline'>
+          {formError ? (
+            <p className="text-sm text-destructive">{formError}</p>
+          ) : null}
+
+          <div className="flex flex-col gap-3 sm:flex-row">
+            <Button onClick={exportPdf} variant="outline">
               Export (PDF)
             </Button>
             <Button onClick={uploadInvoice} disabled={saving}>
-              {saving ? 'Uploading...' : 'Upload (Save in DB)'}
+              {saving ? "Uploading..." : "Upload (Save in DB)"}
             </Button>
           </div>
         </CardContent>

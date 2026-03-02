@@ -1,15 +1,20 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date
 from io import BytesIO
+import mimetypes
+from pathlib import Path
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from fastapi.responses import StreamingResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
+from app.core.storage import get_storage_backend
 from app.core.database import get_db
 from app.core.deps import get_current_user
+from app.models.bill_upload import BillUpload
+from app.models.client import Client
 from app.models.invoice import Invoice, InvoiceItem, InvoiceSource, InvoiceType
 from app.models.user import User
 from app.schemas.invoice import InvoiceCreate, InvoiceListResponse, InvoiceResponse
@@ -20,12 +25,37 @@ router = APIRouter()
 
 
 def _invoice_to_response(invoice: Invoice) -> InvoiceResponse:
+    serialized_items = []
+    for item in invoice.items:
+        amount_before_tax = item.quantity * item.price
+        total_tax_amount = amount_before_tax * (item.gst_percent / 100.0)
+        cgst = total_tax_amount / 2.0
+        sgst_utgst = total_tax_amount / 2.0
+        grand_total = amount_before_tax + total_tax_amount
+        serialized_items.append(
+            {
+                'id': item.id,
+                'description': item.description,
+                'hsn_sac': item.hsn_sac,
+                'quantity': item.quantity,
+                'rate': round(item.price, 2),
+                'tax_rate': round(item.gst_percent, 2),
+                'amount_before_tax': round(amount_before_tax, 2),
+                'cgst': round(cgst, 2),
+                'sgst_utgst': round(sgst_utgst, 2),
+                'total_tax_amount': round(total_tax_amount, 2),
+                'grand_total': round(grand_total, 2),
+            }
+        )
+
     return InvoiceResponse(
         id=invoice.id,
         client_id=invoice.client_id,
         client_name=invoice.client.name if invoice.client else None,
         invoice_number=invoice.invoice_number,
         invoice_date=invoice.invoice_date,
+        place_of_supply=invoice.place_of_supply,
+        place_of_supply_code=invoice.place_of_supply_code,
         gst_number=invoice.gst_number,
         type=invoice.type,
         subtotal=round(invoice.subtotal, 2),
@@ -35,17 +65,7 @@ def _invoice_to_response(invoice: Invoice) -> InvoiceResponse:
         notes=invoice.notes,
         original_file_path=invoice.original_file_path,
         created_at=invoice.created_at,
-        items=[
-            {
-                'id': item.id,
-                'description': item.description,
-                'quantity': item.quantity,
-                'price': item.price,
-                'gst_percent': item.gst_percent,
-                'line_total': round(item.line_total, 2),
-            }
-            for item in invoice.items
-        ],
+        items=serialized_items,
     )
 
 
@@ -58,10 +78,17 @@ def _parse_invoice_type(invoice_type: str | None) -> InvoiceType | None:
     return InvoiceType(value)
 
 
+def _guess_media_type(stored_path: str) -> str:
+    guessed, _ = mimetypes.guess_type(stored_path)
+    return guessed or 'application/octet-stream'
+
+
 @router.get('', response_model=InvoiceListResponse)
 def list_invoices(
     period: str = Query('monthly'),
     invoice_type: str | None = Query(None),
+    year: int | None = Query(None, ge=2000, le=2100),
+    financial_year_start: int | None = Query(None, ge=2000, le=2100),
     bucket: str | None = Query(None),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
@@ -77,6 +104,14 @@ def list_invoices(
     )
     if typed:
         stmt = stmt.where(Invoice.type == typed)
+    if financial_year_start is not None:
+        start = date(financial_year_start, 4, 1)
+        end = date(financial_year_start + 1, 4, 1)
+        stmt = stmt.where(Invoice.invoice_date >= start, Invoice.invoice_date < end)
+    elif year is not None:
+        start = date(year, 1, 1)
+        end = date(year + 1, 1, 1)
+        stmt = stmt.where(Invoice.invoice_date >= start, Invoice.invoice_date < end)
 
     invoices = list(db.scalars(stmt).all())
     if bucket:
@@ -98,21 +133,28 @@ def create_invoice(
     subtotal = 0.0
     gst_amount = 0.0
 
+    client = db.scalar(
+        select(Client).where(Client.id == payload.client_id, Client.owner_id == current_user.id)
+    )
+    if not client:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Selected client is invalid')
+
     invoice = Invoice(
         owner_id=current_user.id,
         client_id=payload.client_id,
-        invoice_number=payload.invoice_number
-        or f"INV-{datetime.now().strftime('%Y%m%d-%H%M%S')}",
+        invoice_number=payload.invoice_number,
         invoice_date=payload.invoice_date,
-        gst_number=payload.gst_number,
-        type=payload.type,
+        place_of_supply=payload.place_of_supply,
+        place_of_supply_code=payload.place_of_supply_code,
+        gst_number=None,
+        type=InvoiceType.SALES,
         source=InvoiceSource.CREATED,
         notes=payload.notes,
     )
 
     for item_data in payload.items:
-        base = item_data.quantity * item_data.price
-        item_gst = base * (item_data.gst_percent / 100.0)
+        base = item_data.quantity * item_data.rate
+        item_gst = base * (item_data.tax_rate / 100.0)
         line_total = base + item_gst
 
         subtotal += base
@@ -120,9 +162,10 @@ def create_invoice(
 
         item = InvoiceItem(
             description=item_data.description,
+            hsn_sac=item_data.hsn_sac,
             quantity=item_data.quantity,
-            price=item_data.price,
-            gst_percent=item_data.gst_percent,
+            price=item_data.rate,
+            gst_percent=item_data.tax_rate,
             line_total=line_total,
         )
         invoice.items.append(item)
@@ -149,6 +192,8 @@ def export_folder(
     period: str = Query('monthly'),
     bucket: str = Query(..., min_length=1),
     invoice_type: str | None = Query(None),
+    year: int | None = Query(None, ge=2000, le=2100),
+    financial_year_start: int | None = Query(None, ge=2000, le=2100),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> StreamingResponse:
@@ -164,6 +209,14 @@ def export_folder(
 
     if typed:
         stmt = stmt.where(Invoice.type == typed)
+    if financial_year_start is not None:
+        start = date(financial_year_start, 4, 1)
+        end = date(financial_year_start + 1, 4, 1)
+        stmt = stmt.where(Invoice.invoice_date >= start, Invoice.invoice_date < end)
+    elif year is not None:
+        start = date(year, 1, 1)
+        end = date(year + 1, 1, 1)
+        stmt = stmt.where(Invoice.invoice_date >= start, Invoice.invoice_date < end)
 
     invoices = [
         invoice
@@ -184,6 +237,47 @@ def export_folder(
     )
 
 
+@router.delete(
+    '/{invoice_id}',
+    status_code=status.HTTP_204_NO_CONTENT,
+    response_class=Response,
+)
+def delete_invoice(
+    invoice_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> Response:
+    invoice = db.scalar(
+        select(Invoice).where(Invoice.id == invoice_id, Invoice.owner_id == current_user.id)
+    )
+    if not invoice:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='Invoice not found')
+
+    uploads = list(
+        db.scalars(
+            select(BillUpload).where(
+                BillUpload.invoice_id == invoice.id,
+                BillUpload.owner_id == current_user.id,
+            )
+        ).all()
+    )
+    stored_paths = {path for path in [invoice.original_file_path, *(item.file_path for item in uploads)] if path}
+
+    for upload in uploads:
+        db.delete(upload)
+    db.delete(invoice)
+    db.commit()
+
+    storage = get_storage_backend()
+    for stored_path in stored_paths:
+        try:
+            storage.delete_file(stored_path)
+        except Exception:
+            continue
+
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
 @router.get('/{invoice_id}', response_model=InvoiceResponse)
 def get_invoice(
     invoice_id: str,
@@ -199,6 +293,43 @@ def get_invoice(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='Invoice not found')
 
     return _invoice_to_response(invoice)
+
+
+@router.get('/{invoice_id}/preview')
+def get_invoice_preview(
+    invoice_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> Response:
+    invoice = db.scalar(
+        select(Invoice).where(Invoice.id == invoice_id, Invoice.owner_id == current_user.id)
+    )
+    if not invoice:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='Invoice not found')
+    if not invoice.original_file_path:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='Preview file not found')
+
+    upload = db.scalar(
+        select(BillUpload).where(
+            BillUpload.invoice_id == invoice.id,
+            BillUpload.owner_id == current_user.id,
+        )
+    )
+
+    storage = get_storage_backend()
+    try:
+        payload = storage.read_bytes(invoice.original_file_path)
+    except Exception as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='Preview file not found') from exc
+
+    media_type = upload.mime_type if upload and upload.mime_type else _guess_media_type(invoice.original_file_path)
+    filename = upload.file_name if upload and upload.file_name else Path(invoice.original_file_path).name
+
+    return Response(
+        content=payload,
+        media_type=media_type,
+        headers={'Content-Disposition': f'inline; filename="{filename}"'},
+    )
 
 
 @router.get('/{invoice_id}/pdf')

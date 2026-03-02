@@ -24,6 +24,10 @@ class StorageBackend(ABC):
     def local_processing_path(self, stored_path: str) -> str:
         raise NotImplementedError
 
+    @abstractmethod
+    def delete_file(self, stored_path: str) -> None:
+        raise NotImplementedError
+
 
 class LocalStorage(StorageBackend):
     def __init__(self) -> None:
@@ -48,6 +52,11 @@ class LocalStorage(StorageBackend):
     def local_processing_path(self, stored_path: str) -> str:
         return stored_path
 
+    def delete_file(self, stored_path: str) -> None:
+        target = Path(stored_path)
+        if target.exists():
+            target.unlink()
+
 
 class S3Storage(StorageBackend):
     def __init__(self) -> None:
@@ -64,7 +73,7 @@ class S3Storage(StorageBackend):
     def save_bytes(self, data: bytes, filename: str, subdir: str = '') -> str:
         safe_name = ''.join(char for char in filename if char.isalnum() or char in ('-', '_', '.'))
         suffix = Path(safe_name).suffix.lower()
-        object_name = f'{subdir.strip('/')}/{uuid4().hex}{suffix}' if subdir else f'{uuid4().hex}{suffix}'
+        object_name = f"{subdir.strip('/')}/{uuid4().hex}{suffix}" if subdir else f'{uuid4().hex}{suffix}'
         self.client.put_object(Bucket=self.bucket, Key=object_name, Body=data)
         return object_name
 
@@ -77,6 +86,9 @@ class S3Storage(StorageBackend):
         temp_file.write(self.read_bytes(stored_path))
         temp_file.close()
         return temp_file.name
+
+    def delete_file(self, stored_path: str) -> None:
+        self.client.delete_object(Bucket=self.bucket, Key=stored_path)
 
 
 _storage_instance: StorageBackend | None = None

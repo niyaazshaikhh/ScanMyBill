@@ -24,10 +24,10 @@ def build_invoice_pdf(invoice: Invoice) -> bytes:
         ['Date', invoice.invoice_date.isoformat()],
         ['Type', invoice.type.value.title()],
         ['Client', invoice.client.name if invoice.client else 'N/A'],
-        ['GST Number', invoice.gst_number or 'N/A'],
-        ['Subtotal', f'{invoice.subtotal:.2f}'],
-        ['GST Amount', f'{invoice.gst_amount:.2f}'],
-        ['Total Amount', f'{invoice.total_amount:.2f}'],
+        ['Place of Supply', f"{invoice.place_of_supply or 'N/A'} ({invoice.place_of_supply_code or 'N/A'})"],
+        ['Amount (Before Tax)', f'{invoice.subtotal:.2f}'],
+        ['Total Tax Amount', f'{invoice.gst_amount:.2f}'],
+        ['Grand Total', f'{invoice.total_amount:.2f}'],
     ]
 
     details_table = Table(details_data, hAlign='LEFT', colWidths=[120, 340])
@@ -42,19 +42,32 @@ def build_invoice_pdf(invoice: Invoice) -> bytes:
     elements.append(details_table)
     elements.append(Spacer(1, 18))
 
-    item_rows = [['Description', 'Qty', 'Price', 'GST %', 'Line Total']]
+    item_rows = [['Description', 'HSN/SAC', 'Qty', 'Rate', 'Tax %', 'Amount', 'CGST', 'SGST/UTGST', 'Grand Total']]
     for item in invoice.items:
+        amount_before_tax = item.quantity * item.price
+        total_tax_amount = amount_before_tax * (item.gst_percent / 100.0)
+        cgst = total_tax_amount / 2.0
+        sgst_utgst = total_tax_amount / 2.0
+        grand_total = amount_before_tax + total_tax_amount
         item_rows.append(
             [
                 item.description,
+                item.hsn_sac or 'N/A',
                 f'{item.quantity:.2f}',
                 f'{item.price:.2f}',
                 f'{item.gst_percent:.2f}',
-                f'{item.line_total:.2f}',
+                f'{amount_before_tax:.2f}',
+                f'{cgst:.2f}',
+                f'{sgst_utgst:.2f}',
+                f'{grand_total:.2f}',
             ]
         )
 
-    item_table = Table(item_rows, hAlign='LEFT', colWidths=[220, 60, 70, 60, 70])
+    item_table = Table(
+        item_rows,
+        hAlign='LEFT',
+        colWidths=[110, 60, 40, 50, 45, 50, 50, 60, 55],
+    )
     item_table.setStyle(
         TableStyle(
             [

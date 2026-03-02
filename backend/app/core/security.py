@@ -1,6 +1,5 @@
 from datetime import datetime, timedelta, timezone
 from hashlib import sha256
-import os
 from typing import Any
 from uuid import uuid4
 
@@ -9,12 +8,23 @@ from passlib.context import CryptContext
 
 from app.core.config import settings
 
-SECRET_KEY = os.getenv('SECRET_KEY', settings.secret_key)
-ALGORITHM = 'HS256'
-ACCESS_TOKEN_EXPIRE_MINUTES = 15
-REFRESH_TOKEN_EXPIRE_DAYS = 7
+SECRET_KEY = settings.secret_key
+ALGORITHM = settings.jwt_algorithm
+ACCESS_TOKEN_EXPIRE_MINUTES = settings.access_token_expire_minutes
+REFRESH_TOKEN_EXPIRE_DAYS = settings.refresh_token_expire_days
+SESSION_INACTIVITY_TIMEOUT_MINUTES = settings.session_inactivity_timeout_minutes
+ACCESS_TOKEN_REFRESH_THRESHOLD_SECONDS = settings.access_token_refresh_threshold_minutes * 60
+REFRESH_COOKIE_NAME = 'refresh_token'
 
 pwd_context = CryptContext(schemes=['bcrypt'], deprecated='auto')
+
+
+def utc_now() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def inactivity_timeout_delta() -> timedelta:
+    return timedelta(minutes=SESSION_INACTIVITY_TIMEOUT_MINUTES)
 
 
 def hash_password(password: str) -> str:
@@ -40,7 +50,7 @@ def _build_token_payload(
     token_type: str,
     expires_delta: timedelta,
 ) -> dict[str, Any]:
-    now = datetime.now(timezone.utc)
+    now = utc_now()
     payload = data.copy()
     payload.update(
         {
@@ -91,8 +101,10 @@ def create_refresh_token(
     return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
 
 
-def decode_token(token: str) -> dict[str, Any]:
-    return jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+def decode_token(token: str, *, verify_exp: bool = True) -> dict[str, Any]:
+    if verify_exp:
+        return jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+    return jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM], options={'verify_exp': False})
 
 
 def decode_access_token(token: str) -> dict[str, Any]:
@@ -101,6 +113,38 @@ def decode_access_token(token: str) -> dict[str, Any]:
     if token_type and token_type != 'access':
         raise JWTError('Invalid token type')
     return payload
+
+
+def datetime_from_claim(payload: dict[str, Any], claim: str) -> datetime | None:
+    raw = payload.get(claim)
+    if isinstance(raw, (int, float)):
+        return datetime.fromtimestamp(raw, tz=timezone.utc)
+    if isinstance(raw, str):
+        try:
+            return datetime.fromtimestamp(float(raw), tz=timezone.utc)
+        except ValueError:
+            return None
+    return None
+
+
+def seconds_until_expiry(payload: dict[str, Any], *, now: datetime | None = None) -> int | None:
+    exp_at = datetime_from_claim(payload, 'exp')
+    if exp_at is None:
+        return None
+    current = now or utc_now()
+    return int((exp_at - current).total_seconds())
+
+
+def is_token_close_to_expiry(
+    payload: dict[str, Any],
+    *,
+    threshold_seconds: int = ACCESS_TOKEN_REFRESH_THRESHOLD_SECONDS,
+    now: datetime | None = None,
+) -> bool:
+    seconds_left = seconds_until_expiry(payload, now=now)
+    if seconds_left is None:
+        return False
+    return seconds_left <= max(0, threshold_seconds)
 
 
 def hash_token(token: str) -> str:

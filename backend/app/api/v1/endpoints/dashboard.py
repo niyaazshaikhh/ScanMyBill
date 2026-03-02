@@ -16,10 +16,18 @@ router = APIRouter()
 @router.get('/summary', response_model=DashboardSummary)
 def summary(
     period: str = Query('monthly'),
+    year: int | None = Query(None, ge=2000, le=2100),
+    financial_year_start: int | None = Query(None, ge=2000, le=2100),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> DashboardSummary:
-    return build_dashboard_summary(db=db, user_id=current_user.id, period=valid_period(period))
+    return build_dashboard_summary(
+        db=db,
+        user_id=current_user.id,
+        period=valid_period(period),
+        year=year,
+        financial_year_start=financial_year_start,
+    )
 
 
 @router.get('/admin-overview')

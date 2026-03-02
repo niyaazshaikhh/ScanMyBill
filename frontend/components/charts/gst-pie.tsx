@@ -1,6 +1,7 @@
 'use client';
 
 import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from 'recharts';
+import { formatAccountingAmount } from '@/lib/number-format';
 
 type GstPoint = {
   name: string;
@@ -26,7 +27,9 @@ export function GstPieChart({ data }: { data: GstPoint[] }) {
               <Cell key={entry.name} fill={COLORS[index % COLORS.length]} />
             ))}
           </Pie>
-          <Tooltip />
+          <Tooltip
+            formatter={(value) => `Rs ${formatAccountingAmount(Number(value))}`}
+          />
         </PieChart>
       </ResponsiveContainer>
     </div>

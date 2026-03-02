@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 from datetime import date, datetime
+from pathlib import Path
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
@@ -11,6 +13,7 @@ from app.core.deps import get_current_user
 from app.core.storage import get_storage_backend, remove_temp_file
 from app.models.bill_upload import BillUpload
 from app.models.invoice import Invoice, InvoiceSource, InvoiceType
+from app.models.personal_details import PersonalDetails
 from app.models.user import User
 from app.schemas.bill import BillUploadResponse
 from app.services.ocr import extract_structured_data, extract_text_from_file
@@ -23,7 +26,10 @@ ALLOWED_MIME_TYPES = {
     'image/jpeg',
     'image/jpg',
     'image/webp',
+    'application/vnd.ms-excel',
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
 }
+ALLOWED_EXTENSIONS = {'.pdf', '.png', '.jpg', '.jpeg', '.webp', '.xls', '.xlsx'}
 
 
 @router.post('/upload', response_model=BillUploadResponse, status_code=status.HTTP_201_CREATED)
@@ -33,7 +39,9 @@ async def upload_bill(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> BillUploadResponse:
-    if file.content_type not in ALLOWED_MIME_TYPES:
+    mime_type = (file.content_type or '').lower()
+    extension = Path(file.filename or '').suffix.lower()
+    if mime_type not in ALLOWED_MIME_TYPES and extension not in ALLOWED_EXTENSIONS:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Unsupported file type')
 
     payload = await file.read()
@@ -53,8 +61,16 @@ async def upload_bill(
     stored_path = storage.save_bytes(payload, file.filename or 'bill', subdir='bills')
     processing_path = storage.local_processing_path(stored_path)
 
-    text = extract_text_from_file(processing_path, file.content_type)
-    extracted = extract_structured_data(text, fallback_type=fallback_type)
+    text = extract_text_from_file(processing_path, mime_type)
+    user_personal_details = db.scalar(
+        select(PersonalDetails).where(PersonalDetails.owner_id == current_user.id)
+    )
+    extracted = extract_structured_data(
+        text,
+        fallback_type=fallback_type,
+        company_name=user_personal_details.company_name if user_personal_details else None,
+        company_gstin=user_personal_details.gstin_number if user_personal_details else None,
+    )
 
     bill_date = extracted['bill_date'] or date.today()
     total_amount = float(extracted['total_amount'] or 0.0)
@@ -79,7 +95,7 @@ async def upload_bill(
         invoice_id=invoice.id,
         file_name=file.filename or 'bill',
         file_path=stored_path,
-        mime_type=file.content_type,
+        mime_type=mime_type or 'application/octet-stream',
         file_size=len(payload),
         ocr_text=text,
         processed=True,

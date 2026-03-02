@@ -27,6 +27,7 @@ from app.schemas.payment import (
     RazorpayPlanOption,
     SubscriptionResponse,
 )
+from app.schemas.personal_details import PersonalDetailsResponse, PersonalDetailsUpsertRequest
 from app.schemas.user import (
     CurrentUserResponse,
     ForgotPasswordRequest as UserForgotPasswordRequest,
@@ -68,6 +69,8 @@ __all__ = [
     'RazorpayConfigResponse',
     'RazorpayPlanOption',
     'SubscriptionResponse',
+    'PersonalDetailsResponse',
+    'PersonalDetailsUpsertRequest',
     'UserCreate',
     'UserLogin',
     'UserResponse',
