@@ -38,6 +38,8 @@ def _set_refresh_cookie(response: Response, refresh_token: str) -> None:
     same_site = settings.cookie_samesite.lower()
     if same_site not in {'lax', 'strict', 'none'}:
         same_site = 'lax'
+    if same_site == 'none' and not settings.cookie_secure:
+        same_site = 'lax'
 
     response.set_cookie(
         key=REFRESH_COOKIE_NAME,
@@ -47,6 +49,7 @@ def _set_refresh_cookie(response: Response, refresh_token: str) -> None:
         samesite=same_site,
         max_age=REFRESH_COOKIE_MAX_AGE,
         expires=REFRESH_COOKIE_MAX_AGE,
+        domain=settings.cookie_domain,
         path='/',
     )
 

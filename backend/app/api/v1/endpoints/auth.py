@@ -103,6 +103,9 @@ def _set_refresh_cookie(response: Response, refresh_token: str) -> None:
     same_site = settings.cookie_samesite.lower()
     if same_site not in {'lax', 'strict', 'none'}:
         same_site = 'lax'
+    if same_site == 'none' and not settings.cookie_secure:
+        # Browsers reject SameSite=None unless Secure is set.
+        same_site = 'lax'
 
     response.set_cookie(
         key=REFRESH_COOKIE_NAME,
@@ -112,12 +115,13 @@ def _set_refresh_cookie(response: Response, refresh_token: str) -> None:
         samesite=same_site,
         max_age=REFRESH_COOKIE_MAX_AGE,
         expires=REFRESH_COOKIE_MAX_AGE,
+        domain=settings.cookie_domain,
         path='/',
     )
 
 
 def _clear_refresh_cookie(response: Response) -> None:
-    response.delete_cookie(key=REFRESH_COOKIE_NAME, path='/')
+    response.delete_cookie(key=REFRESH_COOKIE_NAME, path='/', domain=settings.cookie_domain)
 
 
 def _extract_expiry(payload: dict) -> datetime:
@@ -282,8 +286,12 @@ def forgot_password(
     user.reset_token_expiry = expires_at
     db.commit()
 
-    # Email delivery is not configured yet, so token is returned for frontend use.
-    return ForgotPasswordResponse(message=generic_message, reset_token=raw_token, expires_at=expires_at)
+    # Keep backward compatibility via env flag while allowing secure production behavior.
+    return ForgotPasswordResponse(
+        message=generic_message,
+        reset_token=raw_token if settings.expose_password_reset_token else None,
+        expires_at=expires_at if settings.expose_password_reset_token else None,
+    )
 
 
 @router.post('/reset-password', response_model=MessageResponse)

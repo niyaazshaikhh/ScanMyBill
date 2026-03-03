@@ -12,6 +12,7 @@ from app.schemas.auth import (
 from app.schemas.bill import BillUploadResponse, OCRExtractionResult
 from app.schemas.client import ClientAnalytics, ClientCreate, ClientResponse, ClientsOverview
 from app.schemas.dashboard import DashboardSummary, GSTRingPoint, TrendPoint
+from app.schemas.hsn_sac_master import HSNSACMasterCreate, HSNSACMasterResponse
 from app.schemas.invoice import (
     InvoiceCreate,
     InvoiceItemCreate,
@@ -59,6 +60,8 @@ __all__ = [
     'DashboardSummary',
     'GSTRingPoint',
     'TrendPoint',
+    'HSNSACMasterCreate',
+    'HSNSACMasterResponse',
     'InvoiceCreate',
     'InvoiceItemCreate',
     'InvoiceItemResponse',

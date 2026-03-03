@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from pydantic import BaseModel, EmailStr, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator, model_validator
 
 from app.schemas.validation_rules import (
     COMPANY_NAME_PATTERN,
@@ -13,6 +13,8 @@ from app.schemas.validation_rules import (
 
 
 class ClientWriteBase(BaseModel):
+    model_config = ConfigDict(extra='forbid', str_strip_whitespace=True)
+
     name: str = Field(min_length=1, max_length=15)
     address: str = Field(min_length=1, max_length=115)
     state_name: str = Field(min_length=1, max_length=64)

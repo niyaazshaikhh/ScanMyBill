@@ -171,6 +171,47 @@ def _build_invoice_pdf_data(
     }
 
 
+def _build_sales_invoice_from_payload(payload: InvoiceCreate, *, owner_id: str) -> Invoice:
+    subtotal = 0.0
+    gst_amount = 0.0
+
+    invoice = Invoice(
+        owner_id=owner_id,
+        client_id=payload.client_id,
+        invoice_number=payload.invoice_number,
+        invoice_date=payload.invoice_date,
+        place_of_supply=payload.place_of_supply,
+        place_of_supply_code=payload.place_of_supply_code,
+        gst_number=None,
+        type=InvoiceType.SALES,
+        source=InvoiceSource.CREATED,
+        notes=payload.notes,
+    )
+
+    for item_data in payload.items:
+        base = item_data.quantity * item_data.rate
+        item_gst = base * (item_data.tax_rate / 100.0)
+        line_total = base + item_gst
+
+        subtotal += base
+        gst_amount += item_gst
+
+        item = InvoiceItem(
+            description=item_data.description,
+            hsn_sac=item_data.hsn_sac,
+            quantity=item_data.quantity,
+            price=item_data.rate,
+            gst_percent=item_data.tax_rate,
+            line_total=line_total,
+        )
+        invoice.items.append(item)
+
+    invoice.subtotal = round(subtotal, 2)
+    invoice.gst_amount = round(gst_amount, 2)
+    invoice.total_amount = round(subtotal + gst_amount, 2)
+    return invoice
+
+
 def _raise_pdf_generation_http_error(exc: Exception) -> None:
     if isinstance(exc, PDFInvoiceDataError):
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
@@ -244,49 +285,13 @@ def create_invoice(
     if not payload.items:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='At least one item is required')
 
-    subtotal = 0.0
-    gst_amount = 0.0
-
     client = db.scalar(
         select(Client).where(Client.id == payload.client_id, Client.owner_id == current_user.id)
     )
     if not client:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Selected client is invalid')
 
-    invoice = Invoice(
-        owner_id=current_user.id,
-        client_id=payload.client_id,
-        invoice_number=payload.invoice_number,
-        invoice_date=payload.invoice_date,
-        place_of_supply=payload.place_of_supply,
-        place_of_supply_code=payload.place_of_supply_code,
-        gst_number=None,
-        type=InvoiceType.SALES,
-        source=InvoiceSource.CREATED,
-        notes=payload.notes,
-    )
-
-    for item_data in payload.items:
-        base = item_data.quantity * item_data.rate
-        item_gst = base * (item_data.tax_rate / 100.0)
-        line_total = base + item_gst
-
-        subtotal += base
-        gst_amount += item_gst
-
-        item = InvoiceItem(
-            description=item_data.description,
-            hsn_sac=item_data.hsn_sac,
-            quantity=item_data.quantity,
-            price=item_data.rate,
-            gst_percent=item_data.tax_rate,
-            line_total=line_total,
-        )
-        invoice.items.append(item)
-
-    invoice.subtotal = round(subtotal, 2)
-    invoice.gst_amount = round(gst_amount, 2)
-    invoice.total_amount = round(subtotal + gst_amount, 2)
+    invoice = _build_sales_invoice_from_payload(payload, owner_id=current_user.id)
 
     db.add(invoice)
     db.flush()
@@ -321,6 +326,53 @@ def create_invoice(
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail='Failed to load invoice')
 
     return _invoice_to_response(refreshed)
+
+
+@router.post('/create/pdf')
+def create_invoice_pdf(
+    payload: InvoiceCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> FileResponse:
+    if not payload.items:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='At least one item is required')
+
+    client = db.scalar(
+        select(Client).where(Client.id == payload.client_id, Client.owner_id == current_user.id)
+    )
+    if not client:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Selected client is invalid')
+
+    invoice = _build_sales_invoice_from_payload(payload, owner_id=current_user.id)
+    company_details = db.scalar(select(PersonalDetails).where(PersonalDetails.owner_id == current_user.id))
+    invoice_pdf_data = _build_invoice_pdf_data(
+        invoice,
+        owner_id=current_user.id,
+        company_details=company_details,
+        client=client,
+    )
+
+    try:
+        generated_pdf_path = generate_invoice_pdf(invoice_pdf_data)
+    except Exception as exc:
+        _raise_pdf_generation_http_error(exc)
+
+    try:
+        absolute_pdf_path = resolve_generated_pdf_path(generated_pdf_path)
+    except PDFInvoiceGenerationError as exc:
+        _raise_pdf_generation_http_error(exc)
+
+    if not absolute_pdf_path.exists():
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail='Generated invoice PDF missing')
+
+    filename = f'{invoice.invoice_number}.pdf'.replace(' ', '-')
+    background = BackgroundTask(remove_generated_pdf, generated_pdf_path)
+    return FileResponse(
+        path=str(absolute_pdf_path),
+        media_type='application/pdf',
+        filename=filename,
+        background=background,
+    )
 
 
 @router.get('/export-folder')

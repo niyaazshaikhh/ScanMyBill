@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class RazorpayPlanOption(BaseModel):
@@ -30,11 +30,15 @@ class SubscriptionCancelResponse(BaseModel):
     expires_at: datetime | None = None
 
 
-class CreateSubscriptionRequest(BaseModel):
-    plan_id: str | None = None
+class _StrictRequestModel(BaseModel):
+    model_config = ConfigDict(extra='forbid', str_strip_whitespace=True)
 
 
-class PaymentVerifyRequest(BaseModel):
-    razorpay_signature: str
-    razorpay_payment_id: str | None = None
-    razorpay_subscription_id: str | None = None
+class CreateSubscriptionRequest(_StrictRequestModel):
+    plan_id: str | None = Field(default=None, min_length=1, max_length=120)
+
+
+class PaymentVerifyRequest(_StrictRequestModel):
+    razorpay_signature: str = Field(min_length=16, max_length=255)
+    razorpay_payment_id: str | None = Field(default=None, min_length=1, max_length=255)
+    razorpay_subscription_id: str | None = Field(default=None, min_length=1, max_length=255)

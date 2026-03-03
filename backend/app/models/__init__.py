@@ -1,5 +1,6 @@
 from app.models.bill_upload import BillUpload
 from app.models.client import Client
+from app.models.hsn_sac_master import HSNSACMaster
 from app.models.invoice import Invoice, InvoiceItem, InvoiceSource, InvoiceType
 from app.models.newsletter_subscriber import NewsletterSubscriber
 from app.models.password_reset_token import PasswordResetToken
@@ -16,6 +17,7 @@ __all__ = [
     'SubscriptionPlan',
     'SubscriptionStatus',
     'Client',
+    'HSNSACMaster',
     'Invoice',
     'InvoiceItem',
     'InvoiceType',

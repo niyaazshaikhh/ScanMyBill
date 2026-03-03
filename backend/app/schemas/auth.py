@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
 from app.models.user import SubscriptionPlan, SubscriptionStatus, UserRole
 
@@ -20,28 +20,32 @@ class UserPublic(BaseModel):
     model_config = {'from_attributes': True}
 
 
-class RegisterRequest(BaseModel):
+class _StrictRequestModel(BaseModel):
+    model_config = ConfigDict(extra='forbid', str_strip_whitespace=True)
+
+
+class RegisterRequest(_StrictRequestModel):
     email: EmailStr
     password: str = Field(min_length=8, max_length=128)
     full_name: str = Field(min_length=2, max_length=255)
 
 
-class CreateAccountRequest(BaseModel):
+class CreateAccountRequest(_StrictRequestModel):
     email: EmailStr
     password: str = Field(min_length=8, max_length=128)
     full_name: str = Field(min_length=2, max_length=255)
 
 
-class LoginRequest(BaseModel):
+class LoginRequest(_StrictRequestModel):
     email: EmailStr
     password: str = Field(min_length=8, max_length=128)
 
 
-class GoogleAuthRequest(BaseModel):
+class GoogleAuthRequest(_StrictRequestModel):
     id_token: str
 
 
-class ForgotPasswordRequest(BaseModel):
+class ForgotPasswordRequest(_StrictRequestModel):
     email: EmailStr
 
 
@@ -51,7 +55,7 @@ class ForgotPasswordResponse(BaseModel):
     expires_at: datetime | None = None
 
 
-class ResetPasswordRequest(BaseModel):
+class ResetPasswordRequest(_StrictRequestModel):
     token: str = Field(min_length=16, max_length=255)
     new_password: str = Field(min_length=8, max_length=128)
 

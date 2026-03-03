@@ -4,8 +4,6 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 
 from app.schemas.validation_rules import (
     ACCOUNT_NUMBER_PATTERN,
-    BANK_NAME_PATTERN,
-    BRANCH_PATTERN,
     COMPANY_NAME_PATTERN,
     EMAIL_PATTERN,
     IFSC_PATTERN,
@@ -94,10 +92,7 @@ class PersonalDetailsUpsertRequest(BaseModel):
     @field_validator('bank_name')
     @classmethod
     def validate_bank_name(cls, value: str) -> str:
-        cleaned = strip_required(value, 'Bank Name')
-        if not BANK_NAME_PATTERN.fullmatch(cleaned):
-            raise ValueError('Bank Name should contain only alphabets.')
-        return cleaned
+        return strip_required(value, 'Bank Name')
 
     @field_validator('account_number')
     @classmethod
@@ -110,10 +105,7 @@ class PersonalDetailsUpsertRequest(BaseModel):
     @field_validator('branch')
     @classmethod
     def validate_branch(cls, value: str) -> str:
-        cleaned = strip_required(value, 'Branch')
-        if not BRANCH_PATTERN.fullmatch(cleaned):
-            raise ValueError('Branch should contain only letters, numbers, and spaces.')
-        return cleaned
+        return strip_required(value, 'Branch')
 
     @field_validator('ifsc_code')
     @classmethod

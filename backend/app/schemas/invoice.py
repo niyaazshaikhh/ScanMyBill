@@ -2,14 +2,14 @@ from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
 import re
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.models.invoice import InvoiceSource, InvoiceType
 from app.schemas.validation_rules import STATE_CODE_BY_NAME, STATE_CODE_PATTERN, STATE_NAME_BY_LOWERCASE
 
 INVOICE_NUMBER_PATTERN = re.compile(r'^\d{4}-\d{2}/\d{3}$')
 DESCRIPTION_PATTERN = re.compile(r'^[A-Za-z0-9 ]+$')
-HSN_SAC_PATTERN = re.compile(r'^\d{1,8}$')
+HSN_SAC_PATTERN = re.compile(r'^\d{4,15}$')
 
 
 def _decimal_places_within(value: float, max_places: int) -> bool:
@@ -21,8 +21,10 @@ def _decimal_places_within(value: float, max_places: int) -> bool:
 
 
 class InvoiceItemCreate(BaseModel):
+    model_config = ConfigDict(extra='forbid', str_strip_whitespace=True)
+
     description: str = Field(min_length=1, max_length=20)
-    hsn_sac: str = Field(min_length=1, max_length=8)
+    hsn_sac: str = Field(min_length=4, max_length=15)
     quantity: float = Field(gt=0, le=5_000_000)
     rate: float = Field(ge=0)
     tax_rate: float = Field(ge=0, le=99.99)
@@ -42,7 +44,7 @@ class InvoiceItemCreate(BaseModel):
     def validate_hsn_sac(cls, value: str) -> str:
         cleaned = value.strip()
         if not HSN_SAC_PATTERN.fullmatch(cleaned):
-            raise ValueError('HSN/SAC should contain only digits and be up to 8 digits.')
+            raise ValueError('HSN/SAC should contain only digits and be 4 to 15 digits.')
         return cleaned
 
     @field_validator('rate')
@@ -77,6 +79,8 @@ class InvoiceItemResponse(BaseModel):
 
 
 class InvoiceCreate(BaseModel):
+    model_config = ConfigDict(extra='forbid', str_strip_whitespace=True)
+
     client_id: str
     invoice_number: str = Field(min_length=11, max_length=11)
     invoice_date: date

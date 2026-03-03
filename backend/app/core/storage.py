@@ -31,25 +31,50 @@ class StorageBackend(ABC):
 
 class LocalStorage(StorageBackend):
     def __init__(self) -> None:
+        backend_root = Path(__file__).resolve().parents[2]
         configured = Path(settings.uploads_dir)
-        if configured.is_absolute():
-            self.base_dir = configured
-        else:
-            self.base_dir = Path(__file__).resolve().parents[2] / configured
+        candidate = configured if configured.is_absolute() else backend_root / configured
+        resolved = candidate.resolve()
+        if backend_root.resolve() not in (resolved, *resolved.parents):
+            raise ValueError('UPLOADS_DIR must be within backend directory for local storage.')
+
+        self.base_dir = resolved
         self.base_dir.mkdir(parents=True, exist_ok=True)
+
+    def _sanitize_subdir(self, subdir: str) -> Path:
+        if not subdir:
+            return Path()
+
+        raw = Path(subdir.replace('\\', '/'))
+        if raw.is_absolute() or '..' in raw.parts:
+            raise ValueError('Invalid upload subdir path.')
+
+        safe_parts: list[str] = []
+        for part in raw.parts:
+            if part in {'', '.'}:
+                continue
+            cleaned = ''.join(char for char in part if char.isalnum() or char in {'-', '_'})
+            if not cleaned:
+                raise ValueError('Invalid upload subdir segment.')
+            safe_parts.append(cleaned)
+        return Path(*safe_parts) if safe_parts else Path()
 
     def _resolve_path(self, stored_path: str) -> Path:
         path = Path(stored_path)
-        if path.is_absolute():
-            return path
-        return self.base_dir / path
+        candidate = path.resolve() if path.is_absolute() else (self.base_dir / path).resolve()
+        if self.base_dir not in (candidate, *candidate.parents):
+            raise ValueError('Resolved storage path is outside upload directory.')
+        return candidate
 
     def save_bytes(self, data: bytes, filename: str, subdir: str = '') -> str:
         safe_name = ''.join(char for char in filename if char.isalnum() or char in ('-', '_', '.'))
+        if not safe_name:
+            safe_name = 'file'
         suffix = Path(safe_name).suffix.lower()
         object_name = f'{uuid4().hex}{suffix}'
 
-        target_dir = self.base_dir / subdir if subdir else self.base_dir
+        safe_subdir = self._sanitize_subdir(subdir)
+        target_dir = self.base_dir / safe_subdir if safe_subdir else self.base_dir
         target_dir.mkdir(parents=True, exist_ok=True)
 
         target_path = target_dir / object_name

@@ -1,34 +1,102 @@
+import logging
 from pathlib import Path
 
-from fastapi import FastAPI
-from fastapi import Request
+from fastapi import FastAPI, Request
+from fastapi.exceptions import RequestValidationError
+from fastapi.exception_handlers import request_validation_exception_handler
+from fastapi.exceptions import HTTPException as FastAPIHTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import inspect, text
+from starlette.middleware.httpsredirect import HTTPSRedirectMiddleware
+from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from app.api.v1.api import api_router
 from app.core.auth_exceptions import AuthException, auth_error_payload
 from app.core.auth_middleware import AuthSessionMiddleware
 from app.core.config import settings
 from app.core.database import Base, engine
+from app.core.middleware import (
+    RateLimitMiddleware,
+    RequestContextMiddleware,
+    RequestSizeLimitMiddleware,
+    SecurityHeadersMiddleware,
+)
 from app.models import *  # noqa: F401,F403
+
+
+def _configure_logging() -> None:
+    logging.basicConfig(
+        level=getattr(logging, settings.log_level, logging.INFO),
+        format='%(asctime)s %(levelname)s %(name)s %(message)s',
+    )
+
+
+_configure_logging()
+logger = logging.getLogger('scanmybill.api')
 
 app = FastAPI(
     title=settings.app_name,
     version='1.0.0',
-    docs_url='/docs',
-    redoc_url='/redoc',
+    docs_url='/docs' if settings.docs_enabled else None,
+    redoc_url='/redoc' if settings.docs_enabled else None,
 )
+
+
+def _path_is_within(parent: Path, child: Path) -> bool:
+    try:
+        child.resolve().relative_to(parent.resolve())
+    except ValueError:
+        return False
+    return True
+
+
+def _validate_security_configuration() -> None:
+    issues: list[str] = []
+
+    if settings.is_production:
+        if settings.secret_key == 'change-this-in-production' or len(settings.secret_key) < 32:
+            issues.append('SECRET_KEY must be at least 32 chars and non-default.')
+        if not settings.cookie_secure:
+            issues.append('COOKIE_SECURE must be true in production.')
+        if settings.expose_password_reset_token:
+            issues.append('EXPOSE_PASSWORD_RESET_TOKEN must be false in production.')
+        if '*' in settings.cors_origins:
+            issues.append("CORS_ORIGINS cannot include '*' in production.")
+
+    if issues:
+        raise RuntimeError('Security configuration error(s): ' + ' '.join(issues))
+
+
+def _resolved_uploads_path() -> Path:
+    backend_root = Path(__file__).resolve().parents[1]
+    configured = Path(settings.uploads_dir)
+    candidate = configured if configured.is_absolute() else backend_root / configured
+    resolved = candidate.resolve()
+    if not _path_is_within(backend_root, resolved):
+        raise RuntimeError('UPLOADS_DIR must be inside the backend directory.')
+    return resolved
+
+
+if settings.trusted_hosts:
+    app.add_middleware(TrustedHostMiddleware, allowed_hosts=list(settings.trusted_hosts))
+
+if settings.enforce_https:
+    app.add_middleware(HTTPSRedirectMiddleware)
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins,
-    allow_credentials=True,
+    allow_credentials='*' not in settings.cors_origins,
     allow_methods=['*'],
     allow_headers=['*'],
     expose_headers=['X-Access-Token', 'X-Token-Refreshed'],
 )
+app.add_middleware(RequestContextMiddleware)
+app.add_middleware(RequestSizeLimitMiddleware)
+app.add_middleware(RateLimitMiddleware)
+app.add_middleware(SecurityHeadersMiddleware)
 app.add_middleware(AuthSessionMiddleware)
 
 app.include_router(api_router, prefix=settings.api_v1_prefix)
@@ -40,6 +108,52 @@ async def auth_exception_handler(_: Request, exc: AuthException) -> JSONResponse
         status_code=exc.status_code,
         content=auth_error_payload(message=exc.message, error_code=exc.error_code),
         headers=exc.headers,
+    )
+
+
+@app.exception_handler(FastAPIHTTPException)
+async def http_exception_handler(request: Request, exc: FastAPIHTTPException) -> JSONResponse:
+    request_id = getattr(request.state, 'request_id', None)
+    headers = dict(exc.headers or {})
+    if request_id:
+        headers['X-Request-ID'] = request_id
+
+    detail = exc.detail
+    if isinstance(detail, dict):
+        payload = detail
+    else:
+        payload = {'detail': detail}
+    return JSONResponse(status_code=exc.status_code, content=payload, headers=headers)
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError) -> JSONResponse:
+    request_id = getattr(request.state, 'request_id', 'n/a')
+    logger.warning(
+        'Validation failed request_id=%s path=%s errors=%s',
+        request_id,
+        request.url.path,
+        exc.errors(),
+    )
+    response = await request_validation_exception_handler(request, exc)
+    if request_id:
+        response.headers['X-Request-ID'] = request_id
+    return response
+
+
+@app.exception_handler(Exception)
+async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONResponse:
+    request_id = getattr(request.state, 'request_id', 'n/a')
+    logger.exception(
+        'Unhandled exception request_id=%s method=%s path=%s',
+        request_id,
+        request.method,
+        request.url.path,
+    )
+    return JSONResponse(
+        status_code=500,
+        content={'detail': 'Internal server error'},
+        headers={'X-Request-ID': request_id} if request_id != 'n/a' else None,
     )
 
 
@@ -100,7 +214,7 @@ def _ensure_clients_columns() -> None:
 
 def _ensure_invoice_item_columns() -> None:
     expected_columns: dict[str, str] = {
-        'hsn_sac': 'VARCHAR(8)',
+        'hsn_sac': 'VARCHAR(15)',
     }
 
     inspector = inspect(engine)
@@ -147,6 +261,7 @@ def _ensure_invoice_columns() -> None:
 
 @app.on_event('startup')
 def on_startup() -> None:
+    _validate_security_configuration()
     Base.metadata.create_all(bind=engine)
     _ensure_personal_details_columns()
     _ensure_clients_columns()
@@ -159,6 +274,7 @@ def health() -> dict:
     return {'status': 'ok'}
 
 
-uploads_path = Path(settings.uploads_dir)
+uploads_path = _resolved_uploads_path()
 uploads_path.mkdir(parents=True, exist_ok=True)
-app.mount('/uploads', StaticFiles(directory=str(uploads_path)), name='uploads')
+if settings.serve_public_uploads:
+    app.mount('/uploads', StaticFiles(directory=str(uploads_path)), name='uploads')
