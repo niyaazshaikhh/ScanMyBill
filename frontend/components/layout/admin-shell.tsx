@@ -2,15 +2,21 @@
 
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { BarChart3, Bell, FileText, LayoutDashboard, Menu, PlusCircle, Settings, UserCircle2, Users, X } from 'lucide-react';
+import { BarChart3, Bell, FileText, LayoutDashboard, Lock, Menu, PlusCircle, Settings, UserCircle2, Users, X } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 
-import { SubscriptionBadge, type SubscriptionPlan } from '@/components/SubscriptionBadge';
+import { SubscriptionBadge } from '@/components/SubscriptionBadge';
 import { Button } from '@/components/ui/button';
 import { apiRequest } from '@/lib/api';
 import { Input } from '@/components/ui/input';
-import { clearAuthSession, getAuthToken, getAuthUser } from '@/lib/auth';
+import { clearAuthSession, getAuthToken, getAuthUser, updateAuthUser } from '@/lib/auth';
 import { useAuthGuard } from '@/hooks/useAuthGuard';
+import {
+  canAccessAppPath,
+  resolveEffectiveSubscriptionPlan,
+  type SubscriptionPlan,
+  type SubscriptionStatus,
+} from '@/lib/subscription-access';
 import { cn } from '@/lib/utils';
 
 const nav = [
@@ -30,6 +36,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
   const [loggingOut, setLoggingOut] = useState(false);
   const [displayName, setDisplayName] = useState('User');
   const [subscriptionPlan, setSubscriptionPlan] = useState<SubscriptionPlan>('FREE');
+  const [subscriptionStatus, setSubscriptionStatus] = useState<SubscriptionStatus>('EXPIRED');
 
   useAuthGuard();
 
@@ -39,9 +46,12 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
     const syncUser = async () => {
       const user = getAuthUser();
       setDisplayName(user?.full_name || user?.email || 'User');
+      setSubscriptionPlan(user?.subscription_plan || 'FREE');
+      setSubscriptionStatus(user?.subscription_status || 'EXPIRED');
 
       if (!getAuthToken()) {
         setSubscriptionPlan('FREE');
+        setSubscriptionStatus('EXPIRED');
         return;
       }
 
@@ -57,9 +67,15 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
 
         setDisplayName(profile.full_name || profile.email || 'User');
         setSubscriptionPlan(profile.subscription_plan || 'FREE');
+        setSubscriptionStatus(profile.subscription_status || 'EXPIRED');
+        updateAuthUser({
+          full_name: profile.full_name,
+          email: profile.email,
+          subscription_plan: profile.subscription_plan,
+          subscription_status: profile.subscription_status,
+        });
       } catch {
         if (!active) return;
-        setSubscriptionPlan('FREE');
       }
     };
 
@@ -74,6 +90,11 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
       window.removeEventListener('storage', onStorage);
     };
   }, []);
+
+  const effectivePlan = useMemo(
+    () => resolveEffectiveSubscriptionPlan(subscriptionPlan, subscriptionStatus),
+    [subscriptionPlan, subscriptionStatus]
+  );
 
   const title = useMemo(() => {
     return nav.find((item) => pathname.startsWith(item.href))?.label || 'Dashboard';
@@ -131,6 +152,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
           {nav.map((item) => {
             const Icon = item.icon;
             const active = pathname.startsWith(item.href);
+            const isLocked = !canAccessAppPath(item.href, effectivePlan);
             return (
               <Link
                 key={item.href}
@@ -138,12 +160,21 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
                 className={cn(
                   'flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition hover:bg-muted',
                   active && 'bg-secondary text-secondary-foreground',
+                  isLocked && 'cursor-not-allowed opacity-60 hover:bg-transparent',
                   collapsed && 'lg:justify-center'
                 )}
-                onClick={() => setOpen(false)}
+                aria-disabled={isLocked}
+                onClick={(event) => {
+                  if (isLocked) {
+                    event.preventDefault();
+                    return;
+                  }
+                  setOpen(false);
+                }}
               >
                 <Icon className='h-4 w-4 shrink-0' />
                 <span className={cn(collapsed && 'lg:hidden')}>{item.label}</span>
+                {isLocked ? <Lock className='h-3.5 w-3.5 shrink-0 text-muted-foreground' /> : null}
               </Link>
             );
           })}
@@ -160,7 +191,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
             <UserCircle2 className='h-4 w-4 shrink-0 text-muted-foreground' />
             <div className={cn('flex min-w-0 items-center gap-2', collapsed && 'lg:hidden')}>
               <span className='truncate font-medium'>{displayName}</span>
-              <SubscriptionBadge plan={subscriptionPlan} />
+              <SubscriptionBadge plan={effectivePlan} />
             </div>
           </div>
           <Button onClick={logout} disabled={loggingOut} variant='outline' className={cn('w-full', collapsed && 'lg:px-0')}>

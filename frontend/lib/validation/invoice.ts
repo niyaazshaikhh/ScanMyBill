@@ -21,6 +21,25 @@ export function buildDefaultInvoiceNumber(dateValue: string): string {
   return `${formatFinancialYearInvoicePrefix(dateValue)}/001`;
 }
 
+export function buildIncrementedInvoiceNumber(
+  dateValue: string,
+  latestInvoiceNumber?: string | null,
+): string {
+  const prefix = formatFinancialYearInvoicePrefix(dateValue);
+  const candidate = (latestInvoiceNumber || '').trim();
+  if (!INVOICE_NUMBER_PATTERN.test(candidate)) {
+    return `${prefix}/001`;
+  }
+
+  const previousSerial = Number(candidate.slice(8));
+  if (!Number.isFinite(previousSerial) || previousSerial <= 0 || previousSerial > 999) {
+    return `${prefix}/001`;
+  }
+
+  const nextSerial = previousSerial >= 999 ? 1 : previousSerial + 1;
+  return `${prefix}/${String(nextSerial).padStart(3, '0')}`;
+}
+
 export function sanitizeInvoiceNumberInput(value: string): string {
   return value.toUpperCase().replace(/[^0-9/-]/g, '').slice(0, 11);
 }

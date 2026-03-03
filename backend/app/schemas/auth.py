@@ -12,6 +12,9 @@ class UserPublic(BaseModel):
     role: UserRole
     subscription_plan: SubscriptionPlan
     subscription_status: SubscriptionStatus
+    razorpay_subscription_id: str | None = None
+    subscription_started_at: datetime | None = None
+    subscription_expires_at: datetime | None = None
     created_at: datetime
 
     model_config = {'from_attributes': True}

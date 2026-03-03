@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from pydantic import BaseModel
 
 
@@ -19,6 +21,13 @@ class SubscriptionResponse(BaseModel):
     subscription_id: str
     status: str
     short_url: str | None = None
+
+
+class SubscriptionCancelResponse(BaseModel):
+    cancelled: bool
+    subscription_id: str | None = None
+    status: str
+    expires_at: datetime | None = None
 
 
 class CreateSubscriptionRequest(BaseModel):

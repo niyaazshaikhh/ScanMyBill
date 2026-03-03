@@ -1,5 +1,14 @@
+import {
+  normalizeSubscriptionStatus,
+  resolveEffectiveSubscriptionPlan,
+} from '@/lib/subscription-access';
+
 const TOKEN_KEY = 'scanmybill_token';
 const USER_KEY = 'scanmybill_user';
+const TOKEN_COOKIE_KEY = 'token';
+const SUBSCRIPTION_PLAN_COOKIE_KEY = 'subscription_plan';
+const SUBSCRIPTION_STATUS_COOKIE_KEY = 'subscription_status';
+const AUTH_COOKIE_MAX_AGE_SECONDS = 604800;
 
 export type AuthUser = {
   id: string;
@@ -8,13 +17,32 @@ export type AuthUser = {
   role: 'admin' | 'user';
   subscription_plan?: 'FREE' | 'STANDARD' | 'PRO' | 'BUSINESS';
   subscription_status?: 'ACTIVE' | 'CANCELLED' | 'EXPIRED';
+  razorpay_subscription_id?: string | null;
+  subscription_started_at?: string | null;
+  subscription_expires_at?: string | null;
 };
+
+function setCookie(name: string, value: string, maxAgeSeconds = AUTH_COOKIE_MAX_AGE_SECONDS) {
+  document.cookie = `${name}=${encodeURIComponent(value)}; path=/; max-age=${maxAgeSeconds}; SameSite=Lax`;
+}
+
+function clearCookie(name: string) {
+  document.cookie = `${name}=; path=/; max-age=0; SameSite=Lax`;
+}
+
+function syncSubscriptionCookies(user: Pick<AuthUser, 'subscription_plan' | 'subscription_status'> | null) {
+  const effectivePlan = resolveEffectiveSubscriptionPlan(user?.subscription_plan, user?.subscription_status);
+  const normalizedStatus = normalizeSubscriptionStatus(user?.subscription_status);
+  setCookie(SUBSCRIPTION_PLAN_COOKIE_KEY, effectivePlan);
+  setCookie(SUBSCRIPTION_STATUS_COOKIE_KEY, normalizedStatus);
+}
 
 export function setAuthSession(token: string, user: AuthUser) {
   if (typeof window === 'undefined') return;
   localStorage.setItem(TOKEN_KEY, token);
   localStorage.setItem(USER_KEY, JSON.stringify(user));
-  document.cookie = `token=${token}; path=/; max-age=604800; SameSite=Lax`;
+  setCookie(TOKEN_COOKIE_KEY, token);
+  syncSubscriptionCookies(user);
 }
 
 export function getAuthToken(): string | null {
@@ -68,11 +96,23 @@ export function getAuthUser(): AuthUser | null {
   }
 }
 
+export function updateAuthUser(updates: Partial<AuthUser>) {
+  if (typeof window === 'undefined') return;
+  const current = getAuthUser();
+  if (!current) return;
+
+  const merged: AuthUser = { ...current, ...updates };
+  localStorage.setItem(USER_KEY, JSON.stringify(merged));
+  syncSubscriptionCookies(merged);
+}
+
 export function clearAuthSession() {
   if (typeof window === 'undefined') return;
   localStorage.removeItem(TOKEN_KEY);
   localStorage.removeItem(USER_KEY);
-  document.cookie = 'token=; path=/; max-age=0; SameSite=Lax';
+  clearCookie(TOKEN_COOKIE_KEY);
+  clearCookie(SUBSCRIPTION_PLAN_COOKIE_KEY);
+  clearCookie(SUBSCRIPTION_STATUS_COOKIE_KEY);
 }
 
 export function logoutToLanding() {

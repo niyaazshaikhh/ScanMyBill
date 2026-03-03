@@ -170,3 +170,7 @@ class InvoiceResponse(BaseModel):
 class InvoiceListResponse(BaseModel):
     invoices: list[InvoiceResponse]
     count: int
+
+
+class LatestCreatedInvoiceResponse(BaseModel):
+    invoice_number: str | None = None

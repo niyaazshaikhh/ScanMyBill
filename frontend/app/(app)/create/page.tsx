@@ -2,7 +2,7 @@
 
 import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
 import { useSearchParams } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 export const dynamic = "force-dynamic";
 
@@ -18,6 +18,7 @@ import { formatAccountingAmount } from "@/lib/number-format";
 import { INDIAN_STATES_AND_UTS, getStateCodeByName } from "@/lib/validation/business-details";
 import {
   buildDefaultInvoiceNumber,
+  buildIncrementedInvoiceNumber,
   formatFinancialYearInvoicePrefix,
   sanitizeDecimalInput,
   sanitizeHsnSacInput,
@@ -35,6 +36,10 @@ import {
 type Client = {
   id: string;
   name: string;
+};
+
+type LatestCreatedInvoiceResponse = {
+  invoice_number: string | null;
 };
 
 type LineItemInput = {
@@ -105,6 +110,12 @@ export default function CreateInvoicePage() {
   const [items, setItems] = useState<LineItemInput[]>([{ ...INITIAL_ITEM }]);
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+  const invoiceNumberManuallyEditedRef = useRef(false);
+  const invoiceDateRef = useRef(invoiceDate);
+
+  useEffect(() => {
+    invoiceDateRef.current = invoiceDate;
+  }, [invoiceDate]);
 
   useEffect(() => {
     apiRequest<Client[]>("/clients")
@@ -119,6 +130,29 @@ export default function CreateInvoicePage() {
       })
       .catch(() => setClients([]));
   }, [requestedClientId]);
+
+  useEffect(() => {
+    let active = true;
+
+    apiRequest<LatestCreatedInvoiceResponse>("/invoices/latest-created")
+      .then((data) => {
+        if (!active || invoiceNumberManuallyEditedRef.current) return;
+        setInvoiceNumber(
+          buildIncrementedInvoiceNumber(
+            invoiceDateRef.current,
+            data.invoice_number,
+          ),
+        );
+      })
+      .catch(() => {
+        if (!active || invoiceNumberManuallyEditedRef.current) return;
+        setInvoiceNumber(buildDefaultInvoiceNumber(invoiceDateRef.current));
+      });
+
+    return () => {
+      active = false;
+    };
+  }, []);
 
   const computedLines = useMemo(
     () => items.map((item) => computeLine(item)),
@@ -400,11 +434,12 @@ export default function CreateInvoicePage() {
               <Label>Invoice Number</Label>
               <Input
                 value={invoiceNumber}
-                onChange={(event) =>
+                onChange={(event) => {
+                  invoiceNumberManuallyEditedRef.current = true;
                   setInvoiceNumber(
                     sanitizeInvoiceNumberInput(event.target.value),
-                  )
-                }
+                  );
+                }}
                 placeholder="YYYY-YY/NNN"
                 maxLength={11}
               />

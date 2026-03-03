@@ -17,7 +17,12 @@ from app.models.bill_upload import BillUpload
 from app.models.client import Client
 from app.models.invoice import Invoice, InvoiceItem, InvoiceSource, InvoiceType
 from app.models.user import User
-from app.schemas.invoice import InvoiceCreate, InvoiceListResponse, InvoiceResponse
+from app.schemas.invoice import (
+    InvoiceCreate,
+    InvoiceListResponse,
+    InvoiceResponse,
+    LatestCreatedInvoiceResponse,
+)
 from app.services.pdf_service import build_folder_export_pdf, build_invoice_pdf
 from app.utils.period import matches_bucket, valid_period
 
@@ -119,6 +124,22 @@ def list_invoices(
 
     serialized = [_invoice_to_response(invoice) for invoice in invoices]
     return InvoiceListResponse(invoices=serialized, count=len(serialized))
+
+
+@router.get('/latest-created', response_model=LatestCreatedInvoiceResponse)
+def latest_created_invoice(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> LatestCreatedInvoiceResponse:
+    latest = db.scalar(
+        select(Invoice)
+        .where(Invoice.owner_id == current_user.id, Invoice.source == InvoiceSource.CREATED)
+        .order_by(Invoice.created_at.desc(), Invoice.invoice_date.desc())
+        .limit(1)
+    )
+    if not latest:
+        return LatestCreatedInvoiceResponse(invoice_number=None)
+    return LatestCreatedInvoiceResponse(invoice_number=latest.invoice_number)
 
 
 @router.post('/create', response_model=InvoiceResponse, status_code=status.HTTP_201_CREATED)

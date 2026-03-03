@@ -49,12 +49,20 @@ type RazorpayCheckoutButtonProps = {
   className?: string;
   showPlanSelector?: boolean;
   defaultPlanId?: string;
+  buttonLabel?: string;
+  successRedirectPath?: string | null;
+  onSuccess?: () => void | Promise<void>;
+  disabled?: boolean;
 };
 
 export function RazorpayCheckoutButton({
   className,
   showPlanSelector = false,
-  defaultPlanId
+  defaultPlanId,
+  buttonLabel = 'Start Secure Checkout',
+  successRedirectPath = '/dashboard',
+  onSuccess,
+  disabled = false,
 }: RazorpayCheckoutButtonProps) {
   const [loading, setLoading] = useState(false);
   const [plans, setPlans] = useState<RazorpayPlanOption[]>([]);
@@ -142,7 +150,14 @@ export function RazorpayCheckoutButton({
             if (!verification.verified) {
               throw new Error('Payment verification failed.');
             }
-            window.location.href = '/dashboard';
+            if (onSuccess) {
+              await onSuccess();
+            }
+            if (successRedirectPath) {
+              window.location.href = successRedirectPath;
+              return;
+            }
+            setLoading(false);
           } catch (error) {
             const message = error instanceof Error ? error.message : 'Unable to verify payment';
             alert(message);
@@ -186,8 +201,12 @@ export function RazorpayCheckoutButton({
         </>
       ) : null}
 
-      <Button onClick={launch} className={className} disabled={loading || (showPlanSelector && !selectedPlanId)}>
-        {loading ? 'Launching Checkout...' : 'Start Secure Checkout'}
+      <Button
+        onClick={launch}
+        className={className}
+        disabled={disabled || loading || (showPlanSelector && !selectedPlanId)}
+      >
+        {loading ? 'Launching Checkout...' : buttonLabel}
       </Button>
     </div>
   );

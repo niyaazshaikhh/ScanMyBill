@@ -19,6 +19,7 @@ from app.schemas.payment import (
     PaymentVerifyRequest,
     RazorpayConfigResponse,
     RazorpayPlanOption,
+    SubscriptionCancelResponse,
     SubscriptionResponse,
 )
 
@@ -274,6 +275,59 @@ def create_subscription(
         subscription_id=subscription_id,
         status=subscription.get('status', 'created'),
         short_url=subscription.get('short_url'),
+    )
+
+
+@router.post('/subscriptions/cancel', response_model=SubscriptionCancelResponse)
+def cancel_subscription(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> SubscriptionCancelResponse:
+    subscription_id = current_user.razorpay_subscription_id
+    if not subscription_id:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='No active subscription found.')
+
+    cancel_payload: dict[str, Any] = {}
+    if settings.razorpay_key_id and settings.razorpay_key_secret:
+        client = razorpay.Client(auth=(settings.razorpay_key_id, settings.razorpay_key_secret))
+        try:
+            try:
+                cancelled = client.subscription.cancel(
+                    subscription_id,
+                    {'cancel_at_cycle_end': 0},
+                )
+            except TypeError:
+                cancelled = client.subscription.cancel(subscription_id)
+        except Exception as exc:
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail='Failed to cancel subscription with Razorpay.',
+            ) from exc
+
+        if isinstance(cancelled, dict):
+            cancel_payload = cancelled
+
+    expires_at = _to_utc_datetime(
+        cancel_payload.get('current_end') or cancel_payload.get('ended_at') or cancel_payload.get('charge_at')
+    )
+    _cancel_subscription(current_user, expires_at=expires_at)
+
+    db.add(
+        PaymentEvent(
+            owner_id=current_user.id,
+            provider='razorpay',
+            provider_payment_id=subscription_id,
+            status='subscription.cancelled',
+            payload=json.dumps({'subscription': cancel_payload or None}),
+        )
+    )
+    db.commit()
+
+    return SubscriptionCancelResponse(
+        cancelled=True,
+        subscription_id=subscription_id,
+        status=current_user.subscription_status.value,
+        expires_at=current_user.subscription_expires_at,
     )
 
 
