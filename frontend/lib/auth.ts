@@ -5,6 +5,7 @@ import {
 
 const TOKEN_KEY = 'scanmybill_token';
 const USER_KEY = 'scanmybill_user';
+const IDLE_ACTIVITY_KEY = 'scanmybill_last_activity_at';
 const TOKEN_COOKIE_KEY = 'token';
 const SUBSCRIPTION_PLAN_COOKIE_KEY = 'subscription_plan';
 const SUBSCRIPTION_STATUS_COOKIE_KEY = 'subscription_status';
@@ -41,6 +42,7 @@ export function setAuthSession(token: string, user: AuthUser) {
   if (typeof window === 'undefined') return;
   localStorage.setItem(TOKEN_KEY, token);
   localStorage.setItem(USER_KEY, JSON.stringify(user));
+  localStorage.setItem(IDLE_ACTIVITY_KEY, String(Date.now()));
   setCookie(TOKEN_COOKIE_KEY, token);
   syncSubscriptionCookies(user);
 }
@@ -110,6 +112,7 @@ export function clearAuthSession() {
   if (typeof window === 'undefined') return;
   localStorage.removeItem(TOKEN_KEY);
   localStorage.removeItem(USER_KEY);
+  localStorage.removeItem(IDLE_ACTIVITY_KEY);
   clearCookie(TOKEN_COOKIE_KEY);
   clearCookie(SUBSCRIPTION_PLAN_COOKIE_KEY);
   clearCookie(SUBSCRIPTION_STATUS_COOKIE_KEY);

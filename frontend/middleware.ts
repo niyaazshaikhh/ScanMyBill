@@ -84,6 +84,7 @@ export const config = {
     '/client-analytics/:path*',
     '/clients/:path*',
     '/create/:path*',
+    '/hsn-sac-master-list/:path*',
     '/settings/:path*',
     '/upload/:path*',
     '/bills/:path*',

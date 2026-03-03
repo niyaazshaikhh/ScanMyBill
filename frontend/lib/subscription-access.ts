@@ -7,6 +7,7 @@ export const APP_PROTECTED_ROUTE_PREFIXES = [
   '/client-analytics',
   '/clients',
   '/create',
+  '/hsn-sac-master-list',
   '/settings',
   '/upload',
   '/bills',

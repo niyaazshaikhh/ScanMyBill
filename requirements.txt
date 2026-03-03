@@ -1,0 +1,3 @@
+# Install all Python requirements from repository root.
+-r backend/requirements.txt
+-r frontend/requirements.txt

@@ -49,8 +49,6 @@ const STATE_CODE_BY_NAME = new Map(
 const COMPANY_NAME_PATTERN = /^[A-Za-z0-9 ]+$/;
 const GSTIN_PATTERN = /^[A-Z0-9]{15}$/;
 const STATE_CODE_PATTERN = /^\d{2}$/;
-const BANK_NAME_PATTERN = /^[A-Za-z ]+$/;
-const BRANCH_PATTERN = /^[A-Za-z0-9 ]+$/;
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const ACCOUNT_NUMBER_PATTERN = /^\d{6,34}$/;
 const IFSC_PATTERN = /^[A-Z0-9]{11}$/;
@@ -76,11 +74,11 @@ export function sanitizeStateCodeInput(value: string): string {
 }
 
 export function sanitizeBankNameInput(value: string): string {
-  return value.replace(/[^A-Za-z ]/g, '').slice(0, 15);
+  return value.slice(0, 15);
 }
 
 export function sanitizeBranchInput(value: string): string {
-  return value.replace(/[^A-Za-z0-9 ]/g, '').slice(0, 15);
+  return value.slice(0, 15);
 }
 
 export function sanitizeAccountNumberInput(value: string): string {
@@ -179,7 +177,7 @@ export function validateEmail(value: string): string | null {
 export function validateBankName(value: string): string | null {
   const trimmed = value.trim();
   if (!trimmed) return 'Bank Name is required.';
-  if (!BANK_NAME_PATTERN.test(trimmed)) return 'Bank Name should contain only alphabets.';
+  if (trimmed.length > 15) return 'Bank Name should be up to 15 characters only.';
   return null;
 }
 
@@ -195,9 +193,7 @@ export function validateAccountNumber(value: string): string | null {
 export function validateBranch(value: string): string | null {
   const trimmed = value.trim();
   if (!trimmed) return 'Branch is required.';
-  if (!BRANCH_PATTERN.test(trimmed)) {
-    return 'Branch should contain only letters, numbers, and spaces.';
-  }
+  if (trimmed.length > 15) return 'Branch should be up to 15 characters only.';
   return null;
 }
 

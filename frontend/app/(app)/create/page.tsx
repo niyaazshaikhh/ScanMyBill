@@ -1,6 +1,6 @@
 "use client";
 
-import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
+import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 
@@ -15,13 +15,15 @@ import { Textarea } from "@/components/ui/textarea";
 import { useAuthGuard } from "@/hooks/useAuthGuard";
 import { apiRequest } from "@/lib/api";
 import { formatAccountingAmount } from "@/lib/number-format";
-import { INDIAN_STATES_AND_UTS, getStateCodeByName } from "@/lib/validation/business-details";
+import {
+  INDIAN_STATES_AND_UTS,
+  getStateCodeByName,
+} from "@/lib/validation/business-details";
 import {
   buildDefaultInvoiceNumber,
   buildIncrementedInvoiceNumber,
   formatFinancialYearInvoicePrefix,
   sanitizeDecimalInput,
-  sanitizeHsnSacInput,
   sanitizeInvoiceNumberInput,
   sanitizeItemDescriptionInput,
   toNumber,
@@ -42,12 +44,36 @@ type LatestCreatedInvoiceResponse = {
   invoice_number: string | null;
 };
 
+type HsnSacMasterEntry = {
+  id: string;
+  description: string;
+  hsn_sac_code: string;
+  tax_rate: number;
+  created_at: string;
+};
+
 type LineItemInput = {
   description: string;
   hsn_sac: string;
   quantity: string;
   rate: string;
   tax_rate: string;
+};
+
+type InvoiceCreatePayload = {
+  client_id: string;
+  invoice_number: string;
+  invoice_date: string;
+  place_of_supply: string;
+  place_of_supply_code: string;
+  notes: string | null;
+  items: Array<{
+    description: string;
+    hsn_sac: string;
+    quantity: number;
+    rate: number;
+    tax_rate: number;
+  }>;
 };
 
 type LineItemComputed = {
@@ -63,14 +89,22 @@ const INITIAL_ITEM: LineItemInput = {
   hsn_sac: "",
   quantity: "1",
   rate: "0",
-  tax_rate: "18",
+  tax_rate: "",
 };
 
 const DEFAULT_PLACE_OF_SUPPLY = "Maharashtra";
-const DEFAULT_PLACE_OF_SUPPLY_CODE = getStateCodeByName(DEFAULT_PLACE_OF_SUPPLY) || "27";
+const DEFAULT_PLACE_OF_SUPPLY_CODE =
+  getStateCodeByName(DEFAULT_PLACE_OF_SUPPLY) || "27";
 
 function round2(value: number): number {
   return Math.round(value * 100) / 100;
+}
+
+function formatTaxRateInput(value: number): string {
+  return value
+    .toFixed(2)
+    .replace(/\.00$/, "")
+    .replace(/(\.\d)0$/, "$1");
 }
 
 function computeLine(item: LineItemInput): LineItemComputed {
@@ -97,6 +131,7 @@ export default function CreateInvoicePage() {
   const requestedClientId = searchParams.get("client_id") || "";
 
   const [clients, setClients] = useState<Client[]>([]);
+  const [hsnSacMasters, setHsnSacMasters] = useState<HsnSacMasterEntry[]>([]);
   const [clientId, setClientId] = useState("");
   const [invoiceDate, setInvoiceDate] = useState(
     new Date().toISOString().split("T")[0],
@@ -105,10 +140,13 @@ export default function CreateInvoicePage() {
     buildDefaultInvoiceNumber(new Date().toISOString().split("T")[0]),
   );
   const [placeOfSupply, setPlaceOfSupply] = useState(DEFAULT_PLACE_OF_SUPPLY);
-  const [placeOfSupplyCode, setPlaceOfSupplyCode] = useState(DEFAULT_PLACE_OF_SUPPLY_CODE);
+  const [placeOfSupplyCode, setPlaceOfSupplyCode] = useState(
+    DEFAULT_PLACE_OF_SUPPLY_CODE,
+  );
   const [notes, setNotes] = useState("");
   const [items, setItems] = useState<LineItemInput[]>([{ ...INITIAL_ITEM }]);
   const [saving, setSaving] = useState(false);
+  const [exporting, setExporting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const invoiceNumberManuallyEditedRef = useRef(false);
   const invoiceDateRef = useRef(invoiceDate);
@@ -130,6 +168,23 @@ export default function CreateInvoicePage() {
       })
       .catch(() => setClients([]));
   }, [requestedClientId]);
+
+  useEffect(() => {
+    let active = true;
+    apiRequest<HsnSacMasterEntry[]>("/hsn-sac-master-list")
+      .then((data) => {
+        if (!active) return;
+        setHsnSacMasters(data);
+      })
+      .catch(() => {
+        if (!active) return;
+        setHsnSacMasters([]);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -204,6 +259,25 @@ export default function CreateInvoicePage() {
     setItems((prev) => prev.filter((_, itemIndex) => itemIndex !== index));
   };
 
+  const applyHsnSacMaster = (index: number, hsnSacCode: string) => {
+    const selectedMaster = hsnSacMasters.find(
+      (entry) => entry.hsn_sac_code === hsnSacCode,
+    );
+
+    setItems((prev) =>
+      prev.map((item, itemIndex) => {
+        if (itemIndex !== index) return item;
+        return {
+          ...item,
+          hsn_sac: hsnSacCode,
+          tax_rate: selectedMaster
+            ? formatTaxRateInput(selectedMaster.tax_rate)
+            : "",
+        };
+      }),
+    );
+  };
+
   const validateLine = (item: LineItemInput, index: number): string | null => {
     const descriptionError = validateItemDescription(item.description);
     if (descriptionError) return `Row ${index + 1}: ${descriptionError}`;
@@ -241,6 +315,22 @@ export default function CreateInvoicePage() {
     return null;
   };
 
+  const buildInvoicePayload = (): InvoiceCreatePayload => ({
+    client_id: clientId,
+    invoice_number: invoiceNumber.trim(),
+    invoice_date: invoiceDate,
+    place_of_supply: placeOfSupply,
+    place_of_supply_code: placeOfSupplyCode,
+    notes: notes.trim() || null,
+    items: items.map((item) => ({
+      description: item.description.trim(),
+      hsn_sac: item.hsn_sac.trim(),
+      quantity: toNumber(item.quantity),
+      rate: toNumber(item.rate),
+      tax_rate: toNumber(item.tax_rate),
+    })),
+  });
+
   const exportPdf = async () => {
     const validationError = validateForm();
     if (validationError) {
@@ -248,119 +338,26 @@ export default function CreateInvoicePage() {
       return;
     }
 
-    const pdf = await PDFDocument.create();
-    const page = pdf.addPage([595, 842]);
-    const font = await pdf.embedFont(StandardFonts.Helvetica);
+    setExporting(true);
+    setFormError(null);
+    try {
+      const blob = await apiRequest<Blob>("/invoices/create/pdf", {
+        method: "POST",
+        body: buildInvoicePayload(),
+        responseType: "blob",
+      });
 
-    let y = 800;
-
-    page.drawText("ScanMyBill.in Invoice Preview", {
-      x: 40,
-      y,
-      size: 20,
-      font,
-      color: rgb(0.2, 0.2, 0.2),
-    });
-
-    y -= 32;
-    page.drawText(`Invoice Number: ${invoiceNumber}`, {
-      x: 40,
-      y,
-      size: 11,
-      font,
-    });
-    y -= 18;
-    page.drawText(`Invoice Date: ${invoiceDate}`, { x: 40, y, size: 11, font });
-    y -= 18;
-    page.drawText(
-      `Client: ${clients.find((client) => client.id === clientId)?.name || "N/A"}`,
-      {
-        x: 40,
-        y,
-        size: 11,
-        font,
-      },
-    );
-    y -= 18;
-    page.drawText(`Place of Supply: ${placeOfSupply} (${placeOfSupplyCode})`, {
-      x: 40,
-      y,
-      size: 11,
-      font,
-    });
-
-    y -= 26;
-    page.drawText("Items", { x: 40, y, size: 12, font });
-    y -= 16;
-
-    items.forEach((item, index) => {
-      const line = computeLine(item);
-      page.drawText(
-        `${index + 1}. ${item.description} | HSN/SAC ${item.hsn_sac} | Qty ${item.quantity} | Rate ${Number(
-          item.rate || 0,
-        ).toFixed(
-          2,
-        )} | Tax ${Number(item.tax_rate || 0).toFixed(2)}% | Total ${line.grandTotal.toFixed(2)}`,
-        { x: 40, y, size: 9, font },
-      );
-      y -= 14;
-    });
-
-    y -= 10;
-    page.drawText(
-      `Amount (Before Tax): Rs ${formatAccountingAmount(totals.amountBeforeTax)}`,
-      { x: 40, y, size: 11, font },
-    );
-    y -= 16;
-    page.drawText(`CGST: Rs ${formatAccountingAmount(totals.cgst)}`, {
-      x: 40,
-      y,
-      size: 11,
-      font,
-    });
-    y -= 16;
-    page.drawText(
-      `SGST/UTGST: Rs ${formatAccountingAmount(totals.sgstUtgst)}`,
-      {
-        x: 40,
-        y,
-        size: 11,
-        font,
-      },
-    );
-    y -= 16;
-    page.drawText(
-      `Total Tax Amount: Rs ${formatAccountingAmount(totals.totalTaxAmount)}`,
-      {
-        x: 40,
-        y,
-        size: 11,
-        font,
-      },
-    );
-    y -= 16;
-    page.drawText(
-      `Grand Total: Rs ${formatAccountingAmount(totals.grandTotal)}`,
-      {
-        x: 40,
-        y,
-        size: 12,
-        font,
-      },
-    );
-
-    const bytes = await pdf.save();
-    const arrayBuffer = bytes.buffer.slice(
-      bytes.byteOffset,
-      bytes.byteOffset + bytes.byteLength,
-    ) as ArrayBuffer;
-    const blob = new Blob([arrayBuffer], { type: "application/pdf" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = `${invoiceNumber}.pdf`;
-    link.click();
-    URL.revokeObjectURL(url);
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `${invoiceNumber}.pdf`;
+      link.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      setFormError(err instanceof Error ? err.message : "PDF export failed");
+    } finally {
+      setExporting(false);
+    }
   };
 
   const uploadInvoice = async () => {
@@ -375,21 +372,7 @@ export default function CreateInvoicePage() {
     try {
       await apiRequest("/invoices/create", {
         method: "POST",
-        body: {
-          client_id: clientId,
-          invoice_number: invoiceNumber.trim(),
-          invoice_date: invoiceDate,
-          place_of_supply: placeOfSupply,
-          place_of_supply_code: placeOfSupplyCode,
-          notes: notes.trim() || null,
-          items: items.map((item) => ({
-            description: item.description.trim(),
-            hsn_sac: item.hsn_sac.trim(),
-            quantity: toNumber(item.quantity),
-            rate: toNumber(item.rate),
-            tax_rate: toNumber(item.tax_rate),
-          })),
-        },
+        body: buildInvoicePayload(),
       });
       alert("Invoice uploaded successfully.");
     } catch (err) {
@@ -401,13 +384,18 @@ export default function CreateInvoicePage() {
 
   return (
     <div className="space-y-5">
-      <div>
-        <h2 className="font-[var(--font-space)] text-2xl font-semibold">
-          Create Invoice
-        </h2>
-        <p className="text-sm text-muted-foreground">
-          Create sales invoices with automatic tax split calculations.
-        </p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h2 className="font-[var(--font-space)] text-2xl font-semibold">
+            Create Invoice
+          </h2>
+          <p className="text-sm text-muted-foreground">
+            Create sales invoices with automatic tax split calculations.
+          </p>
+        </div>
+        <Button asChild variant="outline">
+          <Link href="/hsn-sac-master-list">HSN Master List</Link>
+        </Button>
       </div>
 
       <Card className="bg-white/85">
@@ -493,6 +481,15 @@ export default function CreateInvoicePage() {
                 + Add Item
               </Button>
             </div>
+            {hsnSacMasters.length === 0 ? (
+              <p className="text-xs text-muted-foreground">
+                Add HSN/SAC entries in{" "}
+                <Link className="underline" href="/hsn-sac-master-list">
+                  Master List
+                </Link>{" "}
+                to use the dropdown.
+              </p>
+            ) : null}
 
             <div className="space-y-3">
               <div className="hidden gap-2 px-1 text-xs font-medium text-muted-foreground md:grid md:grid-cols-12">
@@ -521,19 +518,20 @@ export default function CreateInvoicePage() {
                       }
                       maxLength={20}
                     />
-                    <Input
+                    <Select
                       className="md:col-span-2"
-                      placeholder="HSN/SAC (8 digits)"
                       value={item.hsn_sac}
                       onChange={(event) =>
-                        updateItem(
-                          index,
-                          "hsn_sac",
-                          sanitizeHsnSacInput(event.target.value),
-                        )
+                        applyHsnSacMaster(index, event.target.value)
                       }
-                      maxLength={8}
-                    />
+                    >
+                      <option value="">Select HSN/SAC</option>
+                      {hsnSacMasters.map((entry) => (
+                        <option key={entry.id} value={entry.hsn_sac_code}>
+                          {`${entry.description}-${entry.hsn_sac_code} - ${formatTaxRateInput(entry.tax_rate)}%`}
+                        </option>
+                      ))}
+                    </Select>
                     <Input
                       className="md:col-span-2"
                       placeholder="Quantity"
@@ -560,15 +558,9 @@ export default function CreateInvoicePage() {
                     />
                     <Input
                       className="md:col-span-2"
-                      placeholder="Tax Rate % (2 decimals)"
+                      placeholder="0.00%"
                       value={item.tax_rate}
-                      onChange={(event) =>
-                        updateItem(
-                          index,
-                          "tax_rate",
-                          sanitizeDecimalInput(event.target.value),
-                        )
-                      }
+                      readOnly
                     />
                     <Button
                       variant="destructive"
@@ -636,10 +628,14 @@ export default function CreateInvoicePage() {
           ) : null}
 
           <div className="flex flex-col gap-3 sm:flex-row">
-            <Button onClick={exportPdf} variant="outline">
-              Export (PDF)
+            <Button
+              onClick={exportPdf}
+              variant="outline"
+              disabled={saving || exporting}
+            >
+              {exporting ? "Exporting..." : "Export (PDF)"}
             </Button>
-            <Button onClick={uploadInvoice} disabled={saving}>
+            <Button onClick={uploadInvoice} disabled={saving || exporting}>
               {saving ? "Uploading..." : "Upload (Save in DB)"}
             </Button>
           </div>

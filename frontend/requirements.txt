@@ -1,0 +1,2 @@
+# Frontend is a Next.js/Node.js service.
+# Python dependencies are intentionally empty for this directory.
