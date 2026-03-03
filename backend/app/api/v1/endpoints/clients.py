@@ -6,6 +6,7 @@ from app.core.database import get_db
 from app.core.deps import get_current_user
 from app.models.client import Client
 from app.models.invoice import Invoice, InvoiceType
+from app.models.non_gst_challan import NonGSTChallan
 from app.models.user import User
 from app.schemas.client import ClientAnalytics, ClientCreate, ClientResponse, ClientUpdate, ClientsOverview
 
@@ -208,6 +209,15 @@ def delete_client(
     ).all()
     for invoice in invoices:
         invoice.client_id = None
+
+    challans = db.scalars(
+        select(NonGSTChallan).where(
+            NonGSTChallan.owner_id == current_user.id,
+            NonGSTChallan.client_id == client.id,
+        )
+    ).all()
+    for challan in challans:
+        challan.client_id = None
 
     db.delete(client)
     db.commit()

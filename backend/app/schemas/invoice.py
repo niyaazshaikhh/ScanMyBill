@@ -9,7 +9,7 @@ from app.schemas.validation_rules import STATE_CODE_BY_NAME, STATE_CODE_PATTERN,
 
 INVOICE_NUMBER_PATTERN = re.compile(r'^\d{4}-\d{2}/\d{3}$')
 DESCRIPTION_PATTERN = re.compile(r'^[A-Za-z0-9 ]+$')
-HSN_SAC_PATTERN = re.compile(r'^\d{4,15}$')
+HSN_SAC_PATTERN = re.compile(r'^\d{4,8}$')
 
 
 def _decimal_places_within(value: float, max_places: int) -> bool:
@@ -24,7 +24,7 @@ class InvoiceItemCreate(BaseModel):
     model_config = ConfigDict(extra='forbid', str_strip_whitespace=True)
 
     description: str = Field(min_length=1, max_length=20)
-    hsn_sac: str = Field(min_length=4, max_length=15)
+    hsn_sac: str = Field(min_length=4, max_length=8)
     quantity: float = Field(gt=0, le=5_000_000)
     rate: float = Field(ge=0)
     tax_rate: float = Field(ge=0, le=99.99)
@@ -44,7 +44,7 @@ class InvoiceItemCreate(BaseModel):
     def validate_hsn_sac(cls, value: str) -> str:
         cleaned = value.strip()
         if not HSN_SAC_PATTERN.fullmatch(cleaned):
-            raise ValueError('HSN/SAC should contain only digits and be 4 to 15 digits.')
+            raise ValueError('HSN/SAC should contain only digits and be 4 to 8 digits.')
         return cleaned
 
     @field_validator('rate')

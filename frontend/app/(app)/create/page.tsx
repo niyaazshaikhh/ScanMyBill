@@ -1,8 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { CalendarDays } from "lucide-react";
 
 export const dynamic = "force-dynamic";
 
@@ -14,7 +15,9 @@ import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { useAuthGuard } from "@/hooks/useAuthGuard";
 import { apiRequest } from "@/lib/api";
+import { formatIsoDateToDisplay, parseDisplayDateToIso, todayIsoDate } from "@/lib/date-format";
 import { formatAccountingAmount } from "@/lib/number-format";
+import { buildBillPdfFilename } from "@/lib/pdf-filename";
 import {
   INDIAN_STATES_AND_UTS,
   getStateCodeByName,
@@ -87,8 +90,8 @@ type LineItemComputed = {
 const INITIAL_ITEM: LineItemInput = {
   description: "",
   hsn_sac: "",
-  quantity: "1",
-  rate: "0",
+  quantity: "",
+  rate: "",
   tax_rate: "",
 };
 
@@ -105,6 +108,10 @@ function formatTaxRateInput(value: number): string {
     .toFixed(2)
     .replace(/\.00$/, "")
     .replace(/(\.\d)0$/, "$1");
+}
+
+function MandatoryMark() {
+  return <span className="text-destructive">*</span>;
 }
 
 function computeLine(item: LineItemInput): LineItemComputed {
@@ -127,17 +134,20 @@ function computeLine(item: LineItemInput): LineItemComputed {
 
 export default function CreateInvoicePage() {
   useAuthGuard();
+  const router = useRouter();
   const searchParams = useSearchParams();
   const requestedClientId = searchParams.get("client_id") || "";
+  const initialInvoiceDateIso = todayIsoDate();
 
   const [clients, setClients] = useState<Client[]>([]);
   const [hsnSacMasters, setHsnSacMasters] = useState<HsnSacMasterEntry[]>([]);
   const [clientId, setClientId] = useState("");
-  const [invoiceDate, setInvoiceDate] = useState(
-    new Date().toISOString().split("T")[0],
+  const [invoiceDate, setInvoiceDate] = useState(initialInvoiceDateIso);
+  const [invoiceDateDisplay, setInvoiceDateDisplay] = useState(
+    formatIsoDateToDisplay(initialInvoiceDateIso),
   );
   const [invoiceNumber, setInvoiceNumber] = useState(
-    buildDefaultInvoiceNumber(new Date().toISOString().split("T")[0]),
+    buildDefaultInvoiceNumber(initialInvoiceDateIso),
   );
   const [placeOfSupply, setPlaceOfSupply] = useState(DEFAULT_PLACE_OF_SUPPLY);
   const [placeOfSupplyCode, setPlaceOfSupplyCode] = useState(
@@ -150,6 +160,7 @@ export default function CreateInvoicePage() {
   const [formError, setFormError] = useState<string | null>(null);
   const invoiceNumberManuallyEditedRef = useRef(false);
   const invoiceDateRef = useRef(invoiceDate);
+  const invoiceDatePickerRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     invoiceDateRef.current = invoiceDate;
@@ -278,6 +289,19 @@ export default function CreateInvoicePage() {
     );
   };
 
+  const applyInvoiceDate = (nextDate: string) => {
+    setInvoiceDate(nextDate);
+    setInvoiceDateDisplay(formatIsoDateToDisplay(nextDate));
+    setInvoiceNumber((previous) => {
+      if (!previous) return buildDefaultInvoiceNumber(nextDate);
+      const prefix = formatFinancialYearInvoicePrefix(nextDate);
+      if (validateInvoiceNumber(previous) === null) {
+        return `${prefix}/${previous.slice(8)}`;
+      }
+      return previous;
+    });
+  };
+
   const validateLine = (item: LineItemInput, index: number): string | null => {
     const descriptionError = validateItemDescription(item.description);
     if (descriptionError) return `Row ${index + 1}: ${descriptionError}`;
@@ -299,7 +323,9 @@ export default function CreateInvoicePage() {
 
   const validateForm = (): string | null => {
     if (!clientId) return "Client is required.";
-    if (!invoiceDate) return "Invoice Date is required.";
+    if (!invoiceDateDisplay.trim()) return "Invoice Date is required.";
+    const parsedInvoiceDate = parseDisplayDateToIso(invoiceDateDisplay);
+    if (!parsedInvoiceDate) return "Invoice Date should be in DD/MMM/YYYY format.";
     if (!placeOfSupply) return "Place of Supply is required.";
     if (!placeOfSupplyCode) return "Place of Supply Code is required.";
 
@@ -318,7 +344,7 @@ export default function CreateInvoicePage() {
   const buildInvoicePayload = (): InvoiceCreatePayload => ({
     client_id: clientId,
     invoice_number: invoiceNumber.trim(),
-    invoice_date: invoiceDate,
+    invoice_date: parseDisplayDateToIso(invoiceDateDisplay) || invoiceDate,
     place_of_supply: placeOfSupply,
     place_of_supply_code: placeOfSupplyCode,
     notes: notes.trim() || null,
@@ -347,10 +373,16 @@ export default function CreateInvoicePage() {
         responseType: "blob",
       });
 
+      const billDateIso = parseDisplayDateToIso(invoiceDateDisplay) || invoiceDate;
+      const clientName = clients.find((client) => client.id === clientId)?.name || "Client";
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = url;
-      link.download = `${invoiceNumber}.pdf`;
+      link.download = buildBillPdfFilename({
+        billDateIso,
+        documentNumber: invoiceNumber,
+        clientName,
+      });
       link.click();
       URL.revokeObjectURL(url);
     } catch (err) {
@@ -393,9 +425,25 @@ export default function CreateInvoicePage() {
             Create sales invoices with automatic tax split calculations.
           </p>
         </div>
-        <Button asChild variant="outline">
-          <Link href="/hsn-sac-master-list">HSN Master List</Link>
-        </Button>
+        <div className="flex flex-wrap items-end gap-2">
+          <Button asChild variant="outline">
+            <Link href="/hsn-sac-master-list">HSN Master List</Link>
+          </Button>
+          <div className="min-w-44 space-y-1">
+            <Label className="text-xs">Challan Type</Label>
+            <Select
+              value="gst"
+              onChange={(event) => {
+                if (event.target.value === "delivery") {
+                  router.push("/create/delivery-challan");
+                }
+              }}
+            >
+              <option value="gst">GST Challan</option>
+              <option value="delivery">Delivery Challan</option>
+            </Select>
+          </div>
+        </div>
       </div>
 
       <Card className="bg-white/85">
@@ -405,10 +453,13 @@ export default function CreateInvoicePage() {
         <CardContent className="space-y-5">
           <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-5">
             <div className="space-y-1">
-              <Label>Client</Label>
+              <Label>
+                Client <MandatoryMark />
+              </Label>
               <Select
                 value={clientId}
                 onChange={(event) => setClientId(event.target.value)}
+                required
               >
                 <option value="">Select client</option>
                 {clients.map((client) => (
@@ -419,7 +470,9 @@ export default function CreateInvoicePage() {
               </Select>
             </div>
             <div className="space-y-1">
-              <Label>Invoice Number</Label>
+              <Label>
+                Invoice Number <MandatoryMark />
+              </Label>
               <Input
                 value={invoiceNumber}
                 onChange={(event) => {
@@ -430,29 +483,64 @@ export default function CreateInvoicePage() {
                 }}
                 placeholder="YYYY-YY/NNN"
                 maxLength={11}
+                required
               />
             </div>
             <div className="space-y-1">
-              <Label>Invoice Date</Label>
-              <Input
-                type="date"
-                value={invoiceDate}
-                onChange={(event) => {
-                  const nextDate = event.target.value;
-                  setInvoiceDate(nextDate);
-                  setInvoiceNumber((previous) => {
-                    if (!previous) return buildDefaultInvoiceNumber(nextDate);
-                    const prefix = formatFinancialYearInvoicePrefix(nextDate);
-                    if (validateInvoiceNumber(previous) === null) {
-                      return `${prefix}/${previous.slice(8)}`;
+              <Label>
+                Invoice Date <MandatoryMark />
+              </Label>
+              <div className="flex gap-2">
+                <Input
+                  type="text"
+                  value={invoiceDateDisplay}
+                  onChange={(event) => {
+                    const nextDisplayDate = event.target.value;
+                    setInvoiceDateDisplay(nextDisplayDate);
+                    const nextDate = parseDisplayDateToIso(nextDisplayDate);
+                    if (!nextDate) return;
+                    applyInvoiceDate(nextDate);
+                  }}
+                  placeholder="DD/MMM/YYYY"
+                  required
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon"
+                  onClick={() => {
+                    const picker = invoiceDatePickerRef.current;
+                    if (!picker) return;
+                    if ("showPicker" in picker) {
+                      (picker as HTMLInputElement & { showPicker: () => void }).showPicker();
+                    } else {
+                      picker.click();
                     }
-                    return previous;
-                  });
-                }}
-              />
+                  }}
+                  aria-label="Pick invoice date"
+                  title="Pick invoice date"
+                >
+                  <CalendarDays className="h-4 w-4" />
+                </Button>
+                <input
+                  ref={invoiceDatePickerRef}
+                  type="date"
+                  value={invoiceDate}
+                  onChange={(event) => {
+                    const nextDate = event.target.value;
+                    if (!nextDate) return;
+                    applyInvoiceDate(nextDate);
+                  }}
+                  className="sr-only"
+                  tabIndex={-1}
+                  aria-hidden="true"
+                />
+              </div>
             </div>
             <div className="space-y-1">
-              <Label>Place of Supply</Label>
+              <Label>
+                Place of Supply <MandatoryMark />
+              </Label>
               <Select
                 value={placeOfSupply}
                 onChange={(event) => {
@@ -460,6 +548,7 @@ export default function CreateInvoicePage() {
                   setPlaceOfSupply(selectedState);
                   setPlaceOfSupplyCode(getStateCodeByName(selectedState) || "");
                 }}
+                required
               >
                 {INDIAN_STATES_AND_UTS.map((stateOption) => (
                   <option key={stateOption.name} value={stateOption.name}>
@@ -469,8 +558,10 @@ export default function CreateInvoicePage() {
               </Select>
             </div>
             <div className="space-y-1">
-              <Label>Place of Supply Code</Label>
-              <Input value={placeOfSupplyCode} readOnly />
+              <Label>
+                Place of Supply Code <MandatoryMark />
+              </Label>
+              <Input value={placeOfSupplyCode} readOnly required />
             </div>
           </div>
 
@@ -493,11 +584,21 @@ export default function CreateInvoicePage() {
 
             <div className="space-y-3">
               <div className="hidden gap-2 px-1 text-xs font-medium text-muted-foreground md:grid md:grid-cols-12">
-                <p className="md:col-span-3">Description</p>
-                <p className="md:col-span-2">HSN/SAC</p>
-                <p className="md:col-span-2">Quantity</p>
-                <p className="md:col-span-2">Rate</p>
-                <p className="md:col-span-2">Tax Rate % </p>
+                <p className="md:col-span-3">
+                  Description <MandatoryMark />
+                </p>
+                <p className="md:col-span-2">
+                  HSN/SAC <MandatoryMark />
+                </p>
+                <p className="md:col-span-2">
+                  Quantity <MandatoryMark />
+                </p>
+                <p className="md:col-span-2">
+                  Rate <MandatoryMark />
+                </p>
+                <p className="md:col-span-2">
+                  Tax Rate % <MandatoryMark />
+                </p>
               </div>
               {items.map((item, index) => (
                 <div
@@ -517,6 +618,7 @@ export default function CreateInvoicePage() {
                         )
                       }
                       maxLength={20}
+                      required
                     />
                     <Select
                       className="md:col-span-2"
@@ -524,6 +626,7 @@ export default function CreateInvoicePage() {
                       onChange={(event) =>
                         applyHsnSacMaster(index, event.target.value)
                       }
+                      required
                     >
                       <option value="">Select HSN/SAC</option>
                       {hsnSacMasters.map((entry) => (
@@ -534,7 +637,7 @@ export default function CreateInvoicePage() {
                     </Select>
                     <Input
                       className="md:col-span-2"
-                      placeholder="Quantity"
+                      placeholder="0"
                       value={item.quantity}
                       onChange={(event) =>
                         updateItem(
@@ -543,10 +646,11 @@ export default function CreateInvoicePage() {
                           sanitizeDecimalInput(event.target.value),
                         )
                       }
+                      required
                     />
                     <Input
                       className="md:col-span-2"
-                      placeholder="Rate (2 decimals)"
+                      placeholder="0"
                       value={item.rate}
                       onChange={(event) =>
                         updateItem(
@@ -555,12 +659,14 @@ export default function CreateInvoicePage() {
                           sanitizeDecimalInput(event.target.value),
                         )
                       }
+                      required
                     />
                     <Input
                       className="md:col-span-2"
                       placeholder="0.00%"
                       value={item.tax_rate}
                       readOnly
+                      required
                     />
                     <Button
                       variant="destructive"

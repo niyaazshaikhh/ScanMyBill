@@ -6,7 +6,6 @@ import { Download, Eye } from 'lucide-react';
 
 export const dynamic = "force-dynamic";
 
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
@@ -18,21 +17,20 @@ import { formatIsoDateToDisplay, isoMonthIndex, isoYear } from '@/lib/date-forma
 import { formatAccountingAmount, formatAccountingInteger } from '@/lib/number-format';
 import { buildBillPdfFilename } from '@/lib/pdf-filename';
 
-type SortBy = 'date' | 'invoice_number' | 'client_name' | 'amount';
-
-type Invoice = {
+type DeliveryChallan = {
   id: string;
   client_name: string | null;
-  invoice_number: string;
-  invoice_date: string;
-  total_amount: number;
-  type: 'sales' | 'purchase';
+  challan_number: string;
+  challan_date: string;
+  subtotal: number;
 };
 
-type InvoiceListResponse = {
-  invoices: Invoice[];
+type DeliveryChallanListResponse = {
+  challans: DeliveryChallan[];
   count: number;
 };
+
+type SortBy = 'date' | 'challan_number' | 'client_name' | 'amount';
 
 const ALL_FINANCIAL_YEARS = 'all';
 const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -63,49 +61,46 @@ function getCurrentFinancialYearStart(): string {
   return String(monthIndex >= 3 ? year : year - 1);
 }
 
-export default function InvoicesPage() {
+export default function DeliveryChallanInvoicesPage() {
   useAuthGuard();
   const router = useRouter();
   const currentFinancialYearStart = getCurrentFinancialYearStart();
 
   const [period, setPeriod] = useState('quarterly');
   const [year, setYear] = useState(currentFinancialYearStart);
-  const [invoiceType, setInvoiceType] = useState<'sales' | 'purchase'>('sales');
+  const [selectedFolder, setSelectedFolder] = useState('Q1');
   const [sortBy, setSortBy] = useState<SortBy>('date');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
-  const [selectedFolder, setSelectedFolder] = useState('Q1');
-  const [data, setData] = useState<Invoice[]>([]);
+  const [data, setData] = useState<DeliveryChallan[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [deletingInvoiceId, setDeletingInvoiceId] = useState<string | null>(null);
-  const [previewingInvoiceId, setPreviewingInvoiceId] = useState<string | null>(null);
-  const [downloadingInvoiceId, setDownloadingInvoiceId] = useState<string | null>(null);
+  const [previewingId, setPreviewingId] = useState<string | null>(null);
+  const [downloadingId, setDownloadingId] = useState<string | null>(null);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
 
   const yearOptions = useMemo(() => {
-    const starts = new Set<number>(data.map((invoice) => getFinancialYearStart(invoice.invoice_date)));
+    const starts = new Set<number>(data.map((challan) => getFinancialYearStart(challan.challan_date)));
     starts.add(Number(currentFinancialYearStart));
     const sortedStarts = Array.from(starts).sort((a, b) => b - a);
     return sortedStarts.map((start) => ({ value: String(start), label: toFinancialYearLabel(start) }));
   }, [data, currentFinancialYearStart]);
 
-  const loadInvoices = async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const response = await apiRequest<InvoiceListResponse>(`/invoices?invoice_type=${invoiceType}`);
-      setData(response.invoices);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load invoices');
-    } finally {
-      setLoading(false);
-    }
-  };
-
   useEffect(() => {
-    loadInvoices();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [invoiceType]);
+    const load = async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        const response = await apiRequest<DeliveryChallanListResponse>('/delivery-challans');
+        setData(response.challans);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Failed to load delivery challans');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    void load();
+  }, []);
 
   useEffect(() => {
     if (!yearOptions.some((item) => item.value === year)) {
@@ -113,9 +108,9 @@ export default function InvoicesPage() {
     }
   }, [yearOptions, year, currentFinancialYearStart]);
 
-  const yearFilteredInvoices = useMemo(() => {
+  const yearFilteredChallans = useMemo(() => {
     if (year === ALL_FINANCIAL_YEARS) return data;
-    return data.filter((invoice) => getFinancialYearStart(invoice.invoice_date) === Number(year));
+    return data.filter((challan) => getFinancialYearStart(challan.challan_date) === Number(year));
   }, [data, year]);
 
   const folders = useMemo(() => {
@@ -123,11 +118,11 @@ export default function InvoicesPage() {
     if (period === 'quarterly') return ['Q1', 'Q2', 'Q3', 'Q4'];
     if (period === 'semi-annually') return ['H1', 'H2'];
 
-    const years = Array.from(new Set(yearFilteredInvoices.map((invoice) => isoYear(invoice.invoice_date))))
+    const years = Array.from(new Set(yearFilteredChallans.map((challan) => isoYear(challan.challan_date))))
       .sort((a, b) => a - b)
       .map(String);
     return years.length ? years : [];
-  }, [yearFilteredInvoices, period]);
+  }, [yearFilteredChallans, period]);
 
   useEffect(() => {
     if (folders.length === 0) {
@@ -139,19 +134,19 @@ export default function InvoicesPage() {
     }
   }, [folders, selectedFolder]);
 
-  const folderInvoices = useMemo(
-    () => yearFilteredInvoices.filter((invoice) => toBucket(invoice.invoice_date, period) === selectedFolder),
-    [yearFilteredInvoices, period, selectedFolder]
+  const folderChallans = useMemo(
+    () => yearFilteredChallans.filter((challan) => toBucket(challan.challan_date, period) === selectedFolder),
+    [yearFilteredChallans, period, selectedFolder]
   );
 
-  const sortedFolderInvoices = useMemo(() => {
-    const rows = [...folderInvoices];
+  const sortedFolderChallans = useMemo(() => {
+    const rows = [...folderChallans];
     rows.sort((left, right) => {
       let comparison = 0;
       if (sortBy === 'date') {
-        comparison = new Date(left.invoice_date).getTime() - new Date(right.invoice_date).getTime();
-      } else if (sortBy === 'invoice_number') {
-        comparison = left.invoice_number.localeCompare(right.invoice_number, undefined, {
+        comparison = new Date(left.challan_date).getTime() - new Date(right.challan_date).getTime();
+      } else if (sortBy === 'challan_number') {
+        comparison = left.challan_number.localeCompare(right.challan_number, undefined, {
           numeric: true,
           sensitivity: 'base',
         });
@@ -160,13 +155,13 @@ export default function InvoicesPage() {
           sensitivity: 'base',
         });
       } else {
-        comparison = left.total_amount - right.total_amount;
+        comparison = left.subtotal - right.subtotal;
       }
 
       return sortOrder === 'asc' ? comparison : -comparison;
     });
     return rows;
-  }, [folderInvoices, sortBy, sortOrder]);
+  }, [folderChallans, sortBy, sortOrder]);
 
   const sortTriangle = (column: SortBy) => {
     if (sortBy !== column) return '▵';
@@ -182,50 +177,11 @@ export default function InvoicesPage() {
     setSortOrder('asc');
   };
 
-  const exportFolder = async () => {
-    if (!selectedFolder) return;
-    const yearQuery = year === ALL_FINANCIAL_YEARS ? '' : `&financial_year_start=${year}`;
-    try {
-      const blob = await apiRequest<Blob>(
-        `/invoices/export-folder?period=${period}&bucket=${encodeURIComponent(selectedFolder)}&invoice_type=${invoiceType}${yearQuery}`,
-        { responseType: 'blob' }
-      );
-
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = `${period}-${selectedFolder}-${invoiceType}.pdf`;
-      link.click();
-      URL.revokeObjectURL(url);
-    } catch (err) {
-      alert(err instanceof Error ? err.message : 'Failed to export folder');
-    }
-  };
-
-  const deleteInvoice = async (invoiceId: string) => {
-    const shouldDelete = window.confirm('Delete this bill? This action cannot be undone.');
-    if (!shouldDelete) return;
-
-    setDeletingInvoiceId(invoiceId);
+  const previewChallan = async (challanId: string) => {
+    setPreviewingId(challanId);
     setActionMessage(null);
-
     try {
-      await apiRequest(`/invoices/${invoiceId}`, { method: 'DELETE' });
-      setActionMessage('Bill deleted successfully.');
-      await loadInvoices();
-    } catch (err) {
-      setActionMessage(err instanceof Error ? err.message : 'Failed to delete bill');
-    } finally {
-      setDeletingInvoiceId(null);
-    }
-  };
-
-  const previewInvoice = async (invoiceId: string) => {
-    setPreviewingInvoiceId(invoiceId);
-    setActionMessage(null);
-
-    try {
-      const blob = await apiRequest<Blob>(`/invoices/${invoiceId}/pdf`, { responseType: 'blob' });
+      const blob = await apiRequest<Blob>(`/delivery-challans/${challanId}/pdf`, { responseType: 'blob' });
       const previewUrl = URL.createObjectURL(blob);
       const popup = window.open(previewUrl, '_blank', 'noopener,noreferrer');
       if (!popup) {
@@ -237,37 +193,36 @@ export default function InvoicesPage() {
       }
       window.setTimeout(() => URL.revokeObjectURL(previewUrl), 60_000);
     } catch (err) {
-      setActionMessage(err instanceof Error ? err.message : 'Failed to open bill PDF');
+      setActionMessage(err instanceof Error ? err.message : 'Failed to open challan PDF');
     } finally {
-      setPreviewingInvoiceId(null);
+      setPreviewingId(null);
     }
   };
 
-  const downloadInvoice = async (
-    invoiceId: string,
-    invoiceNumber: string,
-    invoiceDate: string,
+  const downloadChallan = async (
+    challanId: string,
+    challanNumber: string,
+    challanDate: string,
     clientName: string | null,
   ) => {
-    setDownloadingInvoiceId(invoiceId);
+    setDownloadingId(challanId);
     setActionMessage(null);
-
     try {
-      const blob = await apiRequest<Blob>(`/invoices/${invoiceId}/pdf`, { responseType: 'blob' });
+      const blob = await apiRequest<Blob>(`/delivery-challans/${challanId}/pdf`, { responseType: 'blob' });
       const downloadUrl = URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = downloadUrl;
       link.download = buildBillPdfFilename({
-        billDateIso: invoiceDate,
-        documentNumber: invoiceNumber,
+        billDateIso: challanDate,
+        documentNumber: challanNumber,
         clientName,
       });
       link.click();
       URL.revokeObjectURL(downloadUrl);
     } catch (err) {
-      setActionMessage(err instanceof Error ? err.message : 'Failed to download bill PDF');
+      setActionMessage(err instanceof Error ? err.message : 'Failed to download challan PDF');
     } finally {
-      setDownloadingInvoiceId(null);
+      setDownloadingId(null);
     }
   };
 
@@ -276,16 +231,16 @@ export default function InvoicesPage() {
       <div className='space-y-3'>
         <div className='flex flex-wrap items-start justify-between gap-3'>
           <div>
-            <h2 className='font-[var(--font-space)] text-2xl font-semibold'>Invoices</h2>
-            <p className='text-sm text-muted-foreground'>Folder-style invoice explorer with consolidated export.</p>
+            <h2 className='font-[var(--font-space)] text-2xl font-semibold'>Delivery Challans</h2>
+            <p className='text-sm text-muted-foreground'>View and download delivery challans by period folders.</p>
           </div>
           <div className='min-w-44 space-y-1'>
             <Label className='text-xs'>Challan Type</Label>
             <Select
-              value='gst'
+              value='delivery'
               onChange={(event) => {
-                if (event.target.value === 'delivery') {
-                  router.push('/invoices/delivery-challan');
+                if (event.target.value === 'gst') {
+                  router.push('/invoices');
                 }
               }}
             >
@@ -295,7 +250,7 @@ export default function InvoicesPage() {
           </div>
         </div>
 
-        <div className='grid gap-2 sm:grid-cols-2 lg:grid-cols-4'>
+        <div className='grid gap-2 sm:grid-cols-2'>
           <div>
             <Label className='text-xs'>Period</Label>
             <Select value={period} onChange={(event) => setPeriod(event.target.value)}>
@@ -316,32 +271,6 @@ export default function InvoicesPage() {
               ))}
             </Select>
           </div>
-          <div>
-            <Label className='text-xs'>Type</Label>
-            <div className='mt-1 grid grid-cols-2 gap-2'>
-              <Button
-                type='button'
-                size='sm'
-                variant={invoiceType === 'sales' ? 'secondary' : 'outline'}
-                onClick={() => setInvoiceType('sales')}
-              >
-                Sales
-              </Button>
-              <Button
-                type='button'
-                size='sm'
-                variant={invoiceType === 'purchase' ? 'secondary' : 'outline'}
-                onClick={() => setInvoiceType('purchase')}
-              >
-                Purchase
-              </Button>
-            </div>
-          </div>
-          <div className='flex items-end'>
-            <Button onClick={exportFolder} className='w-full'>
-              Export Folder PDF
-            </Button>
-          </div>
         </div>
       </div>
 
@@ -351,7 +280,7 @@ export default function InvoicesPage() {
         </CardHeader>
         <CardContent className='grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-6'>
           {folders.map((folder) => {
-            const billCount = yearFilteredInvoices.filter((item) => toBucket(item.invoice_date, period) === folder).length;
+            const billCount = yearFilteredChallans.filter((item) => toBucket(item.challan_date, period) === folder).length;
             return (
               <button
                 key={folder}
@@ -370,7 +299,7 @@ export default function InvoicesPage() {
                 ) : null}
                 <p className='text-sm font-semibold'>{folder}</p>
                 <p className='text-xs text-muted-foreground'>
-                  {formatAccountingInteger(billCount)} bills
+                  {formatAccountingInteger(billCount)} challans
                 </p>
               </button>
             );
@@ -380,14 +309,12 @@ export default function InvoicesPage() {
 
       <Card className='bg-white/85'>
         <CardHeader>
-          <CardTitle>
-            {selectedFolder} <Badge variant='secondary'>{invoiceType}</Badge>
-          </CardTitle>
+          <CardTitle>{selectedFolder}</CardTitle>
         </CardHeader>
         <CardContent>
           {error ? <p className='text-sm text-destructive'>{error}</p> : null}
           {actionMessage ? <p className='text-sm text-muted-foreground'>{actionMessage}</p> : null}
-          {loading ? <p className='text-sm text-muted-foreground'>Loading invoices...</p> : null}
+          {loading ? <p className='text-sm text-muted-foreground'>Loading challans...</p> : null}
           {!loading ? (
             <Table>
               <TableHeader>
@@ -405,11 +332,11 @@ export default function InvoicesPage() {
                   <TableHead>
                     <button
                       type='button'
-                      onClick={() => onSortColumn('invoice_number')}
+                      onClick={() => onSortColumn('challan_number')}
                       className='inline-flex items-center gap-1 hover:text-foreground'
                     >
-                      Invoice Number
-                      <span className='text-xs'>{sortTriangle('invoice_number')}</span>
+                      Challan Number
+                      <span className='text-xs'>{sortTriangle('challan_number')}</span>
                     </button>
                   </TableHead>
                   <TableHead>
@@ -436,28 +363,28 @@ export default function InvoicesPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {sortedFolderInvoices.length === 0 ? (
+                {sortedFolderChallans.length === 0 ? (
                   <TableRow>
                     <TableCell colSpan={5} className='text-center text-muted-foreground'>
-                      No bills in this folder.
+                      No delivery challans in this folder.
                     </TableCell>
                   </TableRow>
                 ) : (
-                  sortedFolderInvoices.map((invoice) => (
-                    <TableRow key={invoice.id}>
-                      <TableCell>{formatIsoDateToDisplay(invoice.invoice_date)}</TableCell>
-                      <TableCell>{invoice.invoice_number}</TableCell>
-                      <TableCell>{invoice.client_name || 'Unlinked'}</TableCell>
-                      <TableCell>Rs {formatAccountingAmount(invoice.total_amount)}</TableCell>
+                  sortedFolderChallans.map((challan) => (
+                    <TableRow key={challan.id}>
+                      <TableCell>{formatIsoDateToDisplay(challan.challan_date)}</TableCell>
+                      <TableCell>{challan.challan_number}</TableCell>
+                      <TableCell>{challan.client_name || 'Unlinked'}</TableCell>
+                      <TableCell>Rs {formatAccountingAmount(challan.subtotal)}</TableCell>
                       <TableCell className='text-right'>
                         <div className='flex justify-end gap-2'>
                           <Button
                             variant='outline'
                             size='icon'
-                            onClick={() => previewInvoice(invoice.id)}
-                            disabled={previewingInvoiceId === invoice.id || downloadingInvoiceId === invoice.id}
-                            title='View bill PDF'
-                            aria-label='View bill PDF'
+                            onClick={() => previewChallan(challan.id)}
+                            disabled={previewingId === challan.id || downloadingId === challan.id}
+                            title='View challan PDF'
+                            aria-label='View challan PDF'
                           >
                             <Eye className='h-4 w-4' />
                           </Button>
@@ -465,30 +392,18 @@ export default function InvoicesPage() {
                             variant='outline'
                             size='icon'
                             onClick={() =>
-                              downloadInvoice(
-                                invoice.id,
-                                invoice.invoice_number,
-                                invoice.invoice_date,
-                                invoice.client_name,
+                              downloadChallan(
+                                challan.id,
+                                challan.challan_number,
+                                challan.challan_date,
+                                challan.client_name,
                               )
                             }
-                            disabled={downloadingInvoiceId === invoice.id || previewingInvoiceId === invoice.id}
-                            title='Download bill PDF'
-                            aria-label='Download bill PDF'
+                            disabled={downloadingId === challan.id || previewingId === challan.id}
+                            title='Download challan PDF'
+                            aria-label='Download challan PDF'
                           >
                             <Download className='h-4 w-4' />
-                          </Button>
-                          <Button
-                            variant='destructive'
-                            size='sm'
-                            onClick={() => deleteInvoice(invoice.id)}
-                            disabled={
-                              deletingInvoiceId === invoice.id
-                              || previewingInvoiceId === invoice.id
-                              || downloadingInvoiceId === invoice.id
-                            }
-                          >
-                            {deletingInvoiceId === invoice.id ? 'Deleting...' : 'Delete'}
                           </Button>
                         </div>
                       </TableCell>

@@ -212,9 +212,25 @@ def _ensure_clients_columns() -> None:
             )
 
 
+def _ensure_clients_name_column_length() -> None:
+    inspector = inspect(engine)
+    if 'clients' not in inspector.get_table_names():
+        return
+
+    with engine.begin() as connection:
+        dialect = engine.dialect.name
+        if dialect == 'postgresql':
+            connection.execute(text('ALTER TABLE clients ALTER COLUMN name TYPE VARCHAR(30)'))
+            return
+
+        if dialect == 'mysql':
+            connection.execute(text('ALTER TABLE clients MODIFY COLUMN name VARCHAR(30)'))
+            return
+
+
 def _ensure_invoice_item_columns() -> None:
     expected_columns: dict[str, str] = {
-        'hsn_sac': 'VARCHAR(15)',
+        'hsn_sac': 'VARCHAR(8)',
     }
 
     inspector = inspect(engine)
@@ -259,14 +275,60 @@ def _ensure_invoice_columns() -> None:
             )
 
 
+def _ensure_non_gst_challan_unique_constraint() -> None:
+    inspector = inspect(engine)
+    if 'non_gst_challans' not in inspector.get_table_names():
+        return
+
+    with engine.begin() as connection:
+        dialect = engine.dialect.name
+
+        if dialect == 'postgresql':
+            connection.execute(
+                text('ALTER TABLE non_gst_challans DROP CONSTRAINT IF EXISTS uq_non_gst_challans_owner_number')
+            )
+            connection.execute(
+                text(
+                    'CREATE UNIQUE INDEX IF NOT EXISTS uq_non_gst_challans_owner_client_number '
+                    'ON non_gst_challans (owner_id, client_id, challan_number)'
+                )
+            )
+            return
+
+        if dialect == 'sqlite':
+            connection.execute(text('DROP INDEX IF EXISTS uq_non_gst_challans_owner_number'))
+            connection.execute(
+                text(
+                    'CREATE UNIQUE INDEX IF NOT EXISTS uq_non_gst_challans_owner_client_number '
+                    'ON non_gst_challans (owner_id, client_id, challan_number)'
+                )
+            )
+            return
+
+        try:
+            connection.execute(
+                text('ALTER TABLE non_gst_challans DROP CONSTRAINT IF EXISTS uq_non_gst_challans_owner_number')
+            )
+        except Exception:
+            pass
+        connection.execute(
+            text(
+                'CREATE UNIQUE INDEX IF NOT EXISTS uq_non_gst_challans_owner_client_number '
+                'ON non_gst_challans (owner_id, client_id, challan_number)'
+            )
+        )
+
+
 @app.on_event('startup')
 def on_startup() -> None:
     _validate_security_configuration()
     Base.metadata.create_all(bind=engine)
     _ensure_personal_details_columns()
     _ensure_clients_columns()
+    _ensure_clients_name_column_length()
     _ensure_invoice_item_columns()
     _ensure_invoice_columns()
+    _ensure_non_gst_challan_unique_constraint()
 
 
 @app.get('/health')

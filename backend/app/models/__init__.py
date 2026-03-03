@@ -2,6 +2,7 @@ from app.models.bill_upload import BillUpload
 from app.models.client import Client
 from app.models.hsn_sac_master import HSNSACMaster
 from app.models.invoice import Invoice, InvoiceItem, InvoiceSource, InvoiceType
+from app.models.non_gst_challan import NonGSTChallan, NonGSTChallanItem
 from app.models.newsletter_subscriber import NewsletterSubscriber
 from app.models.password_reset_token import PasswordResetToken
 from app.models.payment_event import PaymentEvent
@@ -22,6 +23,8 @@ __all__ = [
     'InvoiceItem',
     'InvoiceType',
     'InvoiceSource',
+    'NonGSTChallan',
+    'NonGSTChallanItem',
     'BillUpload',
     'NewsletterSubscriber',
     'PaymentEvent',

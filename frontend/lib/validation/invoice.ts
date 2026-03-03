@@ -1,6 +1,6 @@
 const INVOICE_NUMBER_PATTERN = /^\d{4}-\d{2}\/\d{3}$/;
 const DESCRIPTION_PATTERN = /^[A-Za-z0-9 ]+$/;
-const HSN_SAC_PATTERN = /^\d{4,15}$/;
+const HSN_SAC_PATTERN = /^\d{4,8}$/;
 const NUMBER_WITH_TWO_DECIMALS_PATTERN = /^\d+(\.\d{1,2})?$/;
 
 export const MAX_QUANTITY = 5_000_000;
@@ -74,13 +74,13 @@ export function validateItemDescription(value: string): string | null {
 }
 
 export function sanitizeHsnSacInput(value: string): string {
-  return value.replace(/\D/g, '').slice(0, 15);
+  return value.replace(/\D/g, '').slice(0, 8);
 }
 
 export function validateHsnSac(value: string): string | null {
   const trimmed = value.trim();
   if (!trimmed) return 'HSN/SAC is required.';
-  if (!HSN_SAC_PATTERN.test(trimmed)) return 'HSN/SAC should contain 4 to 15 digits.';
+  if (!HSN_SAC_PATTERN.test(trimmed)) return 'HSN/SAC should contain 4 to 8 digits.';
   return null;
 }
 

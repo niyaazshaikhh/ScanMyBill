@@ -4,7 +4,7 @@ import re
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-HSN_SAC_CODE_PATTERN = re.compile(r'^\d{4,15}$')
+HSN_SAC_CODE_PATTERN = re.compile(r'^\d{4,8}$')
 
 
 def _decimal_places_within(value: float, max_places: int) -> bool:
@@ -19,7 +19,7 @@ class HSNSACMasterCreate(BaseModel):
     model_config = ConfigDict(extra='forbid', str_strip_whitespace=True)
 
     description: str = Field(min_length=1, max_length=15)
-    hsn_sac_code: str = Field(min_length=4, max_length=15)
+    hsn_sac_code: str = Field(min_length=4, max_length=8)
     tax_rate: float = Field(ge=0, le=99.99)
 
     @field_validator('description')
@@ -35,7 +35,7 @@ class HSNSACMasterCreate(BaseModel):
     def validate_hsn_sac_code(cls, value: str) -> str:
         cleaned = value.strip()
         if not HSN_SAC_CODE_PATTERN.fullmatch(cleaned):
-            raise ValueError('HSN/SAC code should contain 4 to 15 digits.')
+            raise ValueError('HSN/SAC code should contain 4 to 8 digits.')
         return cleaned
 
     @field_validator('tax_rate')

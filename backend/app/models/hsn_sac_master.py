@@ -16,7 +16,7 @@ class HSNSACMaster(Base):
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
     owner_id: Mapped[str] = mapped_column(String(36), ForeignKey('users.id', ondelete='CASCADE'), index=True)
     description: Mapped[str] = mapped_column(String(15))
-    hsn_sac_code: Mapped[str] = mapped_column(String(15), index=True)
+    hsn_sac_code: Mapped[str] = mapped_column(String(8), index=True)
     tax_rate: Mapped[float] = mapped_column(Float, default=0.0)
     created_at: Mapped[DateTime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 

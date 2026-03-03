@@ -30,9 +30,19 @@ def list_hsn_sac_master_list(
     rows = db.scalars(
         select(HSNSACMaster)
         .where(HSNSACMaster.owner_id == current_user.id)
-        .order_by(HSNSACMaster.description.asc(), HSNSACMaster.created_at.desc())
+        .order_by(HSNSACMaster.created_at.desc())
     ).all()
-    return [_to_response(row) for row in rows]
+
+    unique_by_code: dict[str, HSNSACMaster] = {}
+    for row in rows:
+        if row.hsn_sac_code in unique_by_code:
+            continue
+        unique_by_code[row.hsn_sac_code] = row
+
+    unique_rows = list(unique_by_code.values())
+    unique_rows.sort(key=lambda item: item.created_at, reverse=True)
+    unique_rows.sort(key=lambda item: item.description.casefold())
+    return [_to_response(row) for row in unique_rows]
 
 
 @router.post('', response_model=HSNSACMasterResponse, status_code=status.HTTP_201_CREATED)
@@ -83,4 +93,3 @@ def delete_hsn_sac_master_entry(
 
     db.delete(record)
     db.commit()
-

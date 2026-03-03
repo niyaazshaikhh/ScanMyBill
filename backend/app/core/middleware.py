@@ -148,7 +148,11 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         if path.endswith('/auth/login') or path.endswith('/auth/refresh'):
             return _RateLimitPolicy('auth', max(1, settings.rate_limit_auth_per_minute))
 
-        if path.endswith('/invoices/create') or (path.endswith('/pdf') and '/invoices/' in path):
+        if (
+            path.endswith('/invoices/create')
+            or path.endswith('/delivery-challans/create')
+            or (path.endswith('/pdf') and ('/invoices/' in path or '/delivery-challans/' in path))
+        ):
             return _RateLimitPolicy('invoice_pdf', max(1, settings.rate_limit_invoice_pdf_per_minute))
 
         return _RateLimitPolicy('default', max(1, settings.rate_limit_default_per_minute))

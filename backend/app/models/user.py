@@ -60,6 +60,7 @@ class User(Base):
 
     clients = relationship('Client', back_populates='owner', cascade='all,delete-orphan')
     invoices = relationship('Invoice', back_populates='owner', cascade='all,delete-orphan')
+    non_gst_challans = relationship('NonGSTChallan', back_populates='owner', cascade='all,delete-orphan')
     bill_uploads = relationship('BillUpload', back_populates='owner', cascade='all,delete-orphan')
     payments = relationship('PaymentEvent', back_populates='owner', cascade='all,delete-orphan')
     hsn_sac_masters = relationship('HSNSACMaster', back_populates='owner', cascade='all,delete-orphan')

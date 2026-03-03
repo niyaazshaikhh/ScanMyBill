@@ -12,7 +12,7 @@ class Client(Base):
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
     owner_id: Mapped[str] = mapped_column(String(36), ForeignKey('users.id', ondelete='CASCADE'), index=True)
-    name: Mapped[str] = mapped_column(String(15), index=True)
+    name: Mapped[str] = mapped_column(String(30), index=True)
     address: Mapped[str | None] = mapped_column(String(115), nullable=True)
     state_name: Mapped[str | None] = mapped_column(String(64), nullable=True)
     state_code: Mapped[str | None] = mapped_column(String(2), nullable=True)

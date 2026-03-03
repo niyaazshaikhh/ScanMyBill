@@ -237,7 +237,7 @@ export default function ClientsPage() {
                 <Input
                   value={name}
                   onChange={(event) => setName(sanitizeClientNameInput(event.target.value))}
-                  maxLength={15}
+                  maxLength={30}
                   required
                 />
               </div>

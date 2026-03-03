@@ -216,25 +216,31 @@ export default function ClientAnalyticsPage() {
           <CardTitle>Folders</CardTitle>
         </CardHeader>
         <CardContent className='grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-6'>
-          {folders.map((folder) => (
-            <button
-              key={folder}
-              onClick={() => setSelectedFolder(folder)}
-              className={`rounded-lg border p-3 text-left transition ${
-                selectedFolder === folder
-                  ? 'border-primary bg-primary/10 text-primary'
-                  : 'border-border bg-background hover:bg-muted'
-              }`}
-            >
-              <p className='text-sm font-semibold'>{folder}</p>
-              <p className='text-xs text-muted-foreground'>
-                {formatAccountingInteger(
-                  yearFilteredInvoices.filter((invoice) => toBucket(invoice.invoice_date, period) === folder).length
-                )}{' '}
-                sales bills
-              </p>
-            </button>
-          ))}
+          {folders.map((folder) => {
+            const billCount = yearFilteredInvoices.filter((invoice) => toBucket(invoice.invoice_date, period) === folder).length;
+            return (
+              <button
+                key={folder}
+                onClick={() => setSelectedFolder(folder)}
+                className={`relative rounded-lg border p-3 text-left transition ${
+                  selectedFolder === folder
+                    ? 'border-primary bg-primary/10 text-primary'
+                    : 'border-border bg-background hover:bg-muted'
+                }`}
+              >
+                {billCount > 0 ? (
+                  <span
+                    className='absolute right-2 top-2 h-2.5 w-2.5 rounded-full bg-primary'
+                    aria-hidden='true'
+                  />
+                ) : null}
+                <p className='text-sm font-semibold'>{folder}</p>
+                <p className='text-xs text-muted-foreground'>
+                  {formatAccountingInteger(billCount)} sales bills
+                </p>
+              </button>
+            );
+          })}
         </CardContent>
       </Card>
 

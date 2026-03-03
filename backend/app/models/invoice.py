@@ -50,7 +50,7 @@ class InvoiceItem(Base):
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
     invoice_id: Mapped[str] = mapped_column(String(36), ForeignKey('invoices.id', ondelete='CASCADE'), index=True)
     description: Mapped[str] = mapped_column(String(255))
-    hsn_sac: Mapped[str | None] = mapped_column(String(15), nullable=True)
+    hsn_sac: Mapped[str | None] = mapped_column(String(8), nullable=True)
     quantity: Mapped[float] = mapped_column(Float, default=1.0)
     price: Mapped[float] = mapped_column(Float, default=0.0)
     gst_percent: Mapped[float] = mapped_column(Float, default=0.0)

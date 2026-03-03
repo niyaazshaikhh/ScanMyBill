@@ -15,7 +15,7 @@ from app.schemas.validation_rules import (
 class ClientWriteBase(BaseModel):
     model_config = ConfigDict(extra='forbid', str_strip_whitespace=True)
 
-    name: str = Field(min_length=1, max_length=15)
+    name: str = Field(min_length=1, max_length=30)
     address: str = Field(min_length=1, max_length=115)
     state_name: str = Field(min_length=1, max_length=64)
     state_code: str = Field(min_length=2, max_length=2)
@@ -26,6 +26,8 @@ class ClientWriteBase(BaseModel):
     @classmethod
     def validate_name(cls, value: str) -> str:
         cleaned = strip_required(value, 'Name')
+        if len(cleaned) > 30:
+            raise ValueError('Name should be up to 30 characters only.')
         if not COMPANY_NAME_PATTERN.fullmatch(cleaned):
             raise ValueError('Name should be alphanumeric and special characters are not allowed.')
         return cleaned

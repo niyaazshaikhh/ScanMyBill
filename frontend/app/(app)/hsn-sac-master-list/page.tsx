@@ -47,7 +47,7 @@ function sanitizeDescriptionInput(value: string): string {
 }
 
 function sanitizeHsnSacCodeInput(value: string): string {
-  return value.replace(/\D/g, "").slice(0, 15);
+  return value.replace(/\D/g, "").slice(0, 8);
 }
 
 function sanitizeTaxRateInput(value: string): string {
@@ -69,8 +69,8 @@ function validateForm(form: HsnSacMasterForm): string | null {
   if (!description) return "Description is required.";
   if (description.length > 15) return "Description should be up to 15 characters only.";
 
-  if (!/^\d{4,15}$/.test(form.hsn_sac_code)) {
-    return "HSN/SAC code should contain 4 to 15 digits.";
+  if (!/^\d{4,8}$/.test(form.hsn_sac_code)) {
+    return "HSN/SAC code should contain 4 to 8 digits.";
   }
 
   const taxRate = form.tax_rate.trim();
@@ -220,7 +220,7 @@ export default function HsnSacMasterListPage() {
                     hsn_sac_code: sanitizeHsnSacCodeInput(event.target.value),
                   }))
                 }
-                maxLength={15}
+                maxLength={8}
                 minLength={4}
                 placeholder="Enter HSN/SAC code"
                 required
@@ -265,14 +265,13 @@ export default function HsnSacMasterListPage() {
                   <TableHead>Description</TableHead>
                   <TableHead>HSN/SAC</TableHead>
                   <TableHead>Tax Rate %</TableHead>
-                  <TableHead>Dropdown Value Preview</TableHead>
                   <TableHead className="text-right">Action</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {sortedEntries.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={5} className="text-center text-muted-foreground">
+                    <TableCell colSpan={4} className="text-center text-muted-foreground">
                       No HSN/SAC master entries yet.
                     </TableCell>
                   </TableRow>
@@ -282,7 +281,6 @@ export default function HsnSacMasterListPage() {
                       <TableCell>{entry.description}</TableCell>
                       <TableCell>{entry.hsn_sac_code}</TableCell>
                       <TableCell>{formatTaxRate(entry.tax_rate)}</TableCell>
-                      <TableCell>{`${entry.description}-${entry.hsn_sac_code} - ${formatTaxRate(entry.tax_rate)}%`}</TableCell>
                       <TableCell className="text-right">
                         <Button
                           variant="destructive"

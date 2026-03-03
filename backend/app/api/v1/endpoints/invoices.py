@@ -35,6 +35,7 @@ from app.services.pdf_invoice_service import (
     resolve_generated_pdf_path,
 )
 from app.services.pdf_service import build_folder_export_pdf
+from app.utils.pdf_filename import build_bill_pdf_filename
 from app.utils.period import matches_bucket, valid_period
 
 router = APIRouter()
@@ -365,7 +366,11 @@ def create_invoice_pdf(
     if not absolute_pdf_path.exists():
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail='Generated invoice PDF missing')
 
-    filename = f'{invoice.invoice_number}.pdf'.replace(' ', '-')
+    filename = build_bill_pdf_filename(
+        bill_date=invoice.invoice_date,
+        document_number=invoice.invoice_number,
+        client_name=client.name if client else None,
+    )
     background = BackgroundTask(remove_generated_pdf, generated_pdf_path)
     return FileResponse(
         path=str(absolute_pdf_path),
@@ -589,7 +594,11 @@ def get_invoice_pdf(
     if not absolute_pdf_path.exists():
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail='Generated invoice PDF missing')
 
-    filename = f'{invoice.invoice_number}.pdf'.replace(' ', '-')
+    filename = build_bill_pdf_filename(
+        bill_date=invoice.invoice_date,
+        document_number=invoice.invoice_number,
+        client_name=invoice.client.name if invoice.client else None,
+    )
     background = BackgroundTask(remove_generated_pdf, generated_pdf_path) if should_cleanup_after_response else None
     return FileResponse(
         path=str(absolute_pdf_path),

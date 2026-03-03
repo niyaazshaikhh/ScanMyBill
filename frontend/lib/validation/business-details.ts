@@ -58,7 +58,7 @@ export function sanitizeCompanyNameInput(value: string): string {
 }
 
 export function sanitizeClientNameInput(value: string): string {
-  return value.replace(/[^A-Za-z0-9 ]/g, '').slice(0, 15);
+  return value.replace(/[^A-Za-z0-9 ]/g, '').slice(0, 30);
 }
 
 export function sanitizeGstinInput(value: string): string {
@@ -107,6 +107,7 @@ export function validateCompanyName(value: string): string | null {
 export function validateClientName(value: string): string | null {
   const trimmed = value.trim();
   if (!trimmed) return 'Name is required.';
+  if (trimmed.length > 30) return 'Name should be up to 30 characters only.';
   if (!COMPANY_NAME_PATTERN.test(trimmed)) {
     return 'Name should be alphanumeric and special characters are not allowed.';
   }
