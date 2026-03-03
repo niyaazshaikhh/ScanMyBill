@@ -1,0 +1,220 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Tax Invoice {{ invoice_number }}</title>
+    <style>
+      @page {
+        size: A4;
+        margin: 12mm;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        color: #111827;
+        font-family: "DejaVu Sans", Arial, sans-serif;
+        font-size: 11px;
+        line-height: 1.4;
+      }
+
+      .invoice {
+        width: 100%;
+      }
+
+      .invoice-title {
+        margin: 0 0 10px;
+        padding: 8px 10px;
+        border: 1px solid #111827;
+        text-align: center;
+        font-size: 15px;
+        letter-spacing: 0.4px;
+      }
+
+      .meta-grid {
+        width: 100%;
+        border-collapse: collapse;
+        margin-bottom: 10px;
+      }
+
+      .meta-grid td {
+        width: 50%;
+        border: 1px solid #111827;
+        vertical-align: top;
+        padding: 8px;
+      }
+
+      .label {
+        font-weight: 700;
+      }
+
+      .block-title {
+        margin: 0 0 6px;
+        font-size: 12px;
+      }
+
+      .line {
+        margin: 2px 0;
+      }
+
+      .items-table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-bottom: 10px;
+      }
+
+      .items-table th,
+      .items-table td {
+        border: 1px solid #111827;
+        padding: 6px 5px;
+      }
+
+      .items-table th {
+        background: #f3f4f6;
+        text-align: center;
+      }
+
+      .left {
+        text-align: left;
+      }
+
+      .right {
+        text-align: right;
+      }
+
+      .center {
+        text-align: center;
+      }
+
+      .totals {
+        width: 100%;
+        border-collapse: collapse;
+        margin-bottom: 10px;
+      }
+
+      .totals td {
+        border: 1px solid #111827;
+        padding: 6px 8px;
+      }
+
+      .totals .name {
+        width: 75%;
+        text-align: right;
+        font-weight: 700;
+      }
+
+      .totals .value {
+        width: 25%;
+        text-align: right;
+      }
+
+      .totals .grand td {
+        background: #f3f4f6;
+        font-weight: 700;
+      }
+
+      .bank-details {
+        border: 1px solid #111827;
+        padding: 8px;
+      }
+
+      .bank-title {
+        margin: 0 0 6px;
+        font-size: 12px;
+        font-weight: 700;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="invoice">
+      <h1 class="invoice-title">TAX INVOICE</h1>
+
+      <table class="meta-grid">
+        <tr>
+          <td>
+            <p class="block-title">Supplier</p>
+            <p class="line"><span class="label">Name:</span> {{ company_name }}</p>
+            <p class="line"><span class="label">Address:</span> {{ company_address }}</p>
+            <p class="line"><span class="label">GSTIN:</span> {{ gstin }}</p>
+          </td>
+          <td>
+            <p class="block-title">Invoice Details</p>
+            <p class="line"><span class="label">Invoice Number:</span> {{ invoice_number }}</p>
+            <p class="line"><span class="label">Invoice Date:</span> {{ invoice_date }}</p>
+            <p class="line"><span class="label">Place of Supply:</span> {{ place_of_supply }}</p>
+            <p class="line"><span class="label">State Code:</span> {{ state_code }}</p>
+          </td>
+        </tr>
+        <tr>
+          <td colspan="2">
+            <p class="block-title">Bill To</p>
+            <p class="line"><span class="label">Client:</span> {{ client_name }}</p>
+            <p class="line"><span class="label">Address:</span> {{ client_address }}</p>
+            <p class="line"><span class="label">GSTIN:</span> {{ client_gstin }}</p>
+          </td>
+        </tr>
+      </table>
+
+      <table class="items-table">
+        <thead>
+          <tr>
+            <th style="width: 4%">#</th>
+            <th class="left" style="width: 32%">Description</th>
+            <th style="width: 12%">HSN/SAC</th>
+            <th style="width: 9%">Qty</th>
+            <th style="width: 12%">Rate</th>
+            <th style="width: 10%">Tax %</th>
+            <th style="width: 11%">Taxable</th>
+            <th style="width: 10%">Total</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for item in items %}
+          {% set tax_amount = (item.amount * item.tax_percent / 100) %}
+          <tr>
+            <td class="center">{{ loop.index }}</td>
+            <td class="left">{{ item.description }}</td>
+            <td class="center">{{ item.hsn }}</td>
+            <td class="right">{{ "%.2f"|format(item.quantity) }}</td>
+            <td class="right">{{ "%.2f"|format(item.rate) }}</td>
+            <td class="right">{{ "%.2f"|format(item.tax_percent) }}</td>
+            <td class="right">{{ "%.2f"|format(item.amount) }}</td>
+            <td class="right">{{ "%.2f"|format(item.amount + tax_amount) }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+
+      <table class="totals">
+        <tr>
+          <td class="name">Sub Total</td>
+          <td class="value">{{ "%.2f"|format(subtotal) }}</td>
+        </tr>
+        <tr>
+          <td class="name">CGST</td>
+          <td class="value">{{ "%.2f"|format(cgst) }}</td>
+        </tr>
+        <tr>
+          <td class="name">SGST</td>
+          <td class="value">{{ "%.2f"|format(sgst) }}</td>
+        </tr>
+        <tr>
+          <td class="name">IGST</td>
+          <td class="value">{{ "%.2f"|format(igst) }}</td>
+        </tr>
+        <tr class="grand">
+          <td class="name">Grand Total</td>
+          <td class="value">{{ "%.2f"|format(total) }}</td>
+        </tr>
+      </table>
+
+      <section class="bank-details">
+        <p class="bank-title">Bank Details</p>
+        <p class="line">{{ bank_details }}</p>
+      </section>
+    </div>
+  </body>
+</html>

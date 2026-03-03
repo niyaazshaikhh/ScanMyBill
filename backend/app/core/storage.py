@@ -31,8 +31,18 @@ class StorageBackend(ABC):
 
 class LocalStorage(StorageBackend):
     def __init__(self) -> None:
-        self.base_dir = Path(settings.uploads_dir)
+        configured = Path(settings.uploads_dir)
+        if configured.is_absolute():
+            self.base_dir = configured
+        else:
+            self.base_dir = Path(__file__).resolve().parents[2] / configured
         self.base_dir.mkdir(parents=True, exist_ok=True)
+
+    def _resolve_path(self, stored_path: str) -> Path:
+        path = Path(stored_path)
+        if path.is_absolute():
+            return path
+        return self.base_dir / path
 
     def save_bytes(self, data: bytes, filename: str, subdir: str = '') -> str:
         safe_name = ''.join(char for char in filename if char.isalnum() or char in ('-', '_', '.'))
@@ -47,13 +57,13 @@ class LocalStorage(StorageBackend):
         return str(target_path.as_posix())
 
     def read_bytes(self, stored_path: str) -> bytes:
-        return Path(stored_path).read_bytes()
+        return self._resolve_path(stored_path).read_bytes()
 
     def local_processing_path(self, stored_path: str) -> str:
-        return stored_path
+        return str(self._resolve_path(stored_path).as_posix())
 
     def delete_file(self, stored_path: str) -> None:
-        target = Path(stored_path)
+        target = self._resolve_path(stored_path)
         if target.exists():
             target.unlink()
 

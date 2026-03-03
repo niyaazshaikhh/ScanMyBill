@@ -4,9 +4,11 @@ from datetime import date
 from io import BytesIO
 import mimetypes
 from pathlib import Path
+from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
-from fastapi.responses import StreamingResponse
+from fastapi.responses import FileResponse, StreamingResponse
+from starlette.background import BackgroundTask
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
@@ -16,6 +18,7 @@ from app.core.deps import get_current_user
 from app.models.bill_upload import BillUpload
 from app.models.client import Client
 from app.models.invoice import Invoice, InvoiceItem, InvoiceSource, InvoiceType
+from app.models.personal_details import PersonalDetails
 from app.models.user import User
 from app.schemas.invoice import (
     InvoiceCreate,
@@ -23,7 +26,15 @@ from app.schemas.invoice import (
     InvoiceResponse,
     LatestCreatedInvoiceResponse,
 )
-from app.services.pdf_service import build_folder_export_pdf, build_invoice_pdf
+from app.services.pdf_invoice_service import (
+    PDFInvoiceDataError,
+    PDFInvoiceGenerationError,
+    PDFInvoiceTemplateError,
+    generate_invoice_pdf,
+    remove_generated_pdf,
+    resolve_generated_pdf_path,
+)
+from app.services.pdf_service import build_folder_export_pdf
 from app.utils.period import matches_bucket, valid_period
 
 router = APIRouter()
@@ -86,6 +97,88 @@ def _parse_invoice_type(invoice_type: str | None) -> InvoiceType | None:
 def _guess_media_type(stored_path: str) -> str:
     guessed, _ = mimetypes.guess_type(stored_path)
     return guessed or 'application/octet-stream'
+
+
+def _format_bank_details(personal_details: PersonalDetails | None) -> str:
+    if not personal_details:
+        return 'N/A'
+
+    parts: list[str] = []
+    if personal_details.bank_name:
+        parts.append(f'Bank: {personal_details.bank_name}')
+    if personal_details.account_number:
+        parts.append(f'Account No: {personal_details.account_number}')
+    if personal_details.branch:
+        parts.append(f'Branch: {personal_details.branch}')
+    if personal_details.ifsc_code:
+        parts.append(f'IFSC: {personal_details.ifsc_code}')
+    return ' | '.join(parts) if parts else 'N/A'
+
+
+def _build_invoice_pdf_data(
+    invoice: Invoice,
+    *,
+    owner_id: str,
+    company_details: PersonalDetails | None,
+    client: Client | None,
+) -> dict[str, Any]:
+    company_state_code = (company_details.state_code if company_details else '') or ''
+    invoice_state_code = invoice.place_of_supply_code or ''
+
+    is_intra_state = bool(company_state_code and invoice_state_code and company_state_code == invoice_state_code)
+    if is_intra_state:
+        cgst = round(invoice.gst_amount / 2.0, 2)
+        sgst = round(invoice.gst_amount / 2.0, 2)
+        igst = 0.0
+    else:
+        cgst = 0.0
+        sgst = 0.0
+        igst = round(invoice.gst_amount, 2)
+
+    item_rows: list[dict[str, Any]] = []
+    for item in invoice.items:
+        taxable_amount = round(item.quantity * item.price, 2)
+        item_rows.append(
+            {
+                'description': item.description,
+                'hsn': item.hsn_sac or '',
+                'quantity': round(item.quantity, 2),
+                'rate': round(item.price, 2),
+                'tax_percent': round(item.gst_percent, 2),
+                'amount': taxable_amount,
+            }
+        )
+
+    return {
+        'user_id': owner_id,
+        'company_name': company_details.company_name if company_details and company_details.company_name else 'ScanMyBill.in',
+        'company_address': company_details.address if company_details and company_details.address else 'N/A',
+        'gstin': company_details.gstin_number if company_details and company_details.gstin_number else 'N/A',
+        'invoice_number': invoice.invoice_number,
+        'invoice_date': invoice.invoice_date.isoformat(),
+        'place_of_supply': invoice.place_of_supply or 'N/A',
+        'state_code': invoice.place_of_supply_code or 'N/A',
+        'client_name': client.name if client else 'N/A',
+        'client_address': client.address if client and client.address else 'N/A',
+        'client_gstin': client.gst_number if client and client.gst_number else 'N/A',
+        'items': item_rows,
+        'subtotal': round(invoice.subtotal, 2),
+        'cgst': cgst,
+        'sgst': sgst,
+        'igst': igst,
+        'total': round(invoice.total_amount, 2),
+        'bank_details': _format_bank_details(company_details),
+    }
+
+
+def _raise_pdf_generation_http_error(exc: Exception) -> None:
+    if isinstance(exc, PDFInvoiceDataError):
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
+    if isinstance(exc, PDFInvoiceTemplateError):
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(exc)) from exc
+    if isinstance(exc, PDFInvoiceGenerationError):
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(exc)) from exc
+    raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail='Failed to generate invoice PDF') from exc
 
 
 @router.get('', response_model=InvoiceListResponse)
@@ -196,7 +289,29 @@ def create_invoice(
     invoice.total_amount = round(subtotal + gst_amount, 2)
 
     db.add(invoice)
-    db.commit()
+    db.flush()
+
+    company_details = db.scalar(select(PersonalDetails).where(PersonalDetails.owner_id == current_user.id))
+    invoice_pdf_data = _build_invoice_pdf_data(
+        invoice,
+        owner_id=current_user.id,
+        company_details=company_details,
+        client=client,
+    )
+
+    try:
+        invoice.original_file_path = generate_invoice_pdf(invoice_pdf_data)
+    except Exception as exc:
+        db.rollback()
+        _raise_pdf_generation_http_error(exc)
+
+    try:
+        db.commit()
+    except Exception:
+        if invoice.original_file_path:
+            remove_generated_pdf(invoice.original_file_path)
+        raise
+
     refreshed = db.scalar(
         select(Invoice)
         .options(selectinload(Invoice.client), selectinload(Invoice.items))
@@ -358,7 +473,7 @@ def get_invoice_pdf(
     invoice_id: str,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
-) -> StreamingResponse:
+) -> FileResponse:
     invoice = db.scalar(
         select(Invoice)
         .options(selectinload(Invoice.client), selectinload(Invoice.items))
@@ -367,11 +482,66 @@ def get_invoice_pdf(
     if not invoice:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='Invoice not found')
 
-    pdf_bytes = build_invoice_pdf(invoice)
-    filename = f'{invoice.invoice_number}.pdf'.replace(' ', '-')
+    company_details = db.scalar(select(PersonalDetails).where(PersonalDetails.owner_id == current_user.id))
 
-    return StreamingResponse(
-        BytesIO(pdf_bytes),
+    generated_pdf_path: str | None = None
+    should_cleanup_after_response = False
+
+    if (
+        invoice.source == InvoiceSource.CREATED
+        and invoice.original_file_path
+        and invoice.original_file_path.lower().endswith('.pdf')
+    ):
+        try:
+            existing_path = resolve_generated_pdf_path(invoice.original_file_path)
+        except PDFInvoiceGenerationError:
+            existing_path = None
+
+        if existing_path and existing_path.exists():
+            generated_pdf_path = invoice.original_file_path
+
+    if not generated_pdf_path:
+        invoice_pdf_data = _build_invoice_pdf_data(
+            invoice,
+            owner_id=current_user.id,
+            company_details=company_details,
+            client=invoice.client,
+        )
+        try:
+            generated_pdf_path = generate_invoice_pdf(invoice_pdf_data)
+        except Exception as exc:
+            _raise_pdf_generation_http_error(exc)
+
+        if invoice.source == InvoiceSource.CREATED:
+            invoice.original_file_path = generated_pdf_path
+            try:
+                db.commit()
+            except Exception:
+                db.rollback()
+                remove_generated_pdf(generated_pdf_path)
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail='Failed to persist generated invoice PDF path',
+                )
+        else:
+            should_cleanup_after_response = True
+
+    if not generated_pdf_path:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail='Failed to resolve invoice PDF path')
+
+    try:
+        absolute_pdf_path = resolve_generated_pdf_path(generated_pdf_path)
+    except PDFInvoiceGenerationError as exc:
+        _raise_pdf_generation_http_error(exc)
+
+    if not absolute_pdf_path.exists():
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail='Generated invoice PDF missing')
+
+    filename = f'{invoice.invoice_number}.pdf'.replace(' ', '-')
+    background = BackgroundTask(remove_generated_pdf, generated_pdf_path) if should_cleanup_after_response else None
+    return FileResponse(
+        path=str(absolute_pdf_path),
         media_type='application/pdf',
-        headers={'Content-Disposition': f'attachment; filename={filename}'},
+        filename=filename,
+        background=background,
     )

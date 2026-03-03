@@ -14,6 +14,8 @@ pytesseract==0.3.13
 pdf2image==1.17.0
 pypdf==6.0.0
 reportlab==4.4.4
+Jinja2==3.1.6
+weasyprint==62.3
 boto3==1.40.29
 razorpay==1.4.2
 google-auth==2.40.3
