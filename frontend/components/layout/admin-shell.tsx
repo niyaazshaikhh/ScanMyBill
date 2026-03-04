@@ -12,6 +12,7 @@ import { APP_NOTIFICATION_EVENT, type AppNotificationPayload } from '@/lib/app-n
 import { Input } from '@/components/ui/input';
 import { clearAuthSession, getAuthToken, getAuthUser, updateAuthUser } from '@/lib/auth';
 import { useAuthGuard } from '@/hooks/useAuthGuard';
+import { SESSION_TIMEOUT_EVENT, type SessionTimeoutDetail } from '@/lib/session-timeout';
 import {
   canAccessAppPath,
   resolveEffectiveSubscriptionPlan,
@@ -162,6 +163,8 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
   const [notificationsLoading, setNotificationsLoading] = useState(false);
   const [unreadNotificationCount, setUnreadNotificationCount] = useState(0);
   const [toasts, setToasts] = useState<ToastItem[]>([]);
+  const [sessionTimeoutOpen, setSessionTimeoutOpen] = useState(false);
+  const [sessionTimeoutMessage, setSessionTimeoutMessage] = useState('Session timed out. Please log in again.');
   const searchContainerRef = useRef<HTMLDivElement | null>(null);
   const notificationsContainerRef = useRef<HTMLDivElement | null>(null);
   const seenNotificationIdsRef = useRef<Set<string>>(new Set());
@@ -292,6 +295,33 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
       window.removeEventListener('mousedown', onMouseDown);
     };
   }, []);
+
+  useEffect(() => {
+    const onSessionTimeout = (event: Event) => {
+      const customEvent = event as CustomEvent<SessionTimeoutDetail>;
+      const nextMessage = customEvent.detail?.message || 'Session timed out. Please log in again.';
+      setSessionTimeoutMessage(nextMessage);
+      setSessionTimeoutOpen(true);
+    };
+
+    window.addEventListener(SESSION_TIMEOUT_EVENT, onSessionTimeout as EventListener);
+    return () => {
+      window.removeEventListener(SESSION_TIMEOUT_EVENT, onSessionTimeout as EventListener);
+    };
+  }, []);
+
+  const closeSessionWithRedirect = useCallback((path: '/' | '/signin') => {
+    clearAuthSession();
+    setSessionTimeoutOpen(false);
+    if (typeof window !== 'undefined') {
+      window.history.pushState(null, '', path);
+    }
+    router.replace(path);
+    router.refresh();
+    if (typeof window !== 'undefined') {
+      window.location.replace(path);
+    }
+  }, [router]);
 
   const dismissToast = useCallback((toastId: string) => {
     setToasts((previous) => previous.filter((item) => item.id !== toastId));
@@ -925,6 +955,22 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
           </div>
         ))}
       </div>
+      {sessionTimeoutOpen ? (
+        <div className='fixed inset-0 z-[70] grid place-items-center bg-black/40 p-4'>
+          <div className='w-full max-w-sm rounded-lg border border-border bg-background p-5 shadow-xl'>
+            <h2 className='text-base font-semibold text-foreground'>Session Timed Out</h2>
+            <p className='mt-2 text-sm text-muted-foreground'>{sessionTimeoutMessage}</p>
+            <div className='mt-4 flex justify-end gap-2'>
+              <Button type='button' variant='outline' onClick={() => closeSessionWithRedirect('/')}>
+                Log out
+              </Button>
+              <Button type='button' onClick={() => closeSessionWithRedirect('/signin')}>
+                Log in again
+              </Button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

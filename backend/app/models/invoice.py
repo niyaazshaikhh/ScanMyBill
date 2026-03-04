@@ -28,7 +28,7 @@ class Invoice(Base):
     invoice_date: Mapped[Date] = mapped_column(Date, index=True)
     place_of_supply: Mapped[str | None] = mapped_column(String(64), nullable=True)
     place_of_supply_code: Mapped[str | None] = mapped_column(String(2), nullable=True)
-    gst_number: Mapped[str | None] = mapped_column(String(15), nullable=True)
+    gst_number: Mapped[str | None] = mapped_column(String(100), nullable=True)
     type: Mapped[InvoiceType] = mapped_column(SqlEnum(InvoiceType), default=InvoiceType.PURCHASE, index=True)
     subtotal: Mapped[float] = mapped_column(Float, default=0.0)
     gst_amount: Mapped[float] = mapped_column(Float, default=0.0)

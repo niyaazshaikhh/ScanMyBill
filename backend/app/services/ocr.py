@@ -12,7 +12,7 @@ from typing import Any
 import pytesseract
 import requests
 from pdf2image import convert_from_path
-from PIL import Image
+from PIL import Image, ImageEnhance
 from pypdf import PdfReader
 
 from app.core.config import settings
@@ -46,6 +46,16 @@ PURCHASE_KEYWORDS = ('purchase', 'supplier', 'vendor bill', 'inward')
 MAX_VISUAL_PAGES = 3
 LLM_TIMEOUT_SECONDS = 45
 
+def preprocess_image(image: Image.Image):
+
+    image = image.convert("L")  # grayscale
+
+    enhancer = ImageEnhance.Contrast(image)
+    image = enhancer.enhance(2.0)
+
+    image = image.point(lambda x: 0 if x < 140 else 255)
+
+    return image
 
 def extract_text_from_file(file_path: str, mime_type: str) -> str:
     path = Path(file_path)
@@ -55,7 +65,7 @@ def extract_text_from_file(file_path: str, mime_type: str) -> str:
     try:
         if mime_type.startswith('image/'):
             with Image.open(path) as image:
-                return pytesseract.image_to_string(image)
+                return pytesseract.image_to_string(preprocess_image(image))
 
         if mime_type == 'application/pdf':
             return _extract_text_from_pdf(path)
@@ -119,7 +129,7 @@ def _extract_text_from_pdf(path: Path) -> str:
     try:
         images = convert_from_path(str(path), first_page=1, last_page=MAX_VISUAL_PAGES)
         for image in images:
-            text_parts.append(pytesseract.image_to_string(image))
+            text_parts.append(pytesseract.image_to_string(preprocess_image(image)))
     except Exception:
         pass
 

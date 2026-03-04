@@ -29,6 +29,7 @@ from app.schemas.bill import (
 )
 from app.services.client_resolver import resolve_client
 from app.services.document_processor import process_uploaded_document
+from app.utils.gstin import normalize_gstin
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -143,7 +144,7 @@ def _build_invoice_from_extraction(owner_id: str, extracted: dict[str, Any]) -> 
         invoice_date=bill_date,
         place_of_supply=gst_payload.get('place_of_supply'),
         place_of_supply_code=gst_payload.get('place_of_supply_code'),
-        gst_number=gst_payload.get('gst_number') or extracted.get('gst_number'),
+        gst_number=normalize_gstin(gst_payload.get('gst_number')) or normalize_gstin(extracted.get('gst_number')),
         type=invoice_type,
         subtotal=0.0,
         gst_amount=0.0,

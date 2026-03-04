@@ -275,6 +275,32 @@ def _ensure_invoice_columns() -> None:
             )
 
 
+def _ensure_invoice_gst_number_column_length() -> None:
+    inspector = inspect(engine)
+    if 'invoices' not in inspector.get_table_names():
+        return
+
+    gst_column = next(
+        (column for column in inspector.get_columns('invoices') if column.get('name') == 'gst_number'),
+        None,
+    )
+    if gst_column is None:
+        return
+
+    current_length = getattr(gst_column.get('type'), 'length', None)
+    if isinstance(current_length, int) and current_length >= 100:
+        return
+
+    with engine.begin() as connection:
+        dialect = engine.dialect.name
+        if dialect == 'postgresql':
+            connection.execute(text('ALTER TABLE invoices ALTER COLUMN gst_number TYPE VARCHAR(100)'))
+            return
+        if dialect == 'mysql':
+            connection.execute(text('ALTER TABLE invoices MODIFY COLUMN gst_number VARCHAR(100)'))
+            return
+
+
 def _ensure_invoice_unique_constraint() -> None:
     inspector = inspect(engine)
     if 'invoices' not in inspector.get_table_names():
@@ -428,6 +454,7 @@ def on_startup() -> None:
     _ensure_clients_name_column_length()
     _ensure_invoice_item_columns()
     _ensure_invoice_columns()
+    _ensure_invoice_gst_number_column_length()
     _ensure_invoice_unique_constraint()
     _ensure_non_gst_challan_unique_constraint()
     _ensure_non_gst_challan_sequence_numbers()

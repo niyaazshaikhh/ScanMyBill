@@ -1928,10 +1928,9 @@ D:.
 │   │   │   │   │   ├───clients
 │   │   │   │   │   ├───create
 │   │   │   │   │   ├───dashboard
-│   │   │   │   │   ├───hsn-sac-master-list
 │   │   │   │   │   ├───invoices
-│   │   │   │   │   │   └───delivery-challan
 │   │   │   │   │   └───settings
+│   │   │   │   │       └───personal_details
 │   │   │   │   ├───(auth)
 │   │   │   │   │   └───signin
 │   │   │   │   └───icon.svg
@@ -1946,10 +1945,9 @@ D:.
 │   │   │   │       │   ├───clients
 │   │   │   │       │   ├───create
 │   │   │   │       │   ├───dashboard
-│   │   │   │       │   ├───hsn-sac-master-list
 │   │   │   │       │   ├───invoices
-│   │   │   │       │   │   └───delivery-challan
 │   │   │   │       │   └───settings
+│   │   │   │       │       └───personal_details
 │   │   │   │       └───(auth)
 │   │   │   │           └───signin
 │   │   │   ├───css
@@ -1959,7 +1957,11 @@ D:.
 │   │   │   └───webpack
 │   │   │       └───app
 │   │   │           └───(app)
+│   │   │               ├───client-analytics
+│   │   │               ├───clients
+│   │   │               ├───create
 │   │   │               ├───dashboard
+│   │   │               ├───invoices
 │   │   │               └───settings
 │   │   └───types
 │   │       └───app
@@ -1968,10 +1970,9 @@ D:.
 │   │           │   ├───clients
 │   │           │   ├───create
 │   │           │   ├───dashboard
-│   │           │   ├───hsn-sac-master-list
 │   │           │   ├───invoices
-│   │           │   │   └───delivery-challan
 │   │           │   └───settings
+│   │           │       └───personal_details
 │   │           └───(auth)
 │   │               └───signin
 │   ├───app
@@ -4331,5 +4332,3 @@ D:.
 │   │   └───yocto-queue
 │   └───types
 └───test
-
-D:\Projects\ScanMyBill_IN>

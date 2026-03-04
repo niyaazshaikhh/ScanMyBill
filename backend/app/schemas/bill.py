@@ -1,5 +1,5 @@
 from datetime import date, datetime
-from typing import Literal
+from typing import Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -85,3 +85,25 @@ class OCRExtractionResult(BaseModel):
     gst_number: str | None
     total_amount: float
     inferred_type: InvoiceType
+
+class BillItem(BaseModel):
+
+    description: str
+    hsn_sac: Optional[str] = None
+    quantity: float = Field(gt=0)
+    rate: float = Field(gt=0)
+    tax_rate: Optional[float] = None
+
+class GSTInvoiceSchema(BaseModel):
+
+    invoice_number: str
+    invoice_date: str
+
+    seller_name: str
+    buyer_name: str
+
+    subtotal: float
+    gst_amount: float
+    total_amount: float
+
+    items: list[BillItem]

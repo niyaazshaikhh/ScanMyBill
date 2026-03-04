@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import json
 import re
 from datetime import date, datetime
 from typing import Any
+
+from pydantic import ValidationError
 
 from app.models.invoice import InvoiceType
 from app.schemas.bill import (
@@ -11,6 +14,184 @@ from app.schemas.bill import (
     GSTInvoiceExtractedPayload,
 )
 from app.services.ai_document_processor import extract_document_data
+from app.services.ocr import extract_text_from_file
+from app.utils.gstin import normalize_gstin
+
+
+def normalize_party(data: dict[str, Any]) -> dict[str, Any]:
+    normalized = dict(data)
+
+    seller_candidate = _first_non_empty_value(
+        normalized.get('seller'),
+        normalized.get('seller_name'),
+        normalized.get('supplier'),
+        normalized.get('vendor'),
+        normalized.get('issuer'),
+        normalized.get('from_party'),
+    )
+    buyer_candidate = _first_non_empty_value(
+        normalized.get('buyer'),
+        normalized.get('buyer_name'),
+        normalized.get('bill_to'),
+        normalized.get('consignee'),
+        normalized.get('recipient'),
+        normalized.get('to_party'),
+    )
+
+    if seller_candidate is not None:
+        normalized['seller'] = seller_candidate
+    if buyer_candidate is not None:
+        normalized['buyer'] = buyer_candidate
+
+    seller_name = _extract_party_name(seller_candidate)
+    buyer_name = _extract_party_name(buyer_candidate)
+    if seller_name and not _as_optional_str(normalized.get('seller_name')):
+        normalized['seller_name'] = seller_name
+    if buyer_name and not _as_optional_str(normalized.get('buyer_name')):
+        normalized['buyer_name'] = buyer_name
+
+    if not _as_optional_str(normalized.get('from_party')) and seller_name:
+        normalized['from_party'] = seller_name
+    if not _as_optional_str(normalized.get('to_party')) and buyer_name:
+        normalized['to_party'] = buyer_name
+
+    if not normalized.get('transaction_type'):
+        normalized['transaction_type'] = normalized.get('bill_type') or normalized.get('type')
+
+    return normalized
+
+
+def compute_missing_amounts(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    normalized_items: list[dict[str, Any]] = []
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+
+        normalized_item = dict(item)
+        quantity = _as_amount(_first_non_empty_value(normalized_item.get('quantity'), normalized_item.get('qty')))
+        rate = _as_amount(
+            _first_non_empty_value(
+                normalized_item.get('rate'),
+                normalized_item.get('unit_price'),
+                normalized_item.get('price'),
+            )
+        )
+        amount = _as_amount(
+            _first_non_empty_value(
+                normalized_item.get('amount'),
+                normalized_item.get('line_total'),
+                normalized_item.get('total'),
+            )
+        )
+
+        if amount <= 0 and quantity > 0 and rate > 0:
+            amount = round(quantity * rate, 2)
+
+        normalized_item['quantity'] = quantity if quantity > 0 else 1.0
+        normalized_item['rate'] = rate
+        if amount > 0:
+            normalized_item['amount'] = amount
+
+        normalized_items.append(normalized_item)
+
+    return normalized_items
+
+
+def validate_invoice_math(data: dict[str, Any]) -> dict[str, Any]:
+    validated = dict(data)
+    subtotal = _as_amount(validated.get('subtotal'))
+    gst_amount = _as_amount(validated.get('gst_amount'))
+    total_amount = _as_amount(validated.get('total_amount'))
+
+    if subtotal > 0 and gst_amount > 0:
+        expected_total = round(subtotal + gst_amount, 2)
+        if total_amount <= 0 or abs(expected_total - total_amount) > 5:
+            validated['total_amount'] = expected_total
+            total_amount = expected_total
+
+    if subtotal <= 0 and total_amount > 0:
+        derived_subtotal = round(max(total_amount - gst_amount, 0.0), 2)
+        if derived_subtotal > 0:
+            validated['subtotal'] = derived_subtotal
+            subtotal = derived_subtotal
+
+    if gst_amount <= 0 and total_amount > 0 and subtotal > 0:
+        derived_gst = round(max(total_amount - subtotal, 0.0), 2)
+        if derived_gst > 0:
+            validated['gst_amount'] = derived_gst
+
+    return validated
+
+
+def normalize_items(items: Any) -> list[dict[str, Any]]:
+    normalized_items: list[dict[str, Any]] = []
+    if not isinstance(items, list):
+        return normalized_items
+
+    for raw_item in items:
+        if not isinstance(raw_item, dict):
+            continue
+
+        item = dict(raw_item)
+        item['description'] = (
+            _as_optional_str(item.get('description'))
+            or _as_optional_str(item.get('item_name'))
+            or 'Item'
+        )
+        item['quantity'] = _as_positive_amount(
+            _first_non_empty_value(item.get('quantity'), item.get('qty'))
+        )
+        item['rate'] = _as_amount(
+            _first_non_empty_value(item.get('rate'), item.get('unit_price'), item.get('price'))
+        )
+        if item.get('amount') is not None:
+            item['amount'] = _as_amount(item.get('amount'))
+        normalized_items.append(item)
+
+    return normalized_items
+
+
+def normalize_ai_payload(raw: dict[str, Any]) -> dict[str, Any]:
+    normalized = _flatten_document_payload(raw)
+
+    seller_value = _first_non_empty_value(normalized.get('seller'), normalized.get('seller_name'))
+    buyer_value = _first_non_empty_value(normalized.get('buyer'), normalized.get('buyer_name'))
+    if not _as_optional_str(normalized.get('seller_name')):
+        seller_name = _extract_party_name(seller_value)
+        if seller_name:
+            normalized['seller_name'] = seller_name
+    if not _as_optional_str(normalized.get('buyer_name')):
+        buyer_name = _extract_party_name(buyer_value)
+        if buyer_name:
+            normalized['buyer_name'] = buyer_name
+
+    normalized['subtotal'] = _as_amount(normalized.get('subtotal'))
+    normalized['gst_amount'] = _as_amount(normalized.get('gst_amount'))
+    normalized['total_amount'] = _as_amount(normalized.get('total_amount'))
+    normalized['items'] = compute_missing_amounts(normalize_items(normalized.get('items')))
+    return normalized
+
+
+def _debug_print(label: str, payload: Any) -> None:
+    payload = _to_jsonable(payload)
+    try:
+        serialized = json.dumps(payload, default=str, ensure_ascii=False)
+    except Exception:
+        serialized = str(payload)
+    print(f'{label}: {serialized}')
+
+
+def _to_jsonable(value: Any) -> Any:
+    if isinstance(value, dict):
+        return {key: _to_jsonable(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_to_jsonable(item) for item in value]
+    if hasattr(value, 'model_dump'):
+        try:
+            return _to_jsonable(value.model_dump(mode='python'))
+        except Exception:
+            return str(value)
+    return value
 
 
 def _extract_party_name(value: Any) -> str | None:
@@ -18,7 +199,7 @@ def _extract_party_name(value: Any) -> str | None:
         cleaned = value.strip()
         return cleaned if cleaned else None
     if isinstance(value, dict):
-        for key in ('name', 'business_name', 'party_name', 'company_name'):
+        for key in ('name', 'business_name', 'party_name', 'company_name', 'seller_name', 'buyer_name'):
             item = value.get(key)
             if isinstance(item, str) and item.strip():
                 return item.strip()
@@ -27,13 +208,13 @@ def _extract_party_name(value: Any) -> str | None:
 
 def _extract_party_gstin(value: Any) -> str | None:
     if isinstance(value, str):
-        cleaned = value.strip().upper()
-        return cleaned if cleaned else None
+        return normalize_gstin(value)
     if isinstance(value, dict):
-        for key in ('gstin', 'gst_number', 'gst'):
+        for key in ('gstin', 'gst_number', 'gst', 'seller_gstin', 'buyer_gstin'):
             item = value.get(key)
-            if isinstance(item, str) and item.strip():
-                return item.strip().upper()
+            normalized = normalize_gstin(item)
+            if normalized:
+                return normalized
     return None
 
 
@@ -45,61 +226,88 @@ async def process_uploaded_document(
     company_name: str | None,
     company_gstin: str | None,
 ) -> dict[str, Any]:
-    del mime_type, company_gstin
+    del company_gstin
 
-    raw = await extract_document_data(file_path)
+    ocr_text = ''
+    try:
+        ocr_text = extract_text_from_file(file_path, mime_type)
+    except Exception:
+        ocr_text = ''
+
+    raw = await extract_document_data(file_path, company_name=company_name, ocr_text=ocr_text)
     if not isinstance(raw, dict):
         raise ValueError('AI extraction failed')
     if raw.get('error'):
+        details = _as_optional_str(raw.get('details'))
+        if details:
+            raise ValueError(f"{raw['error']}: {details}")
         raise ValueError(str(raw['error']))
+
+    raw = normalize_ai_payload(raw)
+    raw = normalize_party(raw)
 
     document_type = _normalize_document_type(raw.get('document_type'))
     if document_type == 'unknown':
         raise ValueError('Model returned unknown document type')
+    if document_type == 'gst_invoice':
+        raw = validate_invoice_math(raw)
 
-    gst_payload = _build_gst_payload(raw)
-    challan_payload = _build_challan_payload(raw)
+    try:
+        gst_payload = _build_gst_payload(raw)
+        challan_payload = _build_challan_payload(raw)
+    except ValidationError as exc:
+        _debug_print('Normalized AI payload before schema validation', raw)
+        print(f'Pydantic payload validation error: {exc}')
+        raise ValueError(f'Schema validation error: {exc}') from exc
 
     bill_type = _determine_bill_type(
         document_type=document_type,
-        explicit_transaction_type=raw.get('transaction_type'),
+        explicit_transaction_type=_first_non_empty_value(
+            raw.get('transaction_type'),
+            raw.get('bill_type'),
+            raw.get('type'),
+        ),
         fallback=fallback_type,
         company_name=company_name,
-        seller_name=_extract_party_name(raw.get('seller')),
-        buyer_name=_extract_party_name(raw.get('buyer')),
+        seller_name=_extract_party_name(_first_non_empty_value(raw.get('seller'), raw.get('seller_name'))),
+        buyer_name=_extract_party_name(_first_non_empty_value(raw.get('buyer'), raw.get('buyer_name'))),
         from_party=challan_payload.from_party,
         to_party=challan_payload.to_party,
     )
+    if document_type == 'gst_invoice':
+        gst_payload.gst_number = _select_gst_for_bill_type(raw, bill_type, gst_payload.gst_number)
 
     warnings = [value for value in raw.get('warnings', []) if isinstance(value, str)]
 
-    structured = BillStructuredData(
-        document_type=document_type,
-        bill_type=bill_type,
-        gst_invoice=gst_payload if document_type == 'gst_invoice' else None,
-        delivery_challan=challan_payload if document_type == 'delivery_challan' else None,
-        warnings=warnings,
-    )
+    structured_payload = {
+        'document_type': document_type,
+        'bill_type': bill_type,
+        'gst_invoice': gst_payload if document_type == 'gst_invoice' else None,
+        'delivery_challan': challan_payload if document_type == 'delivery_challan' else None,
+        'warnings': warnings,
+    }
+    _debug_print('Structured payload before BillStructuredData', structured_payload)
+    try:
+        structured = BillStructuredData(**structured_payload)
+    except ValidationError as exc:
+        print(f'BillStructuredData validation error: {exc}')
+        raise ValueError(f'Schema validation error: {exc}') from exc
 
     bill_date = (
         gst_payload.invoice_date if document_type == 'gst_invoice' else challan_payload.challan_date
     ) or _as_optional_date(raw.get('invoice_date')) or _as_optional_date(raw.get('challan_date'))
 
-    total_amount = (
-        gst_payload.total_amount if document_type == 'gst_invoice' else challan_payload.subtotal
-    )
+    total_amount = gst_payload.total_amount if document_type == 'gst_invoice' else challan_payload.subtotal
     if total_amount <= 0:
         total_amount = _as_amount(raw.get('total_amount'))
 
-    gst_number = gst_payload.gst_number
-
     return {
-        'text': '',
+        'text': ocr_text,
         'document_type': document_type,
         'bill_type': bill_type,
         'transaction_type': bill_type.value,
         'bill_date': bill_date,
-        'gst_number': gst_number,
+        'gst_number': gst_payload.gst_number,
         'total_amount': total_amount,
         'gst_invoice': gst_payload,
         'delivery_challan': challan_payload,
@@ -109,10 +317,71 @@ async def process_uploaded_document(
     }
 
 
-def _build_gst_payload(raw: dict[str, Any]) -> GSTInvoiceExtractedPayload:
-    seller = raw.get('seller')
-    buyer = raw.get('buyer')
+def _select_gst_for_bill_type(
+    raw: dict[str, Any],
+    bill_type: InvoiceType,
+    existing_gst: str | None,
+) -> str | None:
+    seller_sources = [
+        raw.get('seller'),
+        raw.get('seller_name'),
+        raw.get('seller_gstin'),
+        raw.get('supplier'),
+        raw.get('vendor'),
+        raw.get('issuer'),
+        raw.get('from_party'),
+    ]
+    buyer_sources = [
+        raw.get('buyer'),
+        raw.get('buyer_name'),
+        raw.get('buyer_gstin'),
+        raw.get('bill_to'),
+        raw.get('consignee'),
+        raw.get('recipient'),
+        raw.get('to_party'),
+    ]
 
+    seller_gstin = _first_valid_gstin(seller_sources)
+    buyer_gstin = _first_valid_gstin(buyer_sources)
+    fallback_gstin = normalize_gstin(raw.get('gst_number')) or existing_gst
+
+    if bill_type == InvoiceType.SALES:
+        return buyer_gstin or fallback_gstin
+    if bill_type == InvoiceType.PURCHASE:
+        return seller_gstin or fallback_gstin
+    return fallback_gstin
+
+
+def _flatten_document_payload(raw: dict[str, Any]) -> dict[str, Any]:
+    flattened = dict(raw)
+    document_type = _normalize_document_type(flattened.get('document_type'))
+    nested_key = 'gst_invoice' if document_type == 'gst_invoice' else 'delivery_challan'
+    nested_payload = flattened.get(nested_key)
+    if not isinstance(nested_payload, dict):
+        return flattened
+
+    for key, value in nested_payload.items():
+        if key not in flattened or flattened.get(key) in (None, '', []):
+            flattened[key] = value
+    return flattened
+
+
+def _first_valid_gstin(sources: list[Any]) -> str | None:
+    for value in sources:
+        normalized = _extract_party_gstin(value)
+        if normalized:
+            return normalized
+    return None
+
+
+def _build_gst_payload(raw: dict[str, Any]) -> GSTInvoiceExtractedPayload:
+    seller = _first_non_empty_value(
+        raw.get('seller'),
+        raw.get('seller_name'),
+        raw.get('supplier'),
+        raw.get('vendor'),
+        raw.get('issuer'),
+    )
     items_raw = raw.get('items') if isinstance(raw.get('items'), list) else []
 
     return GSTInvoiceExtractedPayload(
@@ -120,17 +389,30 @@ def _build_gst_payload(raw: dict[str, Any]) -> GSTInvoiceExtractedPayload:
         invoice_date=_as_optional_date(raw.get('invoice_date')),
         place_of_supply=_as_optional_str(raw.get('place_of_supply')),
         place_of_supply_code=_as_optional_str(raw.get('place_of_supply_code')),
-        gst_number=_extract_party_gstin(seller) or _as_optional_str(raw.get('gst_number')),
+        gst_number=(
+            _extract_party_gstin(seller)
+            or normalize_gstin(raw.get('seller_gstin'))
+            or normalize_gstin(raw.get('gst_number'))
+        ),
         subtotal=_as_amount(raw.get('subtotal')) or _as_amount(_dig(raw, 'invoice_totals', 'subtotal')),
         gst_amount=_as_amount(raw.get('gst_amount')) or _as_amount(_dig(raw, 'tax_summary', 'total_tax')),
         total_amount=_as_amount(raw.get('total_amount')) or _as_amount(_dig(raw, 'invoice_totals', 'grand_total')),
         notes=_as_optional_str(raw.get('notes')),
         items=[
             {
-                'description': _as_optional_str(item.get('description')) or 'Item',
-                'hsn_sac': _as_optional_str(item.get('hsn_sac')) or _as_optional_str(item.get('hsn')) or '',
-                'quantity': _as_positive_amount(item.get('quantity')),
-                'rate': _as_amount(item.get('rate')) or _as_amount(item.get('unit_price')),
+                'description': _as_optional_str(item.get('description')) or _as_optional_str(item.get('item_name')) or 'Item',
+                'hsn_sac': (
+                    _as_optional_str(item.get('hsn_sac'))
+                    or _as_optional_str(item.get('hsn'))
+                    or _as_optional_str(item.get('sac'))
+                    or ''
+                ),
+                'quantity': _as_positive_amount(
+                    _first_non_empty_value(item.get('quantity'), item.get('qty'))
+                ),
+                'rate': _as_amount(
+                    _first_non_empty_value(item.get('rate'), item.get('unit_price'), item.get('price'))
+                ),
                 'tax_rate': _infer_tax_rate(item),
             }
             for item in items_raw
@@ -146,26 +428,38 @@ def _build_challan_payload(raw: dict[str, Any]) -> DeliveryChallanExtractedPaylo
     if subtotal <= 0 and items_raw:
         subtotal = round(
             sum(
-                _as_positive_amount(item.get('quantity')) * _as_amount(item.get('rate'))
+                _as_positive_amount(_first_non_empty_value(item.get('quantity'), item.get('qty')))
+                * _as_amount(_first_non_empty_value(item.get('rate'), item.get('unit_price'), item.get('price')))
                 for item in items_raw
                 if isinstance(item, dict)
             ),
             2,
         )
 
+    from_party = _as_optional_str(raw.get('from_party')) or _extract_party_name(
+        _first_non_empty_value(raw.get('seller'), raw.get('seller_name'))
+    )
+    to_party = _as_optional_str(raw.get('to_party')) or _extract_party_name(
+        _first_non_empty_value(raw.get('buyer'), raw.get('buyer_name'))
+    )
+
     return DeliveryChallanExtractedPayload(
         challan_number=_as_optional_int(raw.get('challan_number')),
         order_number=_as_optional_str(raw.get('order_number')),
         challan_date=_as_optional_date(raw.get('challan_date')),
-        from_party=_as_optional_str(raw.get('from_party')),
-        to_party=_as_optional_str(raw.get('to_party')),
+        from_party=from_party,
+        to_party=to_party,
         subtotal=subtotal,
         notes=_as_optional_str(raw.get('notes')),
         items=[
             {
-                'description': _as_optional_str(item.get('description')) or 'Item',
-                'quantity': _as_positive_amount(item.get('quantity')),
-                'rate': _as_amount(item.get('rate')),
+                'description': _as_optional_str(item.get('description')) or _as_optional_str(item.get('item_name')) or 'Item',
+                'quantity': _as_positive_amount(
+                    _first_non_empty_value(item.get('quantity'), item.get('qty'))
+                ),
+                'rate': _as_amount(
+                    _first_non_empty_value(item.get('rate'), item.get('unit_price'), item.get('price'))
+                ),
             }
             for item in items_raw
             if isinstance(item, dict)
@@ -192,9 +486,11 @@ def _dig(raw: dict[str, Any], parent_key: str, child_key: str) -> Any:
 
 
 def _normalize_document_type(value: Any) -> str:
-    normalized = str(value or '').strip().lower()
-    if normalized in {'gst_invoice', 'delivery_challan'}:
-        return normalized
+    normalized = str(value or '').strip().lower().replace(' ', '_')
+    if normalized in {'gst_invoice', 'invoice', 'tax_invoice'}:
+        return 'gst_invoice'
+    if normalized in {'delivery_challan', 'challan', 'delivery_note'}:
+        return 'delivery_challan'
     return 'unknown'
 
 
@@ -209,29 +505,27 @@ def _determine_bill_type(
     from_party: str | None,
     to_party: str | None,
 ) -> InvoiceType:
+    normalized_company = _normalize_name(company_name)
+    if normalized_company:
+        if document_type == 'delivery_challan':
+            normalized_from = _normalize_name(from_party)
+            normalized_to = _normalize_name(to_party)
+            if normalized_from and normalized_from == normalized_company:
+                return InvoiceType.SALES
+            if normalized_to and normalized_to == normalized_company:
+                return InvoiceType.PURCHASE
+        else:
+            normalized_seller = _normalize_name(seller_name)
+            normalized_buyer = _normalize_name(buyer_name)
+            if normalized_seller and normalized_seller == normalized_company:
+                return InvoiceType.SALES
+            if normalized_buyer and normalized_buyer == normalized_company:
+                return InvoiceType.PURCHASE
+
     explicit = _coerce_invoice_type(explicit_transaction_type)
     if explicit is not None:
         return explicit
 
-    normalized_company = _normalize_name(company_name)
-    if not normalized_company:
-        return fallback
-
-    if document_type == 'delivery_challan':
-        normalized_from = _normalize_name(from_party)
-        normalized_to = _normalize_name(to_party)
-        if normalized_from and normalized_from == normalized_company:
-            return InvoiceType.SALES
-        if normalized_to and normalized_to == normalized_company:
-            return InvoiceType.PURCHASE
-        return fallback
-
-    normalized_seller = _normalize_name(seller_name)
-    normalized_buyer = _normalize_name(buyer_name)
-    if normalized_seller and normalized_seller == normalized_company:
-        return InvoiceType.SALES
-    if normalized_buyer and normalized_buyer == normalized_company:
-        return InvoiceType.PURCHASE
     return fallback
 
 
@@ -309,7 +603,9 @@ def _as_amount(value: Any) -> float:
         if value is None:
             return 0.0
         if isinstance(value, str):
-            normalized = value.replace(',', '').strip()
+            normalized = re.sub(r'[^0-9.-]', '', value.replace(',', ''))
+            if normalized in {'', '.', '-', '-.'}:
+                return 0.0
             return round(max(float(normalized), 0.0), 2)
         return round(max(float(value), 0.0), 2)
     except (TypeError, ValueError):
@@ -319,3 +615,19 @@ def _as_amount(value: Any) -> float:
 def _as_positive_amount(value: Any) -> float:
     amount = _as_amount(value)
     return amount if amount > 0 else 1.0
+
+
+def _first_non_empty_value(*values: Any) -> Any:
+    for value in values:
+        if value is None:
+            continue
+        if isinstance(value, str):
+            if value.strip():
+                return value
+            continue
+        if isinstance(value, dict):
+            if value:
+                return value
+            continue
+        return value
+    return None

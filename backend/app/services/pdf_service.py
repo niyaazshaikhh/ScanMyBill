@@ -9,6 +9,14 @@ from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, Tabl
 
 from app.models.invoice import Invoice
 
+from pdf2image import convert_from_path
+
+def pdf_to_images(path):
+
+    images = convert_from_path(path, dpi=300)
+
+    return images
+
 
 def build_invoice_pdf(invoice: Invoice) -> bytes:
     buffer = BytesIO()

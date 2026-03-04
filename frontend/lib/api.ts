@@ -1,5 +1,6 @@
 import type { AuthUser } from '@/lib/auth';
-import { getAuthToken, getAuthUser, logoutToLanding, setAuthSession } from '@/lib/auth';
+import { getAuthToken, getAuthUser, isAuthTokenExpired, setAuthSession } from '@/lib/auth';
+import { emitSessionTimeout } from '@/lib/session-timeout';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1';
 
@@ -48,6 +49,8 @@ export async function apiRequest<T = unknown>(
   path: string,
   options: ApiOptions = {}
 ): Promise<T> {
+  const sessionTimeoutMessage = 'Session timed out. Please log in again.';
+
   const {
     method = 'GET',
     body,
@@ -65,23 +68,42 @@ export async function apiRequest<T = unknown>(
     if (auth) {
       const token = tokenOverride ?? getAuthToken();
       if (!token) {
-        logoutToLanding();
-        throw new Error('Session timed out. Please log in again.');
+        emitSessionTimeout(sessionTimeoutMessage);
+        throw new Error(sessionTimeoutMessage);
       }
       headers.Authorization = `Bearer ${token}`;
     }
 
-    return fetch(`${API_BASE}${path}`, {
-      method,
-      headers,
-      credentials: 'include',
-      body:
-        body === undefined
-          ? undefined
-          : isFormData
-          ? (body as FormData)
-          : JSON.stringify(body)
-    });
+    const url = `${API_BASE}${path}`;
+    try {
+      return await fetch(url, {
+        method,
+        headers,
+        credentials: 'include',
+        body:
+          body === undefined
+            ? undefined
+            : isFormData
+            ? (body as FormData)
+            : JSON.stringify(body)
+      });
+    } catch (error) {
+      const activeToken = tokenOverride ?? getAuthToken();
+      if (auth && isAuthTokenExpired(activeToken)) {
+        emitSessionTimeout(sessionTimeoutMessage);
+        throw new Error(sessionTimeoutMessage);
+      }
+      const mixedContentHint =
+        typeof window !== 'undefined'
+        && window.location.protocol === 'https:'
+        && API_BASE.startsWith('http://')
+          ? ' Mixed-content blocked: frontend is HTTPS but API URL is HTTP.'
+          : '';
+      const reason = error instanceof Error ? error.message : 'Failed to fetch';
+      throw new Error(
+        `Network error: Unable to reach API at ${url}. ${reason}.${mixedContentHint}`,
+      );
+    }
   };
 
   let res = await executeRequest();
@@ -94,8 +116,8 @@ export async function apiRequest<T = unknown>(
         res = await executeRequest(getAuthToken());
         applyRotatedAccessToken(res);
       } else {
-        logoutToLanding();
-        throw new Error('Session timed out. Please log in again.');
+        emitSessionTimeout(sessionTimeoutMessage);
+        throw new Error(sessionTimeoutMessage);
       }
     }
   }
