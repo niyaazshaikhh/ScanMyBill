@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ChevronRight } from "lucide-react";
+import { ChevronRight, X } from "lucide-react";
 
 export const dynamic = "force-dynamic";
 
@@ -102,6 +102,7 @@ export default function SettingsPage() {
   const [actionMessage, setActionMessage] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [cancelLoading, setCancelLoading] = useState(false);
+  const [helpOpen, setHelpOpen] = useState(false);
 
   const loadUser = useCallback(async () => {
     setLoadingUser(true);
@@ -144,6 +145,21 @@ export default function SettingsPage() {
       active = false;
     };
   }, []);
+
+  useEffect(() => {
+    if (!helpOpen) return;
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setHelpOpen(false);
+      }
+    };
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [helpOpen]);
 
   const currentPlan: SubscriptionPlan = user?.subscription_plan || "FREE";
   const currentPlanId = useMemo(
@@ -322,6 +338,82 @@ export default function SettingsPage() {
           </Link>
         </CardContent>
       </Card>
+
+      <Card className="bg-white/85">
+        <CardHeader>
+          <CardTitle>Contact & Help</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3 text-sm">
+          <p className="text-muted-foreground">
+            Need help with billing, subscriptions, or account setup?
+          </p>
+          <p>
+            <span className="font-medium">Support Email:</span>{" "}
+            <a
+              className="text-primary hover:underline"
+              href="mailto:support@scanmybill.in?subject=ScanMyBill%20Support%20Request"
+            >
+              support@scanmybill.in
+            </a>
+          </p>
+          <button
+            type="button"
+            onClick={() => setHelpOpen(true)}
+            className="inline-flex w-full items-center justify-between rounded-md border border-border bg-background px-4 py-3 text-left transition hover:bg-muted"
+          >
+            <span className="text-sm font-medium">Help, FAQ and About</span>
+            <ChevronRight className="h-4 w-4 text-muted-foreground" />
+          </button>
+        </CardContent>
+      </Card>
+
+      {helpOpen ? (
+        <div
+          className="fixed inset-0 z-50 bg-black/40 px-4 py-6"
+          onClick={() => setHelpOpen(false)}
+          role="presentation"
+        >
+          <div
+            className="mx-auto w-full max-w-md rounded-lg border border-border bg-background shadow-xl"
+            onClick={(event) => event.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+            aria-label="Help and About"
+          >
+            <div className="flex items-start justify-between border-b border-border px-4 py-3">
+              <p className="font-semibold">Help, FAQ and About</p>
+              <button
+                type="button"
+                onClick={() => setHelpOpen(false)}
+                className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
+                aria-label="Close help popup"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <div className="space-y-3 px-4 py-3 text-sm">
+              <p className="text-muted-foreground">
+                ScanMyBill helps you create, export, and manage GST invoices and delivery challans in one place.
+              </p>
+              <p>
+                <span className="font-medium">Support:</span>{" "}
+                <a className="text-primary hover:underline" href="mailto:support@scanmybill.in">
+                  support@scanmybill.in
+                </a>
+              </p>
+              <p className="text-muted-foreground">Quick FAQ:</p>
+              <p className="text-xs text-muted-foreground">1. Use Create pages to export PDFs or save records to database.</p>
+              <p className="text-xs text-muted-foreground">2. Manage reusable masters from HSN/SAC and Clients modules.</p>
+              <p className="text-xs text-muted-foreground">3. Use Settings for plan management and personal details updates.</p>
+              <div className="pt-1">
+                <Link href="/about" className="text-primary hover:underline" onClick={() => setHelpOpen(false)}>
+                  Open full About page
+                </Link>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

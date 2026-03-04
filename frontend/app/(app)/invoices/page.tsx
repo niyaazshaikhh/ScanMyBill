@@ -1,8 +1,8 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { useEffect, useMemo, useState } from 'react';
-import { Download, Eye } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { Download, Eye, Loader2, Plus } from 'lucide-react';
 
 export const dynamic = "force-dynamic";
 
@@ -14,6 +14,7 @@ import { Select } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { useAuthGuard } from '@/hooks/useAuthGuard';
 import { apiRequest } from '@/lib/api';
+import { notifyApp } from '@/lib/app-notification';
 import { formatIsoDateToDisplay, isoMonthIndex, isoYear } from '@/lib/date-format';
 import { formatAccountingAmount, formatAccountingInteger } from '@/lib/number-format';
 import { buildBillPdfFilename } from '@/lib/pdf-filename';
@@ -80,7 +81,9 @@ export default function InvoicesPage() {
   const [deletingInvoiceId, setDeletingInvoiceId] = useState<string | null>(null);
   const [previewingInvoiceId, setPreviewingInvoiceId] = useState<string | null>(null);
   const [downloadingInvoiceId, setDownloadingInvoiceId] = useState<string | null>(null);
+  const [uploadingBill, setUploadingBill] = useState(false);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
+  const quickUploadInputRef = useRef<HTMLInputElement | null>(null);
 
   const yearOptions = useMemo(() => {
     const starts = new Set<number>(data.map((invoice) => getFinancialYearStart(invoice.invoice_date)));
@@ -225,7 +228,7 @@ export default function InvoicesPage() {
     setActionMessage(null);
 
     try {
-      const blob = await apiRequest<Blob>(`/invoices/${invoiceId}/pdf`, { responseType: 'blob' });
+      const blob = await apiRequest<Blob>(`/invoices/${invoiceId}/preview`, { responseType: 'blob' });
       const previewUrl = URL.createObjectURL(blob);
       const popup = window.open(previewUrl, '_blank', 'noopener,noreferrer');
       if (!popup) {
@@ -268,6 +271,42 @@ export default function InvoicesPage() {
       setActionMessage(err instanceof Error ? err.message : 'Failed to download bill PDF');
     } finally {
       setDownloadingInvoiceId(null);
+    }
+  };
+
+  const quickUploadBill = async (selectedFile: File) => {
+    setUploadingBill(true);
+    setActionMessage(null);
+
+    try {
+      const formData = new FormData();
+      formData.append('file', selectedFile);
+      formData.append('invoice_type', 'sales');
+
+      await apiRequest('/bills/upload', {
+        method: 'POST',
+        body: formData,
+        isFormData: true,
+      });
+      notifyApp({
+        title: 'Invoice uploaded successfully',
+        message: 'Invoice uploaded successfully',
+        tone: 'success',
+      });
+      await loadInvoices();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Upload failed';
+      notifyApp({
+        title: 'Invoice upload failed',
+        message,
+        tone: 'error',
+      });
+      setActionMessage(message);
+    } finally {
+      setUploadingBill(false);
+      if (quickUploadInputRef.current) {
+        quickUploadInputRef.current.value = '';
+      }
     }
   };
 
@@ -500,6 +539,28 @@ export default function InvoicesPage() {
           ) : null}
         </CardContent>
       </Card>
+
+      <input
+        ref={quickUploadInputRef}
+        type='file'
+        accept='.jpeg,.jpg,.png,.pdf,.xls,.xlsx'
+        className='hidden'
+        onChange={(event) => {
+          const selected = event.target.files?.[0] || null;
+          if (!selected) return;
+          void quickUploadBill(selected);
+        }}
+      />
+      <Button
+        type='button'
+        onClick={() => quickUploadInputRef.current?.click()}
+        disabled={uploadingBill}
+        className='fixed bottom-6 right-6 z-50 h-14 w-14 rounded-full bg-orange-600 p-0 text-white shadow-lg hover:bg-orange-500 focus-visible:ring-orange-500'
+        aria-label='Quick upload bill'
+        title='Upload Bill'
+      >
+        {uploadingBill ? <Loader2 className='h-6 w-6 animate-spin' /> : <Plus className='h-7 w-7' />}
+      </Button>
     </div>
   );
 }

@@ -10,6 +10,7 @@ from app.schemas.validation_rules import STATE_CODE_BY_NAME, STATE_CODE_PATTERN,
 INVOICE_NUMBER_PATTERN = re.compile(r'^\d{4}-\d{2}/\d{3}$')
 DESCRIPTION_PATTERN = re.compile(r'^[A-Za-z0-9 ]+$')
 HSN_SAC_PATTERN = re.compile(r'^\d{4,8}$')
+MAX_RATE = 10_000.0
 
 
 def _decimal_places_within(value: float, max_places: int) -> bool:
@@ -50,6 +51,8 @@ class InvoiceItemCreate(BaseModel):
     @field_validator('rate')
     @classmethod
     def validate_rate(cls, value: float) -> float:
+        if value > MAX_RATE:
+            raise ValueError('Rate should be up to 10,000.00.')
         if not _decimal_places_within(value, 2):
             raise ValueError('Rate should have up to 2 decimal places.')
         return value

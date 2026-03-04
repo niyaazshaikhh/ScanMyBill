@@ -4,10 +4,7 @@ const HSN_SAC_PATTERN = /^\d{4,8}$/;
 const NUMBER_WITH_TWO_DECIMALS_PATTERN = /^\d+(\.\d{1,2})?$/;
 
 export const MAX_QUANTITY = 5_000_000;
-
-function hasMaxTwoDecimals(value: number): boolean {
-  return Math.round(value * 100) === value * 100;
-}
+export const MAX_RATE = 10_000;
 
 export function formatFinancialYearInvoicePrefix(dateValue: string): string {
   const parsedDate = new Date(dateValue);
@@ -108,7 +105,7 @@ export function validateRate(value: string): string | null {
   }
   const numeric = Number(trimmed);
   if (!Number.isFinite(numeric) || numeric < 0) return 'Rate should be a valid non-negative number.';
-  if (!hasMaxTwoDecimals(numeric)) return 'Rate should have up to 2 decimal places.';
+  if (numeric > MAX_RATE) return 'Rate should be up to 10,000.00.';
   return null;
 }
 
@@ -121,7 +118,6 @@ export function validateTaxRate(value: string): string | null {
   const numeric = Number(trimmed);
   if (!Number.isFinite(numeric) || numeric < 0) return 'Tax Rate should be a valid non-negative number.';
   if (numeric > 99.99) return 'Tax Rate should be up to 99.99%.';
-  if (!hasMaxTwoDecimals(numeric)) return 'Tax Rate should have up to 2 decimal places.';
   return null;
 }
 

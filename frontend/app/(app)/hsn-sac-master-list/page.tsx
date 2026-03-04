@@ -89,6 +89,7 @@ export default function HsnSacMasterListPage() {
 
   const [entries, setEntries] = useState<HsnSacMasterEntry[]>([]);
   const [form, setForm] = useState<HsnSacMasterForm>(EMPTY_FORM);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
@@ -120,7 +121,7 @@ export default function HsnSacMasterListPage() {
     );
   }, [entries]);
 
-  const onCreate = async () => {
+  const onSave = async () => {
     setMessage(null);
     const validationError = validateForm(form);
     if (validationError) {
@@ -128,11 +129,12 @@ export default function HsnSacMasterListPage() {
       return;
     }
 
+    const isEditing = Boolean(editingId);
     setSaving(true);
     setError(null);
     try {
-      await apiRequest("/hsn-sac-master-list", {
-        method: "POST",
+      await apiRequest(isEditing ? `/hsn-sac-master-list/${editingId}` : "/hsn-sac-master-list", {
+        method: isEditing ? "PUT" : "POST",
         body: {
           description: form.description.trim(),
           hsn_sac_code: form.hsn_sac_code,
@@ -140,13 +142,32 @@ export default function HsnSacMasterListPage() {
         },
       });
       setForm(EMPTY_FORM);
-      setMessage("HSN/SAC master entry saved.");
+      setEditingId(null);
+      setMessage(isEditing ? "HSN/SAC master entry updated." : "HSN/SAC master entry saved.");
       await loadEntries();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to save HSN/SAC master entry.");
+      setError(err instanceof Error ? err.message : `Failed to ${isEditing ? "update" : "save"} HSN/SAC master entry.`);
     } finally {
       setSaving(false);
     }
+  };
+
+  const onEdit = (entry: HsnSacMasterEntry) => {
+    setForm({
+      description: entry.description,
+      hsn_sac_code: entry.hsn_sac_code,
+      tax_rate: formatTaxRate(entry.tax_rate),
+    });
+    setEditingId(entry.id);
+    setError(null);
+    setMessage(null);
+  };
+
+  const onCancelEdit = () => {
+    setForm(EMPTY_FORM);
+    setEditingId(null);
+    setError(null);
+    setMessage(null);
   };
 
   const onDelete = async (entryId: string) => {
@@ -158,6 +179,10 @@ export default function HsnSacMasterListPage() {
     setError(null);
     try {
       await apiRequest(`/hsn-sac-master-list/${entryId}`, { method: "DELETE" });
+      if (editingId === entryId) {
+        setEditingId(null);
+        setForm(EMPTY_FORM);
+      }
       setMessage("HSN/SAC master entry deleted.");
       await loadEntries();
     } catch (err) {
@@ -185,7 +210,7 @@ export default function HsnSacMasterListPage() {
 
       <Card className="bg-white/85">
         <CardHeader>
-          <CardTitle>Add Entry</CardTitle>
+          <CardTitle>{editingId ? "Edit Entry" : "Add Entry"}</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="grid gap-3 md:grid-cols-3">
@@ -244,9 +269,16 @@ export default function HsnSacMasterListPage() {
               />
             </div>
           </div>
-          <Button onClick={onCreate} disabled={saving}>
-            {saving ? "Saving..." : "Save Entry"}
-          </Button>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button onClick={onSave} disabled={saving}>
+              {saving ? (editingId ? "Updating..." : "Saving...") : editingId ? "Update Entry" : "Save Entry"}
+            </Button>
+            {editingId ? (
+              <Button variant="outline" onClick={onCancelEdit} disabled={saving}>
+                Cancel
+              </Button>
+            ) : null}
+          </div>
           {error ? <p className="text-sm text-destructive">{error}</p> : null}
           {message ? <p className="text-sm text-muted-foreground">{message}</p> : null}
         </CardContent>
@@ -282,14 +314,24 @@ export default function HsnSacMasterListPage() {
                       <TableCell>{entry.hsn_sac_code}</TableCell>
                       <TableCell>{formatTaxRate(entry.tax_rate)}</TableCell>
                       <TableCell className="text-right">
-                        <Button
-                          variant="destructive"
-                          size="sm"
-                          onClick={() => onDelete(entry.id)}
-                          disabled={deletingId === entry.id}
-                        >
-                          {deletingId === entry.id ? "Deleting..." : "Delete"}
-                        </Button>
+                        <div className="flex justify-end gap-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => onEdit(entry)}
+                            disabled={deletingId === entry.id}
+                          >
+                            Edit
+                          </Button>
+                          <Button
+                            variant="destructive"
+                            size="sm"
+                            onClick={() => onDelete(entry.id)}
+                            disabled={deletingId === entry.id}
+                          >
+                            {deletingId === entry.id ? "Deleting..." : "Delete"}
+                          </Button>
+                        </div>
                       </TableCell>
                     </TableRow>
                   ))

@@ -275,6 +275,43 @@ def _ensure_invoice_columns() -> None:
             )
 
 
+def _ensure_invoice_unique_constraint() -> None:
+    inspector = inspect(engine)
+    if 'invoices' not in inspector.get_table_names():
+        return
+
+    existing_indexes = {index['name'] for index in inspector.get_indexes('invoices')}
+    if 'uq_invoices_owner_invoice_number' in existing_indexes:
+        return
+
+    with engine.begin() as connection:
+        duplicate_row = connection.execute(
+            text(
+                'SELECT owner_id, invoice_number, COUNT(*) AS duplicate_count '
+                'FROM invoices '
+                'GROUP BY owner_id, invoice_number '
+                'HAVING COUNT(*) > 1 '
+                'LIMIT 1'
+            )
+        ).first()
+        if duplicate_row:
+            logger.warning(
+                'Skipping invoice unique index creation due to duplicate invoice numbers. '
+                'owner_id=%s invoice_number=%s duplicates=%s',
+                duplicate_row[0],
+                duplicate_row[1],
+                duplicate_row[2],
+            )
+            return
+
+        connection.execute(
+            text(
+                'CREATE UNIQUE INDEX uq_invoices_owner_invoice_number '
+                'ON invoices (owner_id, invoice_number)'
+            )
+        )
+
+
 def _ensure_non_gst_challan_unique_constraint() -> None:
     inspector = inspect(engine)
     if 'non_gst_challans' not in inspector.get_table_names():
@@ -319,6 +356,69 @@ def _ensure_non_gst_challan_unique_constraint() -> None:
         )
 
 
+def _ensure_non_gst_challan_sequence_numbers() -> None:
+    inspector = inspect(engine)
+    if 'non_gst_challans' not in inspector.get_table_names():
+        return
+
+    existing_columns = {column['name'] for column in inspector.get_columns('non_gst_challans')}
+    existing_indexes = {index['name'] for index in inspector.get_indexes('non_gst_challans')}
+
+    with engine.begin() as connection:
+        if 'sequence_number' not in existing_columns:
+            connection.execute(text('ALTER TABLE non_gst_challans ADD COLUMN sequence_number INTEGER'))
+
+        ordered_rows = connection.execute(
+            text(
+                'SELECT id, owner_id, sequence_number '
+                'FROM non_gst_challans '
+                'ORDER BY owner_id ASC, created_at ASC, challan_date ASC, id ASC'
+            )
+        ).fetchall()
+
+        counters: dict[str, int] = {}
+        for row_id, owner_id, sequence_number in ordered_rows:
+            if owner_id not in counters:
+                counters[owner_id] = 0
+
+            counters[owner_id] += 1
+            expected_sequence = counters[owner_id]
+            if sequence_number == expected_sequence:
+                continue
+
+            connection.execute(
+                text(
+                    'UPDATE non_gst_challans '
+                    'SET sequence_number = :sequence_number '
+                    'WHERE id = :row_id'
+                ),
+                {'sequence_number': expected_sequence, 'row_id': row_id},
+            )
+
+        if 'uq_non_gst_challans_owner_sequence_number' in existing_indexes:
+            return
+
+        dialect = engine.dialect.name
+        if dialect in {'postgresql', 'sqlite'}:
+            connection.execute(
+                text(
+                    'CREATE UNIQUE INDEX IF NOT EXISTS uq_non_gst_challans_owner_sequence_number '
+                    'ON non_gst_challans (owner_id, sequence_number)'
+                )
+            )
+            return
+
+        try:
+            connection.execute(
+                text(
+                    'CREATE UNIQUE INDEX uq_non_gst_challans_owner_sequence_number '
+                    'ON non_gst_challans (owner_id, sequence_number)'
+                )
+            )
+        except Exception:
+            pass
+
+
 @app.on_event('startup')
 def on_startup() -> None:
     _validate_security_configuration()
@@ -328,7 +428,9 @@ def on_startup() -> None:
     _ensure_clients_name_column_length()
     _ensure_invoice_item_columns()
     _ensure_invoice_columns()
+    _ensure_invoice_unique_constraint()
     _ensure_non_gst_challan_unique_constraint()
+    _ensure_non_gst_challan_sequence_numbers()
 
 
 @app.get('/health')

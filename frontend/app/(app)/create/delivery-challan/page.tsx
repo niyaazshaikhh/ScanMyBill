@@ -14,6 +14,7 @@ import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { useAuthGuard } from "@/hooks/useAuthGuard";
 import { apiRequest } from "@/lib/api";
+import { notifyApp } from "@/lib/app-notification";
 import { formatIsoDateToDisplay, parseDisplayDateToIso, todayIsoDate } from "@/lib/date-format";
 import { formatAccountingAmount } from "@/lib/number-format";
 import { buildBillPdfFilename } from "@/lib/pdf-filename";
@@ -32,7 +33,8 @@ type Client = {
 };
 
 type LatestCreatedDeliveryChallanResponse = {
-  challan_number: string | null;
+  challan_number: number | null;
+  order_number: string | null;
 };
 
 type LineItemInput = {
@@ -43,7 +45,8 @@ type LineItemInput = {
 
 type DeliveryChallanCreatePayload = {
   client_id: string;
-  challan_number: string;
+  challan_number: number;
+  order_number: string;
   challan_date: string;
   notes: string | null;
   items: Array<{
@@ -70,10 +73,22 @@ function sanitizeChallanNumberInput(value: string): string {
   return value.replace(/\D/g, "").slice(0, 5);
 }
 
+function sanitizeIntegerInput(value: string): string {
+  return value.replace(/\D/g, "");
+}
+
 function validateChallanNumber(value: string): string | null {
   const trimmed = value.trim();
   if (!trimmed) return "Challan Number is required.";
-  if (!/^\d{1,5}$/.test(trimmed)) return "Challan Number should contain up to 5 digits.";
+  if (!/^\d+$/.test(trimmed)) return "Challan Number should be an integer.";
+  if (Number(trimmed) <= 0) return "Challan Number should be greater than 0.";
+  return null;
+}
+
+function validateOrderNumber(value: string): string | null {
+  const trimmed = value.trim();
+  if (!trimmed) return "Order Number is required.";
+  if (!/^\d{1,5}$/.test(trimmed)) return "Order Number should contain up to 5 digits.";
   return null;
 }
 
@@ -91,6 +106,7 @@ export default function CreateDeliveryChallanPage() {
   const [clients, setClients] = useState<Client[]>([]);
   const [clientId, setClientId] = useState("");
   const [challanNumber, setChallanNumber] = useState("1");
+  const [orderNumber, setOrderNumber] = useState("1");
   const [challanDate, setChallanDate] = useState(initialChallanDateIso);
   const [challanDateDisplay, setChallanDateDisplay] = useState(
     formatIsoDateToDisplay(initialChallanDateIso),
@@ -100,7 +116,7 @@ export default function CreateDeliveryChallanPage() {
   const [saving, setSaving] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
-  const challanNumberManuallyEditedRef = useRef(false);
+  const orderNumberManuallyEditedRef = useRef(false);
   const challanDatePickerRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
@@ -119,24 +135,35 @@ export default function CreateDeliveryChallanPage() {
 
   useEffect(() => {
     if (!clientId) {
-      setChallanNumber("1");
-      challanNumberManuallyEditedRef.current = false;
-      return;
+      setOrderNumber("1");
+      orderNumberManuallyEditedRef.current = false;
+    } else {
+      orderNumberManuallyEditedRef.current = false;
     }
 
     let active = true;
-    challanNumberManuallyEditedRef.current = false;
+    const endpoint = clientId
+      ? `/delivery-challans/latest-created?client_id=${encodeURIComponent(clientId)}`
+      : "/delivery-challans/latest-created";
 
-    apiRequest<LatestCreatedDeliveryChallanResponse>(
-      `/delivery-challans/latest-created?client_id=${encodeURIComponent(clientId)}`,
-    )
+    apiRequest<LatestCreatedDeliveryChallanResponse>(endpoint)
       .then((data) => {
-        if (!active || challanNumberManuallyEditedRef.current) return;
-        setChallanNumber(buildIncrementedChallanNumber(data.challan_number));
+        if (!active) return;
+        setChallanNumber(String((data.challan_number ?? 0) + 1));
+        if (!orderNumberManuallyEditedRef.current) {
+          if (clientId) {
+            setOrderNumber(buildIncrementedChallanNumber(data.order_number));
+          } else {
+            setOrderNumber("1");
+          }
+        }
       })
       .catch(() => {
-        if (!active || challanNumberManuallyEditedRef.current) return;
+        if (!active) return;
         setChallanNumber("1");
+        if (!orderNumberManuallyEditedRef.current) {
+          setOrderNumber("1");
+        }
       });
 
     return () => {
@@ -188,6 +215,8 @@ export default function CreateDeliveryChallanPage() {
     if (!clientId) return "Client is required.";
     const challanNumberError = validateChallanNumber(challanNumber);
     if (challanNumberError) return challanNumberError;
+    const orderNumberError = validateOrderNumber(orderNumber);
+    if (orderNumberError) return orderNumberError;
 
     if (!challanDateDisplay.trim()) return "Challan Date is required.";
     const parsedChallanDate = parseDisplayDateToIso(challanDateDisplay);
@@ -204,7 +233,8 @@ export default function CreateDeliveryChallanPage() {
 
   const buildPayload = (): DeliveryChallanCreatePayload => ({
     client_id: clientId,
-    challan_number: challanNumber.trim(),
+    challan_number: Number(challanNumber),
+    order_number: orderNumber.trim(),
     challan_date: parseDisplayDateToIso(challanDateDisplay) || challanDate,
     notes: notes.trim() || null,
     items: items.map((item) => ({
@@ -263,9 +293,26 @@ export default function CreateDeliveryChallanPage() {
         method: "POST",
         body: buildPayload(),
       });
-      alert("Delivery challan uploaded successfully.");
+      notifyApp({
+        title: "Delivery challan uploaded successfully",
+        message: "Delivery challan uploaded successfully",
+        tone: "success",
+      });
+      const endpoint = clientId
+        ? `/delivery-challans/latest-created?client_id=${encodeURIComponent(clientId)}`
+        : "/delivery-challans/latest-created";
+      const latest = await apiRequest<LatestCreatedDeliveryChallanResponse>(endpoint);
+      setChallanNumber(String((latest.challan_number ?? 0) + 1));
+      orderNumberManuallyEditedRef.current = false;
+      setOrderNumber(buildIncrementedChallanNumber(latest.order_number));
     } catch (err) {
-      setFormError(err instanceof Error ? err.message : "Upload failed");
+      const message = err instanceof Error ? err.message : "Upload failed";
+      setFormError(message);
+      notifyApp({
+        title: "Delivery challan upload failed",
+        message,
+        tone: "error",
+      });
     } finally {
       setSaving(false);
     }
@@ -303,9 +350,11 @@ export default function CreateDeliveryChallanPage() {
           <CardTitle>Challan Builder</CardTitle>
         </CardHeader>
         <CardContent className="space-y-5">
-          <div className="grid gap-3 md:grid-cols-3">
+          <div className="grid gap-3 md:grid-cols-4">
             <div className="space-y-1">
-              <Label>Client</Label>
+              <Label>
+                Client <span className="text-destructive">*</span>
+              </Label>
               <Select value={clientId} onChange={(event) => setClientId(event.target.value)} required>
                 <option value="">Select client</option>
                 {clients.map((client) => (
@@ -316,12 +365,14 @@ export default function CreateDeliveryChallanPage() {
               </Select>
             </div>
             <div className="space-y-1">
-              <Label>Challan Number</Label>
+              <Label>
+                Order Number <span className="text-destructive">*</span>
+              </Label>
               <Input
-                value={challanNumber}
+                value={orderNumber}
                 onChange={(event) => {
-                  challanNumberManuallyEditedRef.current = true;
-                  setChallanNumber(sanitizeChallanNumberInput(event.target.value));
+                  orderNumberManuallyEditedRef.current = true;
+                  setOrderNumber(sanitizeChallanNumberInput(event.target.value));
                 }}
                 placeholder="1"
                 maxLength={5}
@@ -329,7 +380,23 @@ export default function CreateDeliveryChallanPage() {
               />
             </div>
             <div className="space-y-1">
-              <Label>Challan Date</Label>
+              <Label>
+                Challan Number <span className="text-destructive">*</span>
+              </Label>
+              <Input
+                type="text"
+                inputMode="numeric"
+                pattern="\d*"
+                value={challanNumber}
+                onChange={(event) => setChallanNumber(sanitizeIntegerInput(event.target.value))}
+                placeholder="1"
+                required
+              />
+            </div>
+            <div className="space-y-1">
+              <Label>
+                Challan Date <span className="text-destructive">*</span>
+              </Label>
               <div className="flex gap-2">
                 <Input
                   type="text"
@@ -389,9 +456,15 @@ export default function CreateDeliveryChallanPage() {
 
             <div className="space-y-3">
               <div className="hidden gap-2 px-1 text-xs font-medium text-muted-foreground md:grid md:grid-cols-8">
-                <p className="md:col-span-3">Description</p>
-                <p className="md:col-span-2">Quantity</p>
-                <p className="md:col-span-2">Rate</p>
+                <p className="md:col-span-3">
+                  Description <span className="text-destructive">*</span>
+                </p>
+                <p className="md:col-span-2">
+                  Quantity <span className="text-destructive">*</span>
+                </p>
+                <p className="md:col-span-2">
+                  Rate <span className="text-destructive">*</span>
+                </p>
               </div>
               {items.map((item, index) => (
                 <div
@@ -399,38 +472,50 @@ export default function CreateDeliveryChallanPage() {
                   className="space-y-2 rounded-md border border-border bg-background p-3"
                 >
                   <div className="grid gap-2 md:grid-cols-8">
-                    <Input
-                      className="md:col-span-3"
-                      placeholder="Description (Max 20)"
-                      value={item.description}
-                      onChange={(event) =>
-                        updateItem(
-                          index,
-                          "description",
-                          sanitizeItemDescriptionInput(event.target.value),
-                        )
-                      }
-                      maxLength={20}
-                      required
-                    />
-                    <Input
-                      className="md:col-span-2"
-                      placeholder="0"
-                      value={item.quantity}
-                      onChange={(event) =>
-                        updateItem(index, "quantity", sanitizeDecimalInput(event.target.value))
-                      }
-                      required
-                    />
-                    <Input
-                      className="md:col-span-2"
-                      placeholder="0"
-                      value={item.rate}
-                      onChange={(event) =>
-                        updateItem(index, "rate", sanitizeDecimalInput(event.target.value))
-                      }
-                      required
-                    />
+                    <div className="space-y-1 md:col-span-3">
+                      <Label className="text-xs md:hidden">
+                        Description <span className="text-destructive">*</span>
+                      </Label>
+                      <Input
+                        placeholder="Description (Max 20)"
+                        value={item.description}
+                        onChange={(event) =>
+                          updateItem(
+                            index,
+                            "description",
+                            sanitizeItemDescriptionInput(event.target.value),
+                          )
+                        }
+                        maxLength={20}
+                        required
+                      />
+                    </div>
+                    <div className="space-y-1 md:col-span-2">
+                      <Label className="text-xs md:hidden">
+                        Quantity <span className="text-destructive">*</span>
+                      </Label>
+                      <Input
+                        placeholder="0"
+                        value={item.quantity}
+                        onChange={(event) =>
+                          updateItem(index, "quantity", sanitizeDecimalInput(event.target.value))
+                        }
+                        required
+                      />
+                    </div>
+                    <div className="space-y-1 md:col-span-2">
+                      <Label className="text-xs md:hidden">
+                        Rate <span className="text-destructive">*</span>
+                      </Label>
+                      <Input
+                        placeholder="0"
+                        value={item.rate}
+                        onChange={(event) =>
+                          updateItem(index, "rate", sanitizeDecimalInput(event.target.value))
+                        }
+                        required
+                      />
+                    </div>
                     <Button
                       variant="destructive"
                       className="md:col-span-1"

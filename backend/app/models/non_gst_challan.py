@@ -1,6 +1,6 @@
 from uuid import uuid4
 
-from sqlalchemy import Date, DateTime, Float, ForeignKey, String, Text, UniqueConstraint
+from sqlalchemy import Date, DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
 
@@ -11,6 +11,7 @@ class NonGSTChallan(Base):
     __tablename__ = 'non_gst_challans'
     __table_args__ = (
         UniqueConstraint('owner_id', 'client_id', 'challan_number', name='uq_non_gst_challans_owner_client_number'),
+        UniqueConstraint('owner_id', 'sequence_number', name='uq_non_gst_challans_owner_sequence_number'),
     )
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
@@ -22,6 +23,7 @@ class NonGSTChallan(Base):
         index=True,
     )
     challan_number: Mapped[str] = mapped_column(String(5), index=True)
+    sequence_number: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
     challan_date: Mapped[Date] = mapped_column(Date, index=True)
     subtotal: Mapped[float] = mapped_column(Float, default=0.0)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)

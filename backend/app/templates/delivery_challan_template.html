@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Delivery Challan {{ challan_number }}</title>
+    <style>
+      @page {
+        size: A4;
+        margin: 10mm;
+      }
+
+      body {
+        font-family: "DejaVu Sans", Arial, sans-serif;
+        font-size: 11px;
+        margin: 0;
+        color: #000;
+      }
+
+      table {
+        width: 100%;
+        border-collapse: collapse;
+      }
+
+      td,
+      th {
+        border: 1px solid #000;
+        padding: 6px;
+        vertical-align: top;
+      }
+
+      .title {
+        text-align: center;
+        font-weight: 700;
+        font-size: 17px;
+        border: 1px solid #000;
+        padding: 7px;
+        margin-bottom: 8px;
+      }
+
+      .right {
+        text-align: right;
+      }
+
+      .center {
+        text-align: center;
+      }
+
+      .bold {
+        font-weight: 700;
+      }
+
+      .mt {
+        margin-top: 8px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="title">DELIVERY CHALLAN</div>
+
+    <table>
+      <tr>
+        <td width="55%">
+          <strong>{{ company_name }}</strong><br />
+          {{ company_address }}<br />
+          GSTIN: {{ company_gstin }}
+        </td>
+        <td width="45%">
+          <strong>Challan Number:</strong> {{ challan_number }}<br />
+          <strong>Order Number:</strong> {{ order_number }}<br />
+          <strong>Date:</strong> {{ challan_date }}<br />
+          <strong>Client:</strong> {{ client_name }}
+        </td>
+      </tr>
+    </table>
+
+    <table class="mt">
+      <thead>
+        <tr class="bold center">
+          <th width="8%">Sl.</th>
+          <th width="52%">Description</th>
+          <th width="12%">Qty</th>
+          <th width="14%">Rate</th>
+          <th width="14%">Amount</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for item in items %}
+          <tr>
+            <td class="center">{{ loop.index }}</td>
+            <td>{{ item.description }}</td>
+            <td class="right">{{ "%.2f"|format(item.quantity) }}</td>
+            <td class="right">{{ "%.2f"|format(item.rate) }}</td>
+            <td class="right">{{ "%.2f"|format(item.line_total) }}</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+
+    <table class="mt">
+      <tr>
+        <td width="70%" class="right bold">Subtotal</td>
+        <td width="30%" class="right bold">INR {{ "%.2f"|format(subtotal) }}</td>
+      </tr>
+    </table>
+
+    {% if notes %}
+      <table class="mt">
+        <tr>
+          <td>
+            <strong>Notes:</strong><br />
+            {{ notes }}
+          </td>
+        </tr>
+      </table>
+    {% endif %}
+  </body>
+</html>

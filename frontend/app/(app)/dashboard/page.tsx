@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Loader2, Plus } from "lucide-react";
 
 export const dynamic = "force-dynamic";
 
@@ -20,6 +21,7 @@ import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import { useAuthGuard } from "@/hooks/useAuthGuard";
 import { apiRequest } from "@/lib/api";
+import { notifyApp } from "@/lib/app-notification";
 import { formatAccountingAmount } from "@/lib/number-format";
 
 type DashboardData = {
@@ -76,6 +78,8 @@ export default function DashboardPage() {
   const [uploading, setUploading] = useState(false);
   const [file, setFile] = useState<File | null>(null);
   const [uploadMessage, setUploadMessage] = useState<string | null>(null);
+  const mainUploadInputRef = useRef<HTMLInputElement | null>(null);
+  const quickUploadInputRef = useRef<HTMLInputElement | null>(null);
 
   const loadYearOptions = async () => {
     try {
@@ -145,14 +149,13 @@ export default function DashboardPage() {
     [summary],
   );
 
-  const onUpload = async () => {
-    if (!file) return;
+  const uploadFile = async (selectedFile: File) => {
     setUploading(true);
     setUploadMessage(null);
 
     try {
       const formData = new FormData();
-      formData.append("file", file);
+      formData.append("file", selectedFile);
       formData.append("invoice_type", "sales");
 
       await apiRequest("/bills/upload", {
@@ -160,15 +163,37 @@ export default function DashboardPage() {
         body: formData,
         isFormData: true,
       });
+      notifyApp({
+        title: "Invoice uploaded successfully",
+        message: "Invoice uploaded successfully",
+        tone: "success",
+      });
       setUploadMessage("Bill uploaded and processed successfully.");
       setFile(null);
+      if (mainUploadInputRef.current) {
+        mainUploadInputRef.current.value = "";
+      }
+      if (quickUploadInputRef.current) {
+        quickUploadInputRef.current.value = "";
+      }
       await loadYearOptions();
       await loadSummary();
     } catch (err) {
-      setUploadMessage(err instanceof Error ? err.message : "Upload failed");
+      const message = err instanceof Error ? err.message : "Upload failed";
+      setUploadMessage(message);
+      notifyApp({
+        title: "Invoice upload failed",
+        message,
+        tone: "error",
+      });
     } finally {
       setUploading(false);
     }
+  };
+
+  const onUpload = async () => {
+    if (!file) return;
+    await uploadFile(file);
   };
 
   return (
@@ -228,6 +253,7 @@ export default function DashboardPage() {
         </CardHeader>
         <CardContent className="grid gap-3 md:grid-cols-[1fr_130px]">
           <Input
+            ref={mainUploadInputRef}
             type="file"
             accept=".jpeg,.jpg,.png,.pdf,.xls,.xlsx"
             onChange={(event) => setFile(event.target.files?.[0] || null)}
@@ -287,6 +313,38 @@ export default function DashboardPage() {
           </CardContent>
         </Card>
       </div>
+
+      <input
+        ref={quickUploadInputRef}
+        type="file"
+        accept=".jpeg,.jpg,.png,.pdf,.xls,.xlsx"
+        className="hidden"
+        onChange={(event) => {
+          const selected = event.target.files?.[0] || null;
+          if (!selected) return;
+          void uploadFile(selected);
+        }}
+      />
+      <Button
+        type="button"
+        onClick={() => {
+          if (file) {
+            void uploadFile(file);
+            return;
+          }
+          quickUploadInputRef.current?.click();
+        }}
+        disabled={uploading}
+        className="fixed bottom-6 right-6 z-50 h-14 w-14 rounded-full bg-orange-600 p-0 text-white shadow-lg hover:bg-orange-500 focus-visible:ring-orange-500"
+        aria-label="Quick upload bill"
+        title="Upload Bill"
+      >
+        {uploading ? (
+          <Loader2 className="h-6 w-6 animate-spin" />
+        ) : (
+          <Plus className="h-7 w-7" />
+        )}
+      </Button>
     </div>
   );
 }

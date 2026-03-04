@@ -2,225 +2,309 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Tax Invoice {{ invoice_number }}</title>
+
     <style>
       @page {
         size: A4;
-        margin: 12mm;
-      }
-
-      * {
-        box-sizing: border-box;
+        margin: 10mm;
       }
 
       body {
-        margin: 0;
-        color: #1f2937;
         font-family: "DejaVu Sans", Arial, sans-serif;
         font-size: 11px;
-        line-height: 1.4;
+        margin: 0;
+        color: #000;
       }
 
-      .invoice-wrapper {
-        width: 100%;
-      }
-
-      .title-bar {
-        margin-bottom: 10px;
-        padding: 8px 10px;
-        border: 1px solid #111827;
-        text-align: center;
-        font-size: 15px;
-        font-weight: 700;
-        letter-spacing: 0.6px;
-      }
-
-      .section-grid {
+      table {
         width: 100%;
         border-collapse: collapse;
-        margin-bottom: 10px;
       }
 
-      .section-grid td {
-        width: 50%;
-        border: 1px solid #111827;
+      td,
+      th {
+        border: 1px solid #000;
+        padding: 5px;
         vertical-align: top;
-        padding: 8px;
       }
 
-      .section-title {
-        margin: 0 0 6px;
-        font-size: 12px;
-        font-weight: 700;
+      .no-border td {
+        border: none;
       }
 
-      .line {
-        margin: 2px 0;
-      }
-
-      .line strong {
-        display: inline-block;
-        min-width: 118px;
-      }
-
-      .items-table {
-        width: 100%;
-        border-collapse: collapse;
-        margin-bottom: 10px;
-      }
-
-      .items-table th,
-      .items-table td {
-        border: 1px solid #111827;
-        padding: 6px 4px;
-      }
-
-      .items-table th {
-        background: #f3f4f6;
-        text-align: center;
-        font-weight: 700;
-      }
-
-      .text-left {
-        text-align: left;
-      }
-
-      .text-center {
+      .center {
         text-align: center;
       }
-
-      .text-right {
+      .right {
         text-align: right;
       }
-
-      .summary-table {
-        width: 100%;
-        border-collapse: collapse;
-        margin-bottom: 10px;
+      .bold {
+        font-weight: bold;
       }
 
-      .summary-table td {
-        border: 1px solid #111827;
-        padding: 6px 8px;
+      .title {
+        text-align: center;
+        font-weight: bold;
+        font-size: 16px;
+        border: 1px solid #000;
+        padding: 6px;
+        margin-bottom: 6px;
       }
 
-      .summary-table .label {
-        width: 75%;
-        text-align: right;
-        font-weight: 600;
+      .small {
+        font-size: 10px;
       }
 
-      .summary-table .value {
-        width: 25%;
-        text-align: right;
-        font-weight: 600;
-      }
-
-      .summary-table .grand td {
-        background: #f3f4f6;
-        font-size: 12px;
-        font-weight: 700;
-      }
-
-      .bank-box {
-        border: 1px solid #111827;
-        padding: 8px;
-      }
-
-      .bank-title {
-        margin: 0 0 4px;
-        font-size: 12px;
-        font-weight: 700;
+      .footer {
+        text-align: center;
+        margin-top: 10px;
+        font-size: 10px;
       }
     </style>
   </head>
+
   <body>
-    <div class="invoice-wrapper">
-      <div class="title-bar">TAX INVOICE</div>
+    {% set summary_subtotal = subtotal if subtotal is defined and subtotal is
+    not none else 0.0 %} {% set summary_cgst = cgst if cgst is defined and cgst
+    is not none else 0.0 %} {% set summary_sgst = sgst if sgst is defined and
+    sgst is not none else 0.0 %} {% set summary_igst = igst if igst is defined
+    and igst is not none else 0.0 %} {% set summary_total = total if total is
+    defined and total is not none else (summary_subtotal + summary_cgst +
+    summary_sgst + summary_igst) %} {% set cgst_percent_value = (cgst_percent if
+    cgst_percent is defined and cgst_percent is not none else ((summary_cgst *
+    100.0 / summary_subtotal) if summary_subtotal else 0.0))|round(2) %} {% set
+    sgst_percent_value = (sgst_percent if sgst_percent is defined and
+    sgst_percent is not none else ((summary_sgst * 100.0 / summary_subtotal) if
+    summary_subtotal else 0.0))|round(2) %} {% set igst_percent_value =
+    (igst_percent if igst_percent is defined and igst_percent is not none else
+    ((summary_igst * 100.0 / summary_subtotal) if summary_subtotal else
+    0.0))|round(2) %} {% set buyer_name_value = buyer_name if buyer_name is
+    defined and buyer_name else (client_name if client_name is defined and
+    client_name else "N/A") %} {% set buyer_address_value = buyer_address if
+    buyer_address is defined and buyer_address else (client_address if
+    client_address is defined and client_address else "N/A") %} {% set
+    buyer_gstin_value = buyer_gstin if buyer_gstin is defined and buyer_gstin
+    else (client_gstin if client_gstin is defined and client_gstin else "N/A")
+    %} {% set buyer_state_value = buyer_state if buyer_state is defined and
+    buyer_state else (place_of_supply if place_of_supply is defined and
+    place_of_supply else "N/A") %} {% set buyer_state_code_value =
+    buyer_state_code if buyer_state_code is defined and buyer_state_code else
+    (state_code if state_code is defined and state_code else "N/A") %} {% set
+    consignee_name_value = consignee_name if consignee_name is defined and
+    consignee_name else buyer_name_value %} {% set consignee_address_value =
+    consignee_address if consignee_address is defined and consignee_address else
+    buyer_address_value %} {% set consignee_gstin_value = consignee_gstin if
+    consignee_gstin is defined and consignee_gstin else buyer_gstin_value %} {%
+    set consignee_state_value = consignee_state if consignee_state is defined
+    and consignee_state else buyer_state_value %} {% set
+    consignee_state_code_value = consignee_state_code if consignee_state_code is
+    defined and consignee_state_code else buyer_state_code_value %} {% set
+    state_name_value = state_name if state_name is defined and state_name else
+    buyer_state_value %} {% set email_value = email if email is defined and
+    email else "N/A" %} {% set delivery_note_value = delivery_note if
+    delivery_note is defined and delivery_note else "N/A" %} {% set
+    payment_terms_value = payment_terms if payment_terms is defined and
+    payment_terms else "N/A" %} {% set reference_no_value = reference_no if
+    reference_no is defined and reference_no else "N/A" %} {% set
+    other_reference_value = other_reference if other_reference is defined and
+    other_reference else "N/A" %} {% set amount_words_value = amount_in_words if
+    amount_in_words is defined and amount_in_words else ("Rupees " ~
+    ("%.2f"|format(summary_total)) ~ " Only") %} {% set bank_name_value =
+    bank_name if bank_name is defined and bank_name else (bank_details if
+    bank_details is defined and bank_details else "N/A") %} {% set
+    account_number_value = account_number if account_number is defined and
+    account_number else "N/A" %} {% set branch_ifsc_value = branch_ifsc if
+    branch_ifsc is defined and branch_ifsc else "N/A" %} {% set hsn_value =
+    "N/A" %} {% if hsn_summary is defined and hsn_summary and hsn_summary.hsn is
+    defined and hsn_summary.hsn %} {% set hsn_value = hsn_summary.hsn %} {% elif
+    items and items[0].hsn %} {% set hsn_value = items[0].hsn %} {% endif %}
 
-      <table class="section-grid">
+    <div class="title">TAX INVOICE</div>
+
+    <!-- TOP SECTION -->
+    <table>
+      <tr>
+        <td width="50%">
+          <strong>{{ company_name }}</strong><br />
+          {{ company_address }}<br />
+          GSTIN: {{ gstin }}<br />
+          State: {{ state_name_value }} (Code: {{ state_code }})<br />
+          E-Mail: {{ email_value }}
+        </td>
+        <td width="50%">
+          <strong>Invoice No:</strong> {{ invoice_number }}<br />
+          <strong>Dated:</strong> {{ invoice_date }}<br />
+          <strong>Delivery Note:</strong> {{ delivery_note_value }}<br />
+          <strong>Mode/Terms of Payment:</strong> {{ payment_terms_value }}<br />
+          <strong>Reference No & Date:</strong> {{ reference_no_value }}<br />
+          <strong>Other References:</strong> {{ other_reference_value }}
+        </td>
+      </tr>
+    </table>
+
+    <br />
+
+    <!-- CONSIGNEE & BUYER -->
+    <table>
+      <tr>
+        <td width="50%">
+          <strong>Consignee (Ship to)</strong><br />
+          {{ consignee_name_value }}<br />
+          {{ consignee_address_value }}<br />
+          GSTIN/UIN: {{ consignee_gstin_value }}<br />
+          State: {{ consignee_state_value }} (Code: {{
+          consignee_state_code_value }})
+        </td>
+        <td width="50%">
+          <strong>Buyer (Bill to)</strong><br />
+          {{ buyer_name_value }}<br />
+          {{ buyer_address_value }}<br />
+          GSTIN/UIN: {{ buyer_gstin_value }}<br />
+          State: {{ buyer_state_value }} (Code: {{ buyer_state_code_value }})<br />
+          Place of Supply: {{ place_of_supply }}
+        </td>
+      </tr>
+    </table>
+
+    <br />
+
+    <!-- ITEM TABLE -->
+    <table>
+      <thead>
+        <tr class="center bold">
+          <td width="5%">Sl No.</td>
+          <td width="30%">Description of Goods</td>
+          <td width="10%">HSN/SAC</td>
+          <td width="10%">Quantity</td>
+          <td width="10%">Rate</td>
+          <td width="10%">Per</td>
+          <td width="15%">Amount</td>
+        </tr>
+      </thead>
+
+      <tbody>
+        {% for item in items %}
         <tr>
+          <td class="center">{{ loop.index }}</td>
+          <td>{{ item.description }}</td>
+          <td class="center">{{ item.hsn }}</td>
+          <td class="right">{{ item.quantity }}</td>
+          <td class="right">{{ "%.2f"|format(item.rate) }}</td>
+          <td class="center">
+            {{ item.unit if item.unit is defined and item.unit else "Nos" }}
+          </td>
+          <td class="right">{{ "%.2f"|format(item.amount) }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+
+    <br />
+
+    <!-- TAX SUMMARY -->
+    <table>
+      <tr>
+        <td width="70%" class="right bold">Taxable Value</td>
+        <td width="30%" class="right">{{ "%.2f"|format(summary_subtotal) }}</td>
+      </tr>
+
+      <tr>
+        <td class="right">CGST @ {{ cgst_percent_value }}%</td>
+        <td class="right">{{ "%.2f"|format(summary_cgst) }}</td>
+      </tr>
+
+      <tr>
+        <td class="right">SGST @ {{ sgst_percent_value }}%</td>
+        <td class="right">{{ "%.2f"|format(summary_sgst) }}</td>
+      </tr>
+
+      <tr>
+        <td class="right">IGST @ {{ igst_percent_value }}%</td>
+        <td class="right">{{ "%.2f"|format(summary_igst) }}</td>
+      </tr>
+
+      <tr>
+        <td class="right bold">Total</td>
+        <td class="right bold">₹ {{ "%.2f"|format(summary_total) }}</td>
+      </tr>
+    </table>
+
+    <br />
+
+    <!-- AMOUNT IN WORDS -->
+    <table>
+      <tr>
+        <td>
+          <strong>Amount Chargeable (in words)</strong><br />
+          INR {{ amount_words_value }}
+        </td>
+      </tr>
+    </table>
+
+    <br />
+
+    <!-- HSN TAX BREAKUP TABLE -->
+    <table>
+      <thead>
+        <tr class="center bold">
+          <td>HSN/SAC</td>
+          <td>Taxable Value</td>
+          <td>CGST Rate</td>
+          <td>CGST Amount</td>
+          <td>SGST Rate</td>
+          <td>SGST Amount</td>
+          <td>Total Tax</td>
+        </tr>
+      </thead>
+      <tbody>
+        <tr class="center">
+          <td>{{ hsn_value }}</td>
+          <td>{{ "%.2f"|format(summary_subtotal) }}</td>
+          <td>{{ cgst_percent_value }}%</td>
+          <td>{{ "%.2f"|format(summary_cgst) }}</td>
+          <td>{{ sgst_percent_value }}%</td>
+          <td>{{ "%.2f"|format(summary_sgst) }}</td>
           <td>
-            <p class="section-title">Supplier</p>
-            <p class="line"><strong>Name:</strong> {{ company_name }}</p>
-            <p class="line"><strong>Address:</strong> {{ company_address }}</p>
-            <p class="line"><strong>GSTIN:</strong> {{ gstin }}</p>
-          </td>
-          <td>
-            <p class="section-title">Invoice Details</p>
-            <p class="line"><strong>Invoice No:</strong> {{ invoice_number }}</p>
-            <p class="line"><strong>Invoice Date:</strong> {{ invoice_date }}</p>
-            <p class="line"><strong>Place of Supply:</strong> {{ place_of_supply }}</p>
-            <p class="line"><strong>State Code:</strong> {{ state_code }}</p>
+            {{ "%.2f"|format(summary_cgst + summary_sgst + summary_igst) }}
           </td>
         </tr>
-        <tr>
-          <td colspan="2">
-            <p class="section-title">Bill To</p>
-            <p class="line"><strong>Client:</strong> {{ client_name }}</p>
-            <p class="line"><strong>Address:</strong> {{ client_address }}</p>
-            <p class="line"><strong>GSTIN:</strong> {{ client_gstin }}</p>
-          </td>
-        </tr>
-      </table>
+      </tbody>
+    </table>
 
-      <table class="items-table">
-        <thead>
-          <tr>
-            <th style="width: 4%">#</th>
-            <th class="text-left" style="width: 30%">Description</th>
-            <th style="width: 12%">HSN/SAC</th>
-            <th style="width: 9%">Qty</th>
-            <th style="width: 12%">Rate</th>
-            <th style="width: 10%">Tax %</th>
-            <th style="width: 11%">Taxable</th>
-            <th style="width: 12%">Line Total</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for item in items %}
-          {% set tax_amount = (item.amount * item.tax_percent / 100) %}
-          <tr>
-            <td class="text-center">{{ loop.index }}</td>
-            <td class="text-left">{{ item.description }}</td>
-            <td class="text-center">{{ item.hsn }}</td>
-            <td class="text-right">{{ "%.2f"|format(item.quantity) }}</td>
-            <td class="text-right">{{ "%.2f"|format(item.rate) }}</td>
-            <td class="text-right">{{ "%.2f"|format(item.tax_percent) }}</td>
-            <td class="text-right">{{ "%.2f"|format(item.amount) }}</td>
-            <td class="text-right">{{ "%.2f"|format(item.amount + tax_amount) }}</td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
+    <br />
 
-      <table class="summary-table">
-        <tr>
-          <td class="label">Sub Total</td>
-          <td class="value">{{ "%.2f"|format(subtotal) }}</td>
-        </tr>
-        <tr>
-          <td class="label">CGST</td>
-          <td class="value">{{ "%.2f"|format(cgst) }}</td>
-        </tr>
-        <tr>
-          <td class="label">SGST</td>
-          <td class="value">{{ "%.2f"|format(sgst) }}</td>
-        </tr>
-        <tr>
-          <td class="label">IGST</td>
-          <td class="value">{{ "%.2f"|format(igst) }}</td>
-        </tr>
-        <tr class="grand">
-          <td class="label">Grand Total</td>
-          <td class="value">{{ "%.2f"|format(total) }}</td>
-        </tr>
-      </table>
+    <!-- DECLARATION & BANK -->
+    <table>
+      <tr>
+        <td width="60%">
+          <strong>Declaration</strong><br />
+          We declare that this invoice shows the actual price of the goods
+          described and that all particulars are true and correct.
+        </td>
+        <td width="40%">
+          <strong>Company’s Bank Details</strong><br />
+          Bank Name: {{ bank_name_value }}<br />
+          A/c No: {{ account_number_value }}<br />
+          Branch & IFSC: {{ branch_ifsc_value }}
+        </td>
+      </tr>
+    </table>
 
-      <div class="bank-box">
-        <p class="bank-title">Bank Details</p>
-        <p class="line">{{ bank_details }}</p>
-      </div>
-    </div>
+    <br />
+
+    <!-- SIGNATURE -->
+    <table>
+      <tr>
+        <td width="60%">Customer's Seal and Signature</td>
+        <td width="40%" class="right">
+          for {{ company_name }}<br /><br /><br />
+          Authorised Signatory
+        </td>
+      </tr>
+    </table>
+
+    <div class="footer">This is a Computer Generated Invoice</div>
   </body>
 </html>

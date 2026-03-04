@@ -2,10 +2,10 @@ from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
 import re
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 DESCRIPTION_PATTERN = re.compile(r'^[A-Za-z0-9 ]+$')
-CHALLAN_NUMBER_PATTERN = re.compile(r'^\d{1,5}$')
+ORDER_NUMBER_PATTERN = re.compile(r'^\d{1,5}$')
 
 
 def _decimal_places_within(value: float, max_places: int) -> bool:
@@ -45,10 +45,23 @@ class NonGSTChallanCreate(BaseModel):
     model_config = ConfigDict(extra='forbid', str_strip_whitespace=True)
 
     client_id: str
-    challan_number: str = Field(min_length=1, max_length=5)
+    order_number: str = Field(min_length=1, max_length=5)
+    challan_number: int = Field(ge=1)
     challan_date: date
     notes: str | None = None
     items: list[NonGSTChallanItemCreate]
+
+    @model_validator(mode='before')
+    @classmethod
+    def map_legacy_challan_number(cls, data):
+        if not isinstance(data, dict):
+            return data
+        normalized = dict(data)
+        legacy_value = normalized.get('challan_number')
+        if 'order_number' not in normalized and isinstance(legacy_value, str):
+            normalized['order_number'] = legacy_value
+            normalized.pop('challan_number', None)
+        return normalized
 
     @field_validator('client_id')
     @classmethod
@@ -58,12 +71,12 @@ class NonGSTChallanCreate(BaseModel):
             raise ValueError('Client is required.')
         return cleaned
 
-    @field_validator('challan_number')
+    @field_validator('order_number')
     @classmethod
-    def validate_challan_number(cls, value: str) -> str:
+    def validate_order_number(cls, value: str) -> str:
         cleaned = value.strip()
-        if not CHALLAN_NUMBER_PATTERN.fullmatch(cleaned):
-            raise ValueError('Challan Number should contain up to 5 digits.')
+        if not ORDER_NUMBER_PATTERN.fullmatch(cleaned):
+            raise ValueError('Order Number should contain up to 5 digits.')
         return cleaned
 
     @field_validator('items')
@@ -88,7 +101,8 @@ class NonGSTChallanResponse(BaseModel):
     id: str
     client_id: str | None
     client_name: str | None
-    challan_number: str
+    challan_number: int
+    order_number: str
     challan_date: date
     subtotal: float
     notes: str | None
@@ -105,4 +119,5 @@ class NonGSTChallanListResponse(BaseModel):
 
 
 class LatestCreatedNonGSTChallanResponse(BaseModel):
-    challan_number: str | None = None
+    challan_number: int | None = None
+    order_number: str | None = None

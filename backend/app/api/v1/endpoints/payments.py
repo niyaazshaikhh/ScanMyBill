@@ -22,8 +22,33 @@ from app.schemas.payment import (
     SubscriptionCancelResponse,
     SubscriptionResponse,
 )
+from app.services.notifications import create_notification
 
 router = APIRouter()
+
+
+def _create_notification_best_effort(
+    db: Session,
+    *,
+    user_id: str,
+    title: str,
+    message: str,
+    route: str | None = '/settings',
+    dedupe_key: str | None = None,
+) -> None:
+    try:
+        notification = create_notification(
+            db,
+            user_id=user_id,
+            title=title,
+            message=message,
+            route=route,
+            dedupe_key=dedupe_key,
+        )
+        if notification:
+            db.commit()
+    except Exception:
+        db.rollback()
 
 
 def _build_plan_options(client: razorpay.Client | None = None) -> list[RazorpayPlanOption]:
@@ -67,6 +92,81 @@ def _plan_from_text(value: str | None) -> SubscriptionPlan | None:
         return SubscriptionPlan.STANDARD
     if 'free' in normalized:
         return SubscriptionPlan.FREE
+    return None
+
+
+PLAN_RANK: dict[SubscriptionPlan, int] = {
+    SubscriptionPlan.FREE: 0,
+    SubscriptionPlan.STANDARD: 1,
+    SubscriptionPlan.PRO: 2,
+    SubscriptionPlan.BUSINESS: 3,
+}
+
+
+def _plan_rank(plan: SubscriptionPlan) -> int:
+    return PLAN_RANK.get(plan, 0)
+
+
+def _plan_label(plan: SubscriptionPlan) -> str:
+    return plan.value.title()
+
+
+def _resolve_subscription_notification(
+    *,
+    previous_plan: SubscriptionPlan,
+    previous_status: SubscriptionStatus,
+    previous_expires_at: datetime | None,
+    current_plan: SubscriptionPlan,
+    current_status: SubscriptionStatus,
+    current_expires_at: datetime | None,
+) -> tuple[str, str]:
+    if current_status == SubscriptionStatus.CANCELLED:
+        return ('Plan Cancelled', 'Your active subscription plan has been cancelled.')
+
+    if current_status == SubscriptionStatus.EXPIRED:
+        return ('Subscription Expired', 'Your subscription has expired.')
+
+    if current_status != SubscriptionStatus.ACTIVE:
+        return ('Subscription Updated', 'Your subscription details have been updated.')
+
+    if _plan_rank(current_plan) > _plan_rank(previous_plan):
+        if previous_plan == SubscriptionPlan.FREE or previous_status != SubscriptionStatus.ACTIVE:
+            return ('Subscription Activated', f'Your {_plan_label(current_plan)} plan is now active.')
+        return ('Plan Upgraded', f'Your plan has been upgraded to {_plan_label(current_plan)}.')
+
+    if (
+        current_plan == previous_plan
+        and previous_status == SubscriptionStatus.ACTIVE
+        and current_expires_at
+        and (previous_expires_at is None or current_expires_at > previous_expires_at)
+    ):
+        return ('Plan Renewed', f'Your {_plan_label(current_plan)} plan has been renewed.')
+
+    if current_plan == previous_plan and previous_status == SubscriptionStatus.ACTIVE:
+        return ('Plan Renewed', f'Your {_plan_label(current_plan)} plan remains active.')
+
+    if _plan_rank(current_plan) < _plan_rank(previous_plan):
+        return ('Plan Updated', f'Your plan has been changed to {_plan_label(current_plan)}.')
+
+    return ('Subscription Activated', f'Your {_plan_label(current_plan)} plan is now active.')
+
+
+def _build_webhook_notification_dedupe_key(
+    *,
+    event_name: str,
+    subscription_id: str | None,
+    payment_id: str | None,
+    cycle_marker: str | None = None,
+) -> str | None:
+    if event_name == 'subscription.charged':
+        if payment_id:
+            return f'subscription-payment-{payment_id}'
+        if subscription_id and cycle_marker:
+            return f'subscription-charge-{subscription_id}-{cycle_marker}'
+    if subscription_id:
+        return f'subscription-webhook-{event_name}-{subscription_id}'
+    if payment_id:
+        return f'subscription-webhook-{event_name}-{payment_id}'
     return None
 
 
@@ -270,6 +370,12 @@ def create_subscription(
     )
     db.add(event)
     db.commit()
+    _create_notification_best_effort(
+        db,
+        user_id=current_user.id,
+        title='Subscription Checkout Started',
+        message='Your subscription checkout link has been generated.',
+    )
 
     return SubscriptionResponse(
         subscription_id=subscription_id,
@@ -322,6 +428,13 @@ def cancel_subscription(
         )
     )
     db.commit()
+    _create_notification_best_effort(
+        db,
+        user_id=current_user.id,
+        title='Plan Cancelled',
+        message='Your active subscription plan has been cancelled.',
+        dedupe_key=f'subscription-cancel-{subscription_id}',
+    )
 
     return SubscriptionCancelResponse(
         cancelled=True,
@@ -368,6 +481,10 @@ def verify_payment(
         except Exception:
             subscription_data = {}
 
+    previous_plan = current_user.subscription_plan
+    previous_status = current_user.subscription_status
+    previous_expires_at = current_user.subscription_expires_at
+
     if subscription_data:
         _sync_user_subscription_from_entity(current_user, subscription_data, client)
     else:
@@ -392,6 +509,26 @@ def verify_payment(
     )
     db.add(event)
     db.commit()
+    title, message = _resolve_subscription_notification(
+        previous_plan=previous_plan,
+        previous_status=previous_status,
+        previous_expires_at=previous_expires_at,
+        current_plan=current_user.subscription_plan,
+        current_status=current_user.subscription_status,
+        current_expires_at=current_user.subscription_expires_at,
+    )
+    dedupe_key = (
+        f'subscription-payment-{payload.razorpay_payment_id}'
+        if payload.razorpay_payment_id
+        else (f'subscription-verify-{payload.razorpay_subscription_id}' if payload.razorpay_subscription_id else None)
+    )
+    _create_notification_best_effort(
+        db,
+        user_id=current_user.id,
+        title=title,
+        message=message,
+        dedupe_key=dedupe_key,
+    )
 
     return {'verified': True}
 
@@ -437,6 +574,10 @@ async def razorpay_webhook(
     if not user:
         return {'received': True}
 
+    previous_plan = user.subscription_plan
+    previous_status = user.subscription_status
+    previous_expires_at = user.subscription_expires_at
+
     razorpay_client: razorpay.Client | None = None
     if settings.razorpay_key_id and settings.razorpay_key_secret:
         razorpay_client = razorpay.Client(auth=(settings.razorpay_key_id, settings.razorpay_key_secret))
@@ -457,7 +598,7 @@ async def razorpay_webhook(
 
     payment_wrapper = payload.get('payment')
     payment_entity = payment_wrapper.get('entity') if isinstance(payment_wrapper, dict) else {}
-    payment_id = payment_entity.get('id') if isinstance(payment_entity, dict) else None
+    payment_id = payment_entity.get('id') if isinstance(payment_entity.get('id'), str) else None
     subscription_id = subscription_data.get('id') if isinstance(subscription_data.get('id'), str) else None
 
     db.add(
@@ -470,5 +611,36 @@ async def razorpay_webhook(
         )
     )
     db.commit()
+
+    title, message = _resolve_subscription_notification(
+        previous_plan=previous_plan,
+        previous_status=previous_status,
+        previous_expires_at=previous_expires_at,
+        current_plan=user.subscription_plan,
+        current_status=user.subscription_status,
+        current_expires_at=user.subscription_expires_at,
+    )
+    if event_name == 'subscription.charged' and user.subscription_status == SubscriptionStatus.ACTIVE:
+        title = 'Plan Renewed'
+        message = f'Your {_plan_label(user.subscription_plan)} plan has been renewed.'
+    elif title == 'Plan Renewed':
+        title = 'Subscription Updated'
+        message = 'Your subscription details have been updated.'
+
+    cycle_source = subscription_data.get('current_end') or subscription_data.get('charge_at') or subscription_data.get('ended_at')
+    cycle_marker = str(cycle_source) if cycle_source else None
+    dedupe_key = _build_webhook_notification_dedupe_key(
+        event_name=event_name or 'subscription.update',
+        subscription_id=subscription_id,
+        payment_id=payment_id,
+        cycle_marker=cycle_marker,
+    )
+    _create_notification_best_effort(
+        db,
+        user_id=user.id,
+        title=title,
+        message=message,
+        dedupe_key=dedupe_key,
+    )
 
     return {'received': True}

@@ -9,8 +9,31 @@ from app.models.invoice import Invoice, InvoiceType
 from app.models.non_gst_challan import NonGSTChallan
 from app.models.user import User
 from app.schemas.client import ClientAnalytics, ClientCreate, ClientResponse, ClientUpdate, ClientsOverview
+from app.services.notifications import create_notification
 
 router = APIRouter()
+
+
+def _create_notification_best_effort(
+    db: Session,
+    *,
+    user_id: str,
+    title: str,
+    message: str,
+    route: str | None = '/clients',
+) -> None:
+    try:
+        notification = create_notification(
+            db,
+            user_id=user_id,
+            title=title,
+            message=message,
+            route=route,
+        )
+        if notification:
+            db.commit()
+    except Exception:
+        db.rollback()
 
 
 @router.get('', response_model=list[ClientResponse])
@@ -88,6 +111,13 @@ def create_client(
     db.add(client)
     db.commit()
     db.refresh(client)
+
+    _create_notification_best_effort(
+        db,
+        user_id=current_user.id,
+        title='Client Created',
+        message=f'Client {client.name} has been added.',
+    )
 
     return ClientResponse(
         **client.__dict__,
@@ -172,6 +202,13 @@ def update_client(
     db.commit()
     db.refresh(client)
 
+    _create_notification_best_effort(
+        db,
+        user_id=current_user.id,
+        title='Client Updated',
+        message=f'Client {client.name} has been updated.',
+    )
+
     totals = db.execute(
         select(
             func.count(Invoice.id),
@@ -200,6 +237,7 @@ def delete_client(
     )
     if not client:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='Client not found')
+    client_name = client.name
 
     invoices = db.scalars(
         select(Invoice).where(
@@ -221,3 +259,10 @@ def delete_client(
 
     db.delete(client)
     db.commit()
+
+    _create_notification_best_effort(
+        db,
+        user_id=current_user.id,
+        title='Client Deleted',
+        message=f'Client {client_name} has been deleted.',
+    )

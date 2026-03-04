@@ -19,6 +19,11 @@ export const metadata: Metadata = {
   applicationName: 'ScanMyBill.in',
   authors: [{ name: 'Niyaz Shaikh' }],
   creator: 'Niyaz Shaikh',
+  icons: {
+    icon: [{ url: '/icon.svg', type: 'image/svg+xml' }],
+    shortcut: ['/icon.svg'],
+    apple: [{ url: '/icon.svg', type: 'image/svg+xml' }],
+  },
   title: {
     default: 'ScanMyBill.in | Smart Bill Management for Indian SMBs',
     template: '%s | ScanMyBill.in'

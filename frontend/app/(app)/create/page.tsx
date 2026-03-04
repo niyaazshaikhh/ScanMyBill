@@ -15,6 +15,7 @@ import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { useAuthGuard } from "@/hooks/useAuthGuard";
 import { apiRequest } from "@/lib/api";
+import { notifyApp } from "@/lib/app-notification";
 import { formatIsoDateToDisplay, parseDisplayDateToIso, todayIsoDate } from "@/lib/date-format";
 import { formatAccountingAmount } from "@/lib/number-format";
 import { buildBillPdfFilename } from "@/lib/pdf-filename";
@@ -406,9 +407,19 @@ export default function CreateInvoicePage() {
         method: "POST",
         body: buildInvoicePayload(),
       });
-      alert("Invoice uploaded successfully.");
+      notifyApp({
+        title: "Invoice uploaded successfully",
+        message: "Invoice uploaded successfully",
+        tone: "success",
+      });
     } catch (err) {
-      setFormError(err instanceof Error ? err.message : "Upload failed");
+      const message = err instanceof Error ? err.message : "Upload failed";
+      setFormError(message);
+      notifyApp({
+        title: "Invoice upload failed",
+        message,
+        tone: "error",
+      });
     } finally {
       setSaving(false);
     }
@@ -511,11 +522,12 @@ export default function CreateInvoicePage() {
                   onClick={() => {
                     const picker = invoiceDatePickerRef.current;
                     if (!picker) return;
-                    if ("showPicker" in picker) {
-                      (picker as HTMLInputElement & { showPicker: () => void }).showPicker();
-                    } else {
-                      picker.click();
+                    const pickerWithShow = picker as HTMLInputElement & { showPicker?: () => void };
+                    if (typeof pickerWithShow.showPicker === "function") {
+                      pickerWithShow.showPicker();
+                      return;
                     }
+                    picker.click();
                   }}
                   aria-label="Pick invoice date"
                   title="Pick invoice date"

@@ -1,8 +1,8 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { useEffect, useMemo, useState } from 'react';
-import { Download, Eye } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { Download, Eye, Loader2, Plus, Trash2 } from 'lucide-react';
 
 export const dynamic = "force-dynamic";
 
@@ -13,6 +13,7 @@ import { Select } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { useAuthGuard } from '@/hooks/useAuthGuard';
 import { apiRequest } from '@/lib/api';
+import { notifyApp } from '@/lib/app-notification';
 import { formatIsoDateToDisplay, isoMonthIndex, isoYear } from '@/lib/date-format';
 import { formatAccountingAmount, formatAccountingInteger } from '@/lib/number-format';
 import { buildBillPdfFilename } from '@/lib/pdf-filename';
@@ -20,7 +21,8 @@ import { buildBillPdfFilename } from '@/lib/pdf-filename';
 type DeliveryChallan = {
   id: string;
   client_name: string | null;
-  challan_number: string;
+  challan_number: number;
+  order_number: string;
   challan_date: string;
   subtotal: number;
 };
@@ -30,7 +32,7 @@ type DeliveryChallanListResponse = {
   count: number;
 };
 
-type SortBy = 'date' | 'challan_number' | 'client_name' | 'amount';
+type SortBy = 'challan_number' | 'date' | 'order_number' | 'client_name' | 'amount';
 
 const ALL_FINANCIAL_YEARS = 'all';
 const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -76,7 +78,10 @@ export default function DeliveryChallanInvoicesPage() {
   const [error, setError] = useState<string | null>(null);
   const [previewingId, setPreviewingId] = useState<string | null>(null);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [uploadingBill, setUploadingBill] = useState(false);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
+  const quickUploadInputRef = useRef<HTMLInputElement | null>(null);
 
   const yearOptions = useMemo(() => {
     const starts = new Set<number>(data.map((challan) => getFinancialYearStart(challan.challan_date)));
@@ -85,21 +90,22 @@ export default function DeliveryChallanInvoicesPage() {
     return sortedStarts.map((start) => ({ value: String(start), label: toFinancialYearLabel(start) }));
   }, [data, currentFinancialYearStart]);
 
-  useEffect(() => {
-    const load = async () => {
-      setLoading(true);
-      setError(null);
-      try {
-        const response = await apiRequest<DeliveryChallanListResponse>('/delivery-challans');
-        setData(response.challans);
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to load delivery challans');
-      } finally {
-        setLoading(false);
-      }
-    };
+  const loadChallans = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const response = await apiRequest<DeliveryChallanListResponse>('/delivery-challans');
+      setData(response.challans);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load delivery challans');
+    } finally {
+      setLoading(false);
+    }
+  };
 
-    void load();
+  useEffect(() => {
+    void loadChallans();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -143,10 +149,12 @@ export default function DeliveryChallanInvoicesPage() {
     const rows = [...folderChallans];
     rows.sort((left, right) => {
       let comparison = 0;
-      if (sortBy === 'date') {
+      if (sortBy === 'challan_number') {
+        comparison = left.challan_number - right.challan_number;
+      } else if (sortBy === 'date') {
         comparison = new Date(left.challan_date).getTime() - new Date(right.challan_date).getTime();
-      } else if (sortBy === 'challan_number') {
-        comparison = left.challan_number.localeCompare(right.challan_number, undefined, {
+      } else if (sortBy === 'order_number') {
+        comparison = left.order_number.localeCompare(right.order_number, undefined, {
           numeric: true,
           sensitivity: 'base',
         });
@@ -181,7 +189,7 @@ export default function DeliveryChallanInvoicesPage() {
     setPreviewingId(challanId);
     setActionMessage(null);
     try {
-      const blob = await apiRequest<Blob>(`/delivery-challans/${challanId}/pdf`, { responseType: 'blob' });
+      const blob = await apiRequest<Blob>(`/delivery-challans/${challanId}/preview`, { responseType: 'blob' });
       const previewUrl = URL.createObjectURL(blob);
       const popup = window.open(previewUrl, '_blank', 'noopener,noreferrer');
       if (!popup) {
@@ -223,6 +231,59 @@ export default function DeliveryChallanInvoicesPage() {
       setActionMessage(err instanceof Error ? err.message : 'Failed to download challan PDF');
     } finally {
       setDownloadingId(null);
+    }
+  };
+
+  const deleteChallan = async (challanId: string, challanNumber: string) => {
+    const confirmed = window.confirm(`Delete delivery challan ${challanNumber}? This cannot be undone.`);
+    if (!confirmed) return;
+
+    setDeletingId(challanId);
+    setActionMessage(null);
+    try {
+      await apiRequest(`/delivery-challans/${challanId}`, { method: 'DELETE' });
+      setData((previous) => previous.filter((challan) => challan.id !== challanId));
+      setActionMessage(`Delivery challan ${challanNumber} deleted.`);
+    } catch (err) {
+      setActionMessage(err instanceof Error ? err.message : 'Failed to delete delivery challan');
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
+  const quickUploadBill = async (selectedFile: File) => {
+    setUploadingBill(true);
+    setActionMessage(null);
+
+    try {
+      const formData = new FormData();
+      formData.append('file', selectedFile);
+      formData.append('invoice_type', 'sales');
+
+      await apiRequest('/bills/upload', {
+        method: 'POST',
+        body: formData,
+        isFormData: true,
+      });
+      notifyApp({
+        title: 'Invoice uploaded successfully',
+        message: 'Invoice uploaded successfully',
+        tone: 'success',
+      });
+      await loadChallans();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Upload failed';
+      notifyApp({
+        title: 'Invoice upload failed',
+        message,
+        tone: 'error',
+      });
+      setActionMessage(message);
+    } finally {
+      setUploadingBill(false);
+      if (quickUploadInputRef.current) {
+        quickUploadInputRef.current.value = '';
+      }
     }
   };
 
@@ -322,6 +383,16 @@ export default function DeliveryChallanInvoicesPage() {
                   <TableHead>
                     <button
                       type='button'
+                      onClick={() => onSortColumn('challan_number')}
+                      className='inline-flex items-center gap-1 hover:text-foreground'
+                    >
+                      Challan Number
+                      <span className='text-xs'>{sortTriangle('challan_number')}</span>
+                    </button>
+                  </TableHead>
+                  <TableHead>
+                    <button
+                      type='button'
                       onClick={() => onSortColumn('date')}
                       className='inline-flex items-center gap-1 hover:text-foreground'
                     >
@@ -332,11 +403,11 @@ export default function DeliveryChallanInvoicesPage() {
                   <TableHead>
                     <button
                       type='button'
-                      onClick={() => onSortColumn('challan_number')}
+                      onClick={() => onSortColumn('order_number')}
                       className='inline-flex items-center gap-1 hover:text-foreground'
                     >
-                      Challan Number
-                      <span className='text-xs'>{sortTriangle('challan_number')}</span>
+                      Order Number
+                      <span className='text-xs'>{sortTriangle('order_number')}</span>
                     </button>
                   </TableHead>
                   <TableHead>
@@ -365,15 +436,16 @@ export default function DeliveryChallanInvoicesPage() {
               <TableBody>
                 {sortedFolderChallans.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={5} className='text-center text-muted-foreground'>
+                    <TableCell colSpan={6} className='text-center text-muted-foreground'>
                       No delivery challans in this folder.
                     </TableCell>
                   </TableRow>
                 ) : (
                   sortedFolderChallans.map((challan) => (
                     <TableRow key={challan.id}>
-                      <TableCell>{formatIsoDateToDisplay(challan.challan_date)}</TableCell>
                       <TableCell>{challan.challan_number}</TableCell>
+                      <TableCell>{formatIsoDateToDisplay(challan.challan_date)}</TableCell>
+                      <TableCell>{challan.order_number}</TableCell>
                       <TableCell>{challan.client_name || 'Unlinked'}</TableCell>
                       <TableCell>Rs {formatAccountingAmount(challan.subtotal)}</TableCell>
                       <TableCell className='text-right'>
@@ -382,7 +454,9 @@ export default function DeliveryChallanInvoicesPage() {
                             variant='outline'
                             size='icon'
                             onClick={() => previewChallan(challan.id)}
-                            disabled={previewingId === challan.id || downloadingId === challan.id}
+                            disabled={
+                              previewingId === challan.id || downloadingId === challan.id || deletingId === challan.id
+                            }
                             title='View challan PDF'
                             aria-label='View challan PDF'
                           >
@@ -394,16 +468,30 @@ export default function DeliveryChallanInvoicesPage() {
                             onClick={() =>
                               downloadChallan(
                                 challan.id,
-                                challan.challan_number,
+                                challan.order_number,
                                 challan.challan_date,
                                 challan.client_name,
                               )
                             }
-                            disabled={downloadingId === challan.id || previewingId === challan.id}
+                            disabled={
+                              downloadingId === challan.id || previewingId === challan.id || deletingId === challan.id
+                            }
                             title='Download challan PDF'
                             aria-label='Download challan PDF'
                           >
                             <Download className='h-4 w-4' />
+                          </Button>
+                          <Button
+                            variant='outline'
+                            size='icon'
+                            onClick={() => deleteChallan(challan.id, challan.order_number)}
+                            disabled={
+                              deletingId === challan.id || previewingId === challan.id || downloadingId === challan.id
+                            }
+                            title='Delete challan'
+                            aria-label='Delete challan'
+                          >
+                            <Trash2 className='h-4 w-4' />
                           </Button>
                         </div>
                       </TableCell>
@@ -415,6 +503,28 @@ export default function DeliveryChallanInvoicesPage() {
           ) : null}
         </CardContent>
       </Card>
+
+      <input
+        ref={quickUploadInputRef}
+        type='file'
+        accept='.jpeg,.jpg,.png,.pdf,.xls,.xlsx'
+        className='hidden'
+        onChange={(event) => {
+          const selected = event.target.files?.[0] || null;
+          if (!selected) return;
+          void quickUploadBill(selected);
+        }}
+      />
+      <Button
+        type='button'
+        onClick={() => quickUploadInputRef.current?.click()}
+        disabled={uploadingBill}
+        className='fixed bottom-6 right-6 z-50 h-14 w-14 rounded-full bg-orange-600 p-0 text-white shadow-lg hover:bg-orange-500 focus-visible:ring-orange-500'
+        aria-label='Quick upload bill'
+        title='Upload Bill'
+      >
+        {uploadingBill ? <Loader2 className='h-6 w-6 animate-spin' /> : <Plus className='h-7 w-7' />}
+      </Button>
     </div>
   );
 }

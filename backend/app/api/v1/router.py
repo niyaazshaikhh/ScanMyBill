@@ -9,6 +9,7 @@ from app.api.v1.endpoints import (
     invoices,
     newsletter,
     non_gst_challans as delivery_challans,
+    notifications,
     payments,
     users,
 )
@@ -23,4 +24,5 @@ api_router.include_router(hsn_sac_master_list.router, prefix='/hsn-sac-master-li
 api_router.include_router(bills.router, prefix='/bills', tags=['bills'])
 api_router.include_router(payments.router, prefix='/payments', tags=['payments'])
 api_router.include_router(users.router, prefix='/users', tags=['users'])
+api_router.include_router(notifications.router, prefix='/notifications', tags=['notifications'])
 api_router.include_router(newsletter.router, prefix='/newsletter', tags=['newsletter'])

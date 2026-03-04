@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import date, datetime
 from pathlib import Path
+import tempfile
 from typing import Final
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
@@ -11,9 +12,8 @@ from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.core.database import get_db
 from app.core.deps import get_current_user
-from app.core.storage import get_storage_backend, remove_temp_file
-from app.models.bill_upload import BillUpload
-from app.models.invoice import Invoice, InvoiceSource, InvoiceType
+from app.core.storage import remove_temp_file
+from app.models.invoice import Invoice, InvoiceItem, InvoiceSource, InvoiceType
 from app.models.personal_details import PersonalDetails
 from app.models.user import User
 from app.schemas.bill import BillUploadResponse
@@ -109,13 +109,10 @@ async def upload_bill(
     safe_original_name = _sanitize_display_filename(file.filename, extension)
     fallback_type = InvoiceType(normalized_invoice_type)
 
-    storage = get_storage_backend()
-    stored_path = storage.save_bytes(
-        payload,
-        safe_original_name,
-        subdir=f'bills/{current_user.id}',
-    )
-    processing_path = storage.local_processing_path(stored_path)
+    processing_path = ''
+    with tempfile.NamedTemporaryFile(delete=False, suffix=extension) as temp_file:
+        temp_file.write(payload)
+        processing_path = temp_file.name
 
     try:
         text = extract_text_from_file(processing_path, detected_mime)
@@ -134,7 +131,7 @@ async def upload_bill(
 
         invoice = Invoice(
             owner_id=current_user.id,
-            invoice_number=f"OCR-{datetime.now().strftime('%Y%m%d-%H%M%S')}",
+            invoice_number=f"OCR-{datetime.now().strftime('%Y%m%d-%H%M%S-%f')}",
             invoice_date=bill_date,
             gst_number=extracted['gst_number'],
             type=extracted['inferred_type'],
@@ -142,46 +139,38 @@ async def upload_bill(
             gst_amount=0.0,
             total_amount=total_amount,
             source=InvoiceSource.UPLOADED,
-            original_file_path=stored_path,
+            original_file_path=None,
+        )
+        invoice.items.append(
+            InvoiceItem(
+                description='Uploaded Bill',
+                hsn_sac='',
+                quantity=1.0,
+                price=total_amount,
+                gst_percent=0.0,
+                line_total=total_amount,
+            )
         )
         db.add(invoice)
-        db.flush()
-
-        upload = BillUpload(
-            owner_id=current_user.id,
-            invoice_id=invoice.id,
-            file_name=safe_original_name,
-            file_path=stored_path,
-            mime_type=detected_mime,
-            file_size=len(payload),
-            ocr_text=text,
-            processed=True,
-        )
-        db.add(upload)
         db.commit()
-        db.refresh(upload)
+        db.refresh(invoice)
     except Exception:
         db.rollback()
-        try:
-            storage.delete_file(stored_path)
-        except Exception:
-            pass
         raise
     finally:
-        if processing_path != stored_path:
-            remove_temp_file(processing_path)
+        remove_temp_file(processing_path)
 
     preview = (text[:200] + '...') if text and len(text) > 200 else text
 
     return BillUploadResponse(
-        upload_id=upload.id,
+        upload_id=invoice.id,
         invoice_id=invoice.id,
-        file_name=upload.file_name,
-        file_path=upload.file_path,
+        file_name=safe_original_name,
+        file_path='',
         invoice_date=invoice.invoice_date,
         gst_number=invoice.gst_number,
         total_amount=invoice.total_amount,
         type=invoice.type,
         extracted_text_preview=preview,
-        created_at=upload.created_at,
+        created_at=invoice.created_at or datetime.now(),
     )

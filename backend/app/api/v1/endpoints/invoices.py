@@ -2,19 +2,20 @@ from __future__ import annotations
 
 from datetime import date
 from io import BytesIO
-import mimetypes
 from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from fastapi.responses import FileResponse, StreamingResponse
+from pypdf import PdfWriter
 from starlette.background import BackgroundTask
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
-from app.core.storage import get_storage_backend
 from app.core.database import get_db
 from app.core.deps import get_current_user
+from app.core.storage import get_storage_backend
 from app.models.bill_upload import BillUpload
 from app.models.client import Client
 from app.models.invoice import Invoice, InvoiceItem, InvoiceSource, InvoiceType
@@ -34,7 +35,7 @@ from app.services.pdf_invoice_service import (
     remove_generated_pdf,
     resolve_generated_pdf_path,
 )
-from app.services.pdf_service import build_folder_export_pdf
+from app.services.notifications import create_notification
 from app.utils.pdf_filename import build_bill_pdf_filename
 from app.utils.period import matches_bucket, valid_period
 
@@ -95,11 +96,6 @@ def _parse_invoice_type(invoice_type: str | None) -> InvoiceType | None:
     return InvoiceType(value)
 
 
-def _guess_media_type(stored_path: str) -> str:
-    guessed, _ = mimetypes.guess_type(stored_path)
-    return guessed or 'application/octet-stream'
-
-
 def _format_bank_details(personal_details: PersonalDetails | None) -> str:
     if not personal_details:
         return 'N/A'
@@ -147,6 +143,18 @@ def _build_invoice_pdf_data(
                 'rate': round(item.price, 2),
                 'tax_percent': round(item.gst_percent, 2),
                 'amount': taxable_amount,
+            }
+        )
+    if not item_rows:
+        # Legacy OCR uploads may not contain itemized rows; provide a synthetic row for template rendering.
+        item_rows.append(
+            {
+                'description': invoice.notes or 'Uploaded Bill',
+                'hsn': '',
+                'quantity': 1.0,
+                'rate': round(invoice.subtotal, 2),
+                'tax_percent': 0.0,
+                'amount': round(invoice.subtotal, 2),
             }
         )
 
@@ -223,6 +231,57 @@ def _raise_pdf_generation_http_error(exc: Exception) -> None:
     raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail='Failed to generate invoice PDF') from exc
 
 
+def _create_notification_best_effort(
+    db: Session,
+    *,
+    user_id: str,
+    title: str,
+    message: str,
+    route: str | None,
+) -> None:
+    try:
+        notification = create_notification(
+            db,
+            user_id=user_id,
+            title=title,
+            message=message,
+            route=route,
+        )
+        if notification:
+            db.commit()
+    except Exception:
+        db.rollback()
+
+
+def _resolve_invoice_pdf_for_response(
+    invoice: Invoice,
+    *,
+    db: Session,
+    owner_id: str,
+    company_details: PersonalDetails | None,
+) -> tuple[Path, str | None]:
+    invoice_pdf_data = _build_invoice_pdf_data(
+        invoice,
+        owner_id=owner_id,
+        company_details=company_details,
+        client=invoice.client,
+    )
+    try:
+        generated_pdf_path = generate_invoice_pdf(invoice_pdf_data)
+    except Exception as exc:
+        _raise_pdf_generation_http_error(exc)
+
+    try:
+        absolute_pdf_path = resolve_generated_pdf_path(generated_pdf_path)
+    except PDFInvoiceGenerationError as exc:
+        _raise_pdf_generation_http_error(exc)
+
+    if not absolute_pdf_path.exists():
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail='Generated invoice PDF missing')
+
+    return absolute_pdf_path, generated_pdf_path
+
+
 @router.get('', response_model=InvoiceListResponse)
 def list_invoices(
     period: str = Query('monthly'),
@@ -292,30 +351,26 @@ def create_invoice(
     if not client:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Selected client is invalid')
 
+    duplicate_invoice_id = db.scalar(
+        select(Invoice.id).where(
+            Invoice.owner_id == current_user.id,
+            Invoice.invoice_number == payload.invoice_number,
+        )
+    )
+    if duplicate_invoice_id:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Invoice Number already exists.')
+
     invoice = _build_sales_invoice_from_payload(payload, owner_id=current_user.id)
 
     db.add(invoice)
-    db.flush()
-
-    company_details = db.scalar(select(PersonalDetails).where(PersonalDetails.owner_id == current_user.id))
-    invoice_pdf_data = _build_invoice_pdf_data(
-        invoice,
-        owner_id=current_user.id,
-        company_details=company_details,
-        client=client,
-    )
-
     try:
-        invoice.original_file_path = generate_invoice_pdf(invoice_pdf_data)
-    except Exception as exc:
-        db.rollback()
-        _raise_pdf_generation_http_error(exc)
-
-    try:
+        db.flush()
         db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Invoice Number already exists.') from exc
     except Exception:
-        if invoice.original_file_path:
-            remove_generated_pdf(invoice.original_file_path)
+        db.rollback()
         raise
 
     refreshed = db.scalar(
@@ -325,6 +380,14 @@ def create_invoice(
     )
     if not refreshed:
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail='Failed to load invoice')
+
+    _create_notification_best_effort(
+        db,
+        user_id=current_user.id,
+        title='Invoice Created',
+        message=f'Invoice {refreshed.invoice_number} has been created and saved.',
+        route='/invoices',
+    )
 
     return _invoice_to_response(refreshed)
 
@@ -370,6 +433,13 @@ def create_invoice_pdf(
         bill_date=invoice.invoice_date,
         document_number=invoice.invoice_number,
         client_name=client.name if client else None,
+    )
+    _create_notification_best_effort(
+        db,
+        user_id=current_user.id,
+        title='Invoice PDF Exported',
+        message=f'Invoice {invoice.invoice_number} PDF has been exported.',
+        route='/create',
     )
     background = BackgroundTask(remove_generated_pdf, generated_pdf_path)
     return FileResponse(
@@ -420,8 +490,55 @@ def export_folder(
     if not invoices:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='No invoices in selected folder')
 
-    pdf_bytes = build_folder_export_pdf(invoices, folder_label=bucket, period=normalized_period)
+    company_details = db.scalar(select(PersonalDetails).where(PersonalDetails.owner_id == current_user.id))
+    writer = PdfWriter()
+    temporary_generated_paths: list[str] = []
+
+    try:
+        for invoice in invoices:
+            absolute_pdf_path, cleanup_path = _resolve_invoice_pdf_for_response(
+                invoice,
+                db=db,
+                owner_id=current_user.id,
+                company_details=company_details,
+            )
+            if cleanup_path:
+                temporary_generated_paths.append(cleanup_path)
+
+            # Keep exactly one page per invoice record in folder export.
+            try:
+                writer.append(str(absolute_pdf_path), pages=(0, 1))
+            except Exception as exc:
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail=f'Failed to append invoice {invoice.invoice_number} to folder export.',
+                ) from exc
+
+        output = BytesIO()
+        try:
+            writer.write(output)
+        except Exception as exc:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail='Failed to build merged folder export PDF.',
+            ) from exc
+        pdf_bytes = output.getvalue()
+    finally:
+        for path in temporary_generated_paths:
+            remove_generated_pdf(path)
+
+    if not pdf_bytes:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail='Failed to build folder export PDF')
+
     filename = f'{normalized_period}-{bucket}-export.pdf'.replace(' ', '-').lower()
+
+    _create_notification_best_effort(
+        db,
+        user_id=current_user.id,
+        title='Invoice Folder Exported',
+        message=f'{bucket} folder export is ready for download.',
+        route='/invoices',
+    )
 
     return StreamingResponse(
         BytesIO(pdf_bytes),
@@ -445,6 +562,7 @@ def delete_invoice(
     )
     if not invoice:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='Invoice not found')
+    invoice_number = invoice.invoice_number
 
     uploads = list(
         db.scalars(
@@ -467,6 +585,14 @@ def delete_invoice(
             storage.delete_file(stored_path)
         except Exception:
             continue
+
+    _create_notification_best_effort(
+        db,
+        user_id=current_user.id,
+        title='Invoice Deleted',
+        message=f'Invoice {invoice_number} has been deleted.',
+        route='/invoices',
+    )
 
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
@@ -495,33 +621,31 @@ def get_invoice_preview(
     current_user: User = Depends(get_current_user),
 ) -> Response:
     invoice = db.scalar(
-        select(Invoice).where(Invoice.id == invoice_id, Invoice.owner_id == current_user.id)
+        select(Invoice)
+        .options(selectinload(Invoice.client), selectinload(Invoice.items))
+        .where(Invoice.id == invoice_id, Invoice.owner_id == current_user.id)
     )
     if not invoice:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='Invoice not found')
-    if not invoice.original_file_path:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='Preview file not found')
-
-    upload = db.scalar(
-        select(BillUpload).where(
-            BillUpload.invoice_id == invoice.id,
-            BillUpload.owner_id == current_user.id,
-        )
+    company_details = db.scalar(select(PersonalDetails).where(PersonalDetails.owner_id == current_user.id))
+    absolute_pdf_path, cleanup_path = _resolve_invoice_pdf_for_response(
+        invoice,
+        db=db,
+        owner_id=current_user.id,
+        company_details=company_details,
     )
-
-    storage = get_storage_backend()
-    try:
-        payload = storage.read_bytes(invoice.original_file_path)
-    except Exception as exc:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='Preview file not found') from exc
-
-    media_type = upload.mime_type if upload and upload.mime_type else _guess_media_type(invoice.original_file_path)
-    filename = upload.file_name if upload and upload.file_name else Path(invoice.original_file_path).name
-
-    return Response(
-        content=payload,
-        media_type=media_type,
+    filename = build_bill_pdf_filename(
+        bill_date=invoice.invoice_date,
+        document_number=invoice.invoice_number,
+        client_name=invoice.client.name if invoice.client else None,
+    )
+    background = BackgroundTask(remove_generated_pdf, cleanup_path) if cleanup_path else None
+    return FileResponse(
+        path=str(absolute_pdf_path),
+        media_type='application/pdf',
+        filename=filename,
         headers={'Content-Disposition': f'inline; filename="{filename}"'},
+        background=background,
     )
 
 
@@ -540,66 +664,26 @@ def get_invoice_pdf(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='Invoice not found')
 
     company_details = db.scalar(select(PersonalDetails).where(PersonalDetails.owner_id == current_user.id))
-
-    generated_pdf_path: str | None = None
-    should_cleanup_after_response = False
-
-    if (
-        invoice.source == InvoiceSource.CREATED
-        and invoice.original_file_path
-        and invoice.original_file_path.lower().endswith('.pdf')
-    ):
-        try:
-            existing_path = resolve_generated_pdf_path(invoice.original_file_path)
-        except PDFInvoiceGenerationError:
-            existing_path = None
-
-        if existing_path and existing_path.exists():
-            generated_pdf_path = invoice.original_file_path
-
-    if not generated_pdf_path:
-        invoice_pdf_data = _build_invoice_pdf_data(
-            invoice,
-            owner_id=current_user.id,
-            company_details=company_details,
-            client=invoice.client,
-        )
-        try:
-            generated_pdf_path = generate_invoice_pdf(invoice_pdf_data)
-        except Exception as exc:
-            _raise_pdf_generation_http_error(exc)
-
-        if invoice.source == InvoiceSource.CREATED:
-            invoice.original_file_path = generated_pdf_path
-            try:
-                db.commit()
-            except Exception:
-                db.rollback()
-                remove_generated_pdf(generated_pdf_path)
-                raise HTTPException(
-                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                    detail='Failed to persist generated invoice PDF path',
-                )
-        else:
-            should_cleanup_after_response = True
-
-    if not generated_pdf_path:
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail='Failed to resolve invoice PDF path')
-
-    try:
-        absolute_pdf_path = resolve_generated_pdf_path(generated_pdf_path)
-    except PDFInvoiceGenerationError as exc:
-        _raise_pdf_generation_http_error(exc)
-
-    if not absolute_pdf_path.exists():
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail='Generated invoice PDF missing')
+    absolute_pdf_path, cleanup_path = _resolve_invoice_pdf_for_response(
+        invoice,
+        db=db,
+        owner_id=current_user.id,
+        company_details=company_details,
+    )
 
     filename = build_bill_pdf_filename(
         bill_date=invoice.invoice_date,
         document_number=invoice.invoice_number,
         client_name=invoice.client.name if invoice.client else None,
     )
-    background = BackgroundTask(remove_generated_pdf, generated_pdf_path) if should_cleanup_after_response else None
+    _create_notification_best_effort(
+        db,
+        user_id=current_user.id,
+        title='Invoice PDF Downloaded',
+        message=f'Invoice {invoice.invoice_number} PDF has been downloaded.',
+        route='/invoices',
+    )
+    background = BackgroundTask(remove_generated_pdf, cleanup_path) if cleanup_path else None
     return FileResponse(
         path=str(absolute_pdf_path),
         media_type='application/pdf',

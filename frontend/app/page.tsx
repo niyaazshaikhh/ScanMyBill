@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { Instagram, Linkedin, Twitter } from "lucide-react";
 
@@ -6,6 +7,12 @@ import { NewsletterForm } from "@/components/landing/newsletter-form";
 import { RazorpayCheckoutButton } from "@/components/landing/razorpay-checkout-button";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+
+export const metadata: Metadata = {
+  title: "Home",
+  description:
+    "OCR-powered billing and GST workflow platform for Indian businesses. Create invoices, track analytics, and export PDFs quickly.",
+};
 
 const features = [
   {

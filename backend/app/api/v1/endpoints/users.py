@@ -8,8 +8,31 @@ from app.models.personal_details import PersonalDetails
 from app.models.user import User
 from app.schemas.personal_details import PersonalDetailsResponse, PersonalDetailsUpsertRequest
 from app.schemas.user import CurrentUserResponse
+from app.services.notifications import create_notification
 
 router = APIRouter()
+
+
+def _create_notification_best_effort(
+    db: Session,
+    *,
+    user_id: str,
+    title: str,
+    message: str,
+    route: str | None = '/settings/personal_details',
+) -> None:
+    try:
+        notification = create_notification(
+            db,
+            user_id=user_id,
+            title=title,
+            message=message,
+            route=route,
+        )
+        if notification:
+            db.commit()
+    except Exception:
+        db.rollback()
 
 
 @router.get('/me', response_model=CurrentUserResponse)
@@ -89,5 +112,12 @@ def upsert_personal_details(
 
     db.commit()
     db.refresh(details)
+
+    _create_notification_best_effort(
+        db,
+        user_id=current_user.id,
+        title='Personal Details Updated',
+        message='Your personal and business details have been updated.',
+    )
 
     return PersonalDetailsResponse.model_validate(details)

@@ -72,3 +72,4 @@ class User(Base):
         cascade='all,delete-orphan',
     )
     auth_sessions = relationship('UserSession', back_populates='owner', cascade='all,delete-orphan')
+    notifications = relationship('Notification', back_populates='owner', cascade='all,delete-orphan')

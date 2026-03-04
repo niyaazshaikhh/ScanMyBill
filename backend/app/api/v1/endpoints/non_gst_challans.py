@@ -1,25 +1,19 @@
 from __future__ import annotations
 
-from io import BytesIO
-from pathlib import Path
-from uuid import uuid4
+from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from fastapi.responses import FileResponse
-from reportlab.lib import colors
-from reportlab.lib.pagesizes import A4
-from reportlab.lib.styles import getSampleStyleSheet
-from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 from starlette.background import BackgroundTask
 
-from app.core.config import settings
 from app.core.database import get_db
 from app.core.deps import get_current_user
 from app.models.client import Client
 from app.models.non_gst_challan import NonGSTChallan, NonGSTChallanItem
+from app.models.personal_details import PersonalDetails
 from app.models.user import User
 from app.schemas.non_gst_challan import (
     LatestCreatedNonGSTChallanResponse,
@@ -27,41 +21,18 @@ from app.schemas.non_gst_challan import (
     NonGSTChallanListResponse,
     NonGSTChallanResponse,
 )
+from app.services.pdf_delivery_challan_service import generate_delivery_challan_pdf
 from app.services.pdf_invoice_service import (
+    PDFInvoiceDataError,
     PDFInvoiceGenerationError,
+    PDFInvoiceTemplateError,
     remove_generated_pdf,
     resolve_generated_pdf_path,
 )
+from app.services.notifications import create_notification
 from app.utils.pdf_filename import build_bill_pdf_filename
 
 router = APIRouter()
-
-APP_ROOT = Path(__file__).resolve().parents[3]
-BACKEND_ROOT = APP_ROOT.parent
-
-
-def _is_within(parent: Path, child: Path) -> bool:
-    try:
-        child.resolve().relative_to(parent.resolve())
-    except ValueError:
-        return False
-    return True
-
-
-def _uploads_root() -> Path:
-    configured = Path(settings.uploads_dir)
-    candidate = configured if configured.is_absolute() else BACKEND_ROOT / configured
-    resolved = candidate.resolve()
-    if not _is_within(BACKEND_ROOT, resolved):
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail='UPLOADS_DIR must be inside backend directory.',
-        )
-    return resolved
-
-
-def _sanitize_owner_id(owner_id: str) -> str:
-    return ''.join(char for char in owner_id if char.isalnum() or char in {'-', '_'})
 
 
 def _challan_to_response(challan: NonGSTChallan) -> NonGSTChallanResponse:
@@ -79,7 +50,8 @@ def _challan_to_response(challan: NonGSTChallan) -> NonGSTChallanResponse:
         id=challan.id,
         client_id=challan.client_id,
         client_name=challan.client.name if challan.client else None,
-        challan_number=challan.challan_number,
+        challan_number=challan.sequence_number or 0,
+        order_number=challan.challan_number,
         challan_date=challan.challan_date,
         subtotal=round(challan.subtotal, 2),
         notes=challan.notes,
@@ -93,7 +65,7 @@ def _build_challan_from_payload(payload: NonGSTChallanCreate, *, owner_id: str) 
     challan = NonGSTChallan(
         owner_id=owner_id,
         client_id=payload.client_id,
-        challan_number=payload.challan_number,
+        challan_number=payload.order_number,
         challan_date=payload.challan_date,
         notes=payload.notes,
     )
@@ -113,99 +85,79 @@ def _build_challan_from_payload(payload: NonGSTChallanCreate, *, owner_id: str) 
     return challan
 
 
-def _build_delivery_challan_pdf_bytes(challan: NonGSTChallan, *, client_name: str) -> bytes:
-    buffer = BytesIO()
-    doc = SimpleDocTemplate(buffer, pagesize=A4)
-    styles = getSampleStyleSheet()
-    elements = []
-
-    elements.append(Paragraph('ScanMyBill.in - Delivery Challan', styles['Title']))
-    elements.append(Spacer(1, 10))
-
-    details_data = [
-        ['Challan #', challan.challan_number],
-        ['Date', challan.challan_date.strftime('%d/%b/%Y')],
-        ['Client', client_name],
-        ['Subtotal', f'{challan.subtotal:.2f}'],
+def _build_delivery_challan_pdf_data(
+    challan: NonGSTChallan,
+    *,
+    owner_id: str,
+    client_name: str,
+    company_details: PersonalDetails | None,
+) -> dict[str, Any]:
+    items = [
+        {
+            'description': item.description,
+            'quantity': round(item.quantity, 2),
+            'rate': round(item.rate, 2),
+            'line_total': round(item.line_total, 2),
+        }
+        for item in challan.items
     ]
-    details_table = Table(details_data, hAlign='LEFT', colWidths=[120, 340])
-    details_table.setStyle(
-        TableStyle(
-            [
-                ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
-                ('BACKGROUND', (0, 0), (0, -1), colors.whitesmoke),
-            ]
+    if not items:
+        items.append(
+            {
+                'description': challan.notes or 'Delivery Item',
+                'quantity': 1.0,
+                'rate': round(challan.subtotal, 2),
+                'line_total': round(challan.subtotal, 2),
+            }
         )
+
+    return {
+        'user_id': owner_id,
+        'company_name': company_details.company_name if company_details and company_details.company_name else 'ScanMyBill.in',
+        'company_address': company_details.address if company_details and company_details.address else 'N/A',
+        'company_gstin': company_details.gstin_number if company_details and company_details.gstin_number else 'N/A',
+        'challan_number': challan.sequence_number or 0,
+        'order_number': challan.challan_number,
+        'challan_date': challan.challan_date.isoformat(),
+        'client_name': client_name,
+        'subtotal': round(challan.subtotal, 2),
+        'notes': challan.notes or '',
+        'items': items,
+    }
+
+
+def _raise_delivery_challan_pdf_http_error(exc: Exception) -> None:
+    if isinstance(exc, PDFInvoiceDataError):
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
+    if isinstance(exc, PDFInvoiceTemplateError):
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(exc)) from exc
+    if isinstance(exc, PDFInvoiceGenerationError):
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(exc)) from exc
+    raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail='Failed to generate delivery challan PDF') from exc
+
+
+def _generate_delivery_challan_pdf_path(
+    challan: NonGSTChallan,
+    *,
+    owner_id: str,
+    client_name: str,
+    company_details: PersonalDetails | None,
+) -> str:
+    challan_pdf_data = _build_delivery_challan_pdf_data(
+        challan,
+        owner_id=owner_id,
+        client_name=client_name,
+        company_details=company_details,
     )
-    elements.append(details_table)
-    elements.append(Spacer(1, 16))
-
-    item_rows = [['Description', 'Qty', 'Rate', 'Amount']]
-    for item in challan.items:
-        item_rows.append(
-            [
-                item.description,
-                f'{item.quantity:.2f}',
-                f'{item.rate:.2f}',
-                f'{item.line_total:.2f}',
-            ]
-        )
-
-    items_table = Table(item_rows, hAlign='LEFT', colWidths=[280, 70, 90, 90])
-    items_table.setStyle(
-        TableStyle(
-            [
-                ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
-                ('BACKGROUND', (0, 0), (-1, 0), colors.lightgrey),
-                ('ALIGN', (1, 1), (-1, -1), 'RIGHT'),
-            ]
-        )
-    )
-    elements.append(items_table)
-    elements.append(Spacer(1, 12))
-
-    elements.append(Paragraph(f'<b>Total:</b> {challan.subtotal:.2f}', styles['Normal']))
-    if challan.notes:
-        elements.append(Spacer(1, 10))
-        elements.append(Paragraph(f'<b>Note:</b> {challan.notes}', styles['Normal']))
-
-    doc.build(elements)
-    return buffer.getvalue()
-
-
-def _persist_pdf_bytes(*, owner_id: str, pdf_bytes: bytes) -> str:
-    uploads_root = _uploads_root()
-    safe_owner_id = _sanitize_owner_id(owner_id)
-    if not safe_owner_id:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail='Unable to resolve storage directory for challan PDF.',
-        )
-
-    relative_dir = Path('bills') / safe_owner_id
-    target_dir = (uploads_root / relative_dir).resolve()
-    if not _is_within(uploads_root, target_dir):
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail='Resolved storage directory is invalid.',
-        )
-    target_dir.mkdir(parents=True, exist_ok=True)
-
-    relative_path = (relative_dir / f'{uuid4().hex}.pdf').as_posix()
     try:
-        absolute_path = resolve_generated_pdf_path(relative_path)
-    except PDFInvoiceGenerationError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail='Failed to resolve generated challan PDF path.',
-        ) from exc
-    absolute_path.write_bytes(pdf_bytes)
-    return relative_path
+        return generate_delivery_challan_pdf(challan_pdf_data)
+    except Exception as exc:
+        _raise_delivery_challan_pdf_http_error(exc)
 
 
 def _as_pdf_file_response(
     *,
-    challan_number: str,
+    order_number: str,
     challan_date,
     client_name: str | None,
     stored_path: str,
@@ -227,7 +179,7 @@ def _as_pdf_file_response(
 
     filename = build_bill_pdf_filename(
         bill_date=challan_date,
-        document_number=challan_number,
+        document_number=order_number,
         client_name=client_name,
     )
     background = BackgroundTask(remove_generated_pdf, stored_path) if cleanup_after_response else None
@@ -237,6 +189,28 @@ def _as_pdf_file_response(
         filename=filename,
         background=background,
     )
+
+
+def _create_notification_best_effort(
+    db: Session,
+    *,
+    user_id: str,
+    title: str,
+    message: str,
+    route: str | None,
+) -> None:
+    try:
+        notification = create_notification(
+            db,
+            user_id=user_id,
+            title=title,
+            message=message,
+            route=route,
+        )
+        if notification:
+            db.commit()
+    except Exception:
+        db.rollback()
 
 
 @router.get('', response_model=NonGSTChallanListResponse)
@@ -262,8 +236,14 @@ def latest_created_non_gst_challan(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> LatestCreatedNonGSTChallanResponse:
+    latest_challan_number = db.scalar(
+        select(func.max(NonGSTChallan.sequence_number)).where(NonGSTChallan.owner_id == current_user.id)
+    )
     if not client_id:
-        return LatestCreatedNonGSTChallanResponse(challan_number=None)
+        return LatestCreatedNonGSTChallanResponse(
+            challan_number=int(latest_challan_number) if latest_challan_number else None,
+            order_number=None,
+        )
 
     client = db.scalar(
         select(Client).where(Client.id == client_id, Client.owner_id == current_user.id)
@@ -281,8 +261,14 @@ def latest_created_non_gst_challan(
         .limit(1)
     )
     if not latest:
-        return LatestCreatedNonGSTChallanResponse(challan_number=None)
-    return LatestCreatedNonGSTChallanResponse(challan_number=latest.challan_number)
+        return LatestCreatedNonGSTChallanResponse(
+            challan_number=int(latest_challan_number) if latest_challan_number else None,
+            order_number=None,
+        )
+    return LatestCreatedNonGSTChallanResponse(
+        challan_number=int(latest_challan_number) if latest_challan_number else None,
+        order_number=latest.challan_number,
+    )
 
 
 @router.post('/create', response_model=NonGSTChallanResponse, status_code=status.HTTP_201_CREATED)
@@ -301,36 +287,47 @@ def create_non_gst_challan(
         select(NonGSTChallan).where(
             NonGSTChallan.owner_id == current_user.id,
             NonGSTChallan.client_id == payload.client_id,
-            NonGSTChallan.challan_number == payload.challan_number,
+            NonGSTChallan.challan_number == payload.order_number,
         )
     )
     if duplicate:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail='Challan Number already exists for this client.',
+            detail='Order Number already exists for this client.',
+        )
+
+    duplicate_sequence = db.scalar(
+        select(NonGSTChallan.id).where(
+            NonGSTChallan.owner_id == current_user.id,
+            NonGSTChallan.sequence_number == payload.challan_number,
+        )
+    )
+    if duplicate_sequence:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail='Challan Number already exists. Please use a different number.',
         )
 
     challan = _build_challan_from_payload(payload, owner_id=current_user.id)
+    challan.sequence_number = payload.challan_number
     db.add(challan)
-    db.flush()
-
-    pdf_bytes = _build_delivery_challan_pdf_bytes(challan, client_name=client.name)
-    challan.original_file_path = _persist_pdf_bytes(owner_id=current_user.id, pdf_bytes=pdf_bytes)
-
     try:
         db.commit()
     except IntegrityError as exc:
         db.rollback()
-        if challan.original_file_path:
-            remove_generated_pdf(challan.original_file_path)
+        error_message = str(exc.orig).lower() if getattr(exc, 'orig', None) else str(exc).lower()
+        if 'owner_id, client_id, challan_number' in error_message or 'uq_non_gst_challans_owner_client_number' in error_message:
+            detail = 'Order Number already exists for this client.'
+        elif 'owner_id, sequence_number' in error_message or 'uq_non_gst_challans_owner_sequence_number' in error_message:
+            detail = 'Challan Number already exists. Please use a different number.'
+        else:
+            detail = 'Duplicate value detected while creating delivery challan.'
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail='Challan Number already exists for this client.',
+            detail=detail,
         ) from exc
     except Exception:
         db.rollback()
-        if challan.original_file_path:
-            remove_generated_pdf(challan.original_file_path)
         raise
 
     refreshed = db.scalar(
@@ -340,6 +337,14 @@ def create_non_gst_challan(
     )
     if not refreshed:
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail='Failed to load challan')
+
+    _create_notification_best_effort(
+        db,
+        user_id=current_user.id,
+        title='Delivery Challan Created',
+        message=f'Delivery challan {refreshed.challan_number} has been created and saved.',
+        route='/invoices/delivery-challan',
+    )
 
     return _challan_to_response(refreshed)
 
@@ -357,13 +362,94 @@ def create_non_gst_challan_pdf(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Selected client is invalid')
 
     challan = _build_challan_from_payload(payload, owner_id=current_user.id)
-    pdf_bytes = _build_delivery_challan_pdf_bytes(challan, client_name=client.name)
-    stored_path = _persist_pdf_bytes(owner_id=current_user.id, pdf_bytes=pdf_bytes)
+    challan.sequence_number = payload.challan_number
+    company_details = db.scalar(select(PersonalDetails).where(PersonalDetails.owner_id == current_user.id))
+    generated_path = _generate_delivery_challan_pdf_path(
+        challan,
+        owner_id=current_user.id,
+        client_name=client.name,
+        company_details=company_details,
+    )
+    _create_notification_best_effort(
+        db,
+        user_id=current_user.id,
+        title='Delivery Challan PDF Exported',
+        message=f'Delivery challan {challan.challan_number} PDF has been exported.',
+        route='/create/delivery-challan',
+    )
     return _as_pdf_file_response(
-        challan_number=challan.challan_number,
+        order_number=challan.challan_number,
         challan_date=challan.challan_date,
         client_name=client.name,
-        stored_path=stored_path,
+        stored_path=generated_path,
+        cleanup_after_response=True,
+    )
+
+
+@router.delete(
+    '/{challan_id}',
+    status_code=status.HTTP_204_NO_CONTENT,
+    response_class=Response,
+)
+def delete_non_gst_challan(
+    challan_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> Response:
+    challan = db.scalar(
+        select(NonGSTChallan).where(NonGSTChallan.id == challan_id, NonGSTChallan.owner_id == current_user.id)
+    )
+    if not challan:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='Challan not found')
+
+    challan_number = challan.challan_number
+    stored_path = challan.original_file_path
+
+    db.delete(challan)
+    db.commit()
+
+    if stored_path:
+        remove_generated_pdf(stored_path)
+
+    _create_notification_best_effort(
+        db,
+        user_id=current_user.id,
+        title='Delivery Challan Deleted',
+        message=f'Delivery challan {challan_number} has been deleted.',
+        route='/invoices/delivery-challan',
+    )
+
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.get('/{challan_id}/preview')
+def preview_non_gst_challan_pdf(
+    challan_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> FileResponse:
+    challan = db.scalar(
+        select(NonGSTChallan)
+        .options(selectinload(NonGSTChallan.client), selectinload(NonGSTChallan.items))
+        .where(NonGSTChallan.id == challan_id, NonGSTChallan.owner_id == current_user.id)
+    )
+    if not challan:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='Challan not found')
+
+    client_name = challan.client.name if challan.client else 'N/A'
+    company_details = db.scalar(select(PersonalDetails).where(PersonalDetails.owner_id == current_user.id))
+    generated_path = _generate_delivery_challan_pdf_path(
+        challan,
+        owner_id=current_user.id,
+        client_name=client_name,
+        company_details=company_details,
+    )
+
+    return _as_pdf_file_response(
+        order_number=challan.challan_number,
+        challan_date=challan.challan_date,
+        client_name=challan.client.name if challan.client else None,
+        stored_path=generated_path,
         cleanup_after_response=True,
     )
 
@@ -382,34 +468,27 @@ def get_non_gst_challan_pdf(
     if not challan:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='Challan not found')
 
-    generated_path: str | None = None
-    if challan.original_file_path:
-        try:
-            existing_path = resolve_generated_pdf_path(challan.original_file_path)
-        except PDFInvoiceGenerationError:
-            existing_path = None
-        if existing_path and existing_path.exists():
-            generated_path = challan.original_file_path
+    client_name = challan.client.name if challan.client else 'N/A'
+    company_details = db.scalar(select(PersonalDetails).where(PersonalDetails.owner_id == current_user.id))
+    generated_path = _generate_delivery_challan_pdf_path(
+        challan,
+        owner_id=current_user.id,
+        client_name=client_name,
+        company_details=company_details,
+    )
 
-    if not generated_path:
-        client_name = challan.client.name if challan.client else 'N/A'
-        pdf_bytes = _build_delivery_challan_pdf_bytes(challan, client_name=client_name)
-        generated_path = _persist_pdf_bytes(owner_id=current_user.id, pdf_bytes=pdf_bytes)
-        challan.original_file_path = generated_path
-        try:
-            db.commit()
-        except Exception:
-            db.rollback()
-            remove_generated_pdf(generated_path)
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail='Failed to persist generated challan PDF path.',
-            )
+    _create_notification_best_effort(
+        db,
+        user_id=current_user.id,
+        title='Delivery Challan PDF Downloaded',
+        message=f'Delivery challan {challan.challan_number} PDF has been downloaded.',
+        route='/invoices/delivery-challan',
+    )
 
     return _as_pdf_file_response(
-        challan_number=challan.challan_number,
+        order_number=challan.challan_number,
         challan_date=challan.challan_date,
         client_name=challan.client.name if challan.client else None,
         stored_path=generated_path,
-        cleanup_after_response=False,
+        cleanup_after_response=True,
     )
