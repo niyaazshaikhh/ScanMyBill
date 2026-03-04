@@ -4,6 +4,7 @@ from app.api.v1.endpoints import (
     auth,
     bills,
     clients,
+    debug,
     dashboard,
     hsn_sac_master_list,
     invoices,
@@ -16,6 +17,7 @@ from app.api.v1.endpoints import (
 
 api_router = APIRouter()
 api_router.include_router(auth.router, tags=['auth'])
+api_router.include_router(debug.router, prefix='/debug', tags=['debug'])
 api_router.include_router(dashboard.router, prefix='/dashboard', tags=['dashboard'])
 api_router.include_router(invoices.router, prefix='/invoices', tags=['invoices'])
 api_router.include_router(delivery_challans.router, prefix='/delivery-challans', tags=['delivery-challans'])

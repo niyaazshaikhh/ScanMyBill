@@ -68,6 +68,14 @@ class Settings(BaseSettings):
     aws_region: str = 'ap-south-1'
     aws_s3_bucket: str | None = None
 
+    openai_api_key: str | None = None
+    openai_base_url: str | None = None
+    openai_model: str = 'gpt-4o-mini'
+    azure_openai_api_key: str | None = None
+    azure_openai_endpoint: str | None = None
+    azure_openai_api_version: str = '2024-12-01-preview'
+    azure_openai_deployment: str | None = None
+
     google_client_id: str | None = None
     google_client_ids: list[str] | str | None = None
     next_public_google_client_id: str | None = None

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ChevronRight, X } from "lucide-react";
+import { ChevronRight, Eye, EyeOff, X } from "lucide-react";
 
 export const dynamic = "force-dynamic";
 
@@ -14,6 +14,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useAuthGuard } from "@/hooks/useAuthGuard";
 import { apiRequest } from "@/lib/api";
 import { updateAuthUser } from "@/lib/auth";
+import { getDebugModeEnabled, setDebugModeEnabled } from "@/lib/debugging";
 
 type SubscriptionPlan = "FREE" | "STANDARD" | "PRO" | "BUSINESS";
 type SubscriptionStatus = "ACTIVE" | "CANCELLED" | "EXPIRED";
@@ -103,6 +104,7 @@ export default function SettingsPage() {
   const [actionError, setActionError] = useState<string | null>(null);
   const [cancelLoading, setCancelLoading] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
+  const [debugModeEnabled, setDebugModeEnabledState] = useState(false);
 
   const loadUser = useCallback(async () => {
     setLoadingUser(true);
@@ -144,6 +146,10 @@ export default function SettingsPage() {
     return () => {
       active = false;
     };
+  }, []);
+
+  useEffect(() => {
+    setDebugModeEnabledState(getDebugModeEnabled());
   }, []);
 
   useEffect(() => {
@@ -210,6 +216,12 @@ export default function SettingsPage() {
     } finally {
       setCancelLoading(false);
     }
+  };
+
+  const handleToggleDebugMode = () => {
+    const next = !debugModeEnabled;
+    setDebugModeEnabledState(next);
+    setDebugModeEnabled(next);
   };
 
   return (
@@ -336,6 +348,30 @@ export default function SettingsPage() {
             </div>
             <ChevronRight className="h-4 w-4 text-muted-foreground" />
           </Link>
+        </CardContent>
+      </Card>
+
+      <Card className="bg-white/85">
+        <CardHeader>
+          <CardTitle>Developer Tools</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <p className="text-sm text-muted-foreground">
+            Toggle Debug Console visibility on the dashboard upload flow.
+          </p>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={handleToggleDebugMode}
+            className="w-full sm:w-auto"
+          >
+            {debugModeEnabled ? (
+              <Eye className="h-4 w-4" />
+            ) : (
+              <EyeOff className="h-4 w-4" />
+            )}
+            Debugging mode {debugModeEnabled ? "On" : "Off"}
+          </Button>
         </CardContent>
       </Card>
 

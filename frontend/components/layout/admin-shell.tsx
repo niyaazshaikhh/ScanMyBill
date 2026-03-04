@@ -595,10 +595,10 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
   };
 
   return (
-    <div className='flex min-h-screen'>
+    <div className='flex h-screen overflow-hidden'>
       <aside
         className={cn(
-          'fixed inset-y-0 left-0 z-40 flex w-64 min-h-0 flex-col border-r border-border bg-white/95 p-4 transition-transform lg:static lg:translate-x-0',
+          'fixed inset-y-0 left-0 z-40 flex w-64 min-h-0 flex-col border-r border-border bg-white/95 p-4 transition-transform lg:sticky lg:top-0 lg:h-screen lg:translate-x-0',
           open ? 'translate-x-0' : '-translate-x-full',
           collapsed && 'lg:w-20'
         )}
@@ -683,7 +683,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
         />
       ) : null}
 
-      <div className='flex min-h-screen flex-1 flex-col'>
+      <div className='flex h-screen min-h-0 flex-1 flex-col overflow-y-auto'>
         <header className='sticky top-0 z-20 border-b border-border bg-background/95 backdrop-blur'>
           <div className='flex items-center gap-3 px-4 py-3 sm:px-6'>
             <Button variant='ghost' size='icon' onClick={() => setOpen(true)} className='lg:hidden'>

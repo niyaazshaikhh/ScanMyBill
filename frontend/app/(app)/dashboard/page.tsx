@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Loader2, Plus } from "lucide-react";
 
 export const dynamic = "force-dynamic";
@@ -22,6 +22,16 @@ import { Select } from "@/components/ui/select";
 import { useAuthGuard } from "@/hooks/useAuthGuard";
 import { apiRequest } from "@/lib/api";
 import { notifyApp } from "@/lib/app-notification";
+import {
+  appendDashboardDebugRecord,
+  clearDashboardDebugResponses,
+  DASHBOARD_DEBUG_RESPONSES_STORAGE_KEY,
+  DEBUG_MODE_STORAGE_KEY,
+  DEBUG_MODE_CHANGED_EVENT,
+  getDebugModeEnabled,
+  readDashboardDebugResponses,
+  type DashboardDebugConsoleRecord,
+} from "@/lib/debugging";
 import { formatAccountingAmount } from "@/lib/number-format";
 
 type DashboardData = {
@@ -42,6 +52,8 @@ type InvoiceYearListResponse = {
   invoices: InvoiceYearItem[];
   count: number;
 };
+
+type BillUploadApiResponse = Record<string, unknown>;
 
 const periodOptions = ["monthly", "quarterly", "semi-annually", "annually"];
 
@@ -78,8 +90,25 @@ export default function DashboardPage() {
   const [uploading, setUploading] = useState(false);
   const [file, setFile] = useState<File | null>(null);
   const [uploadMessage, setUploadMessage] = useState<string | null>(null);
+  const [debugModeEnabled, setDebugModeEnabled] = useState(false);
+  const [debugConsoleEntries, setDebugConsoleEntries] = useState<DashboardDebugConsoleRecord[]>([]);
   const mainUploadInputRef = useRef<HTMLInputElement | null>(null);
   const quickUploadInputRef = useRef<HTMLInputElement | null>(null);
+
+  const appendDebugEntry = useCallback(
+    (entry: {
+      level?: "info" | "success" | "warning" | "error";
+      source?: string;
+      title: string;
+      message: string;
+      file_name?: string;
+      details?: unknown;
+    }) => {
+      const next = appendDashboardDebugRecord(entry);
+      setDebugConsoleEntries(next);
+    },
+    [],
+  );
 
   const loadYearOptions = async () => {
     try {
@@ -98,7 +127,7 @@ export default function DashboardPage() {
       if (!options.some((option) => option.value === year)) {
         setYear(options[0].value);
       }
-    } catch {
+    } catch (err) {
       // Keep fallback year option if invoices query fails.
       setYearOptions([
         {
@@ -109,6 +138,13 @@ export default function DashboardPage() {
       if (!year) {
         setYear(String(currentFinancialYearStart));
       }
+      appendDebugEntry({
+        level: "warning",
+        source: "dashboard",
+        title: "Invoice year options fallback applied",
+        message: err instanceof Error ? err.message : "Failed to fetch invoice list for year filter",
+        details: err instanceof Error ? { name: err.name, stack: err.stack } : { error: String(err) },
+      });
     }
   };
 
@@ -121,7 +157,15 @@ export default function DashboardPage() {
       );
       setSummary(data);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load dashboard");
+      const message = err instanceof Error ? err.message : "Failed to load dashboard";
+      setError(message);
+      appendDebugEntry({
+        level: "error",
+        source: "dashboard",
+        title: "Dashboard summary load failed",
+        message,
+        details: err instanceof Error ? { name: err.name, stack: err.stack } : { error: String(err) },
+      });
     } finally {
       setLoading(false);
     }
@@ -138,6 +182,78 @@ export default function DashboardPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [period, year]);
 
+  useEffect(() => {
+    setDebugModeEnabled(getDebugModeEnabled());
+    setDebugConsoleEntries(readDashboardDebugResponses());
+
+    const onDebugModeChange = (event: Event) => {
+      const customEvent = event as CustomEvent<boolean>;
+      if (typeof customEvent.detail === "boolean") {
+        setDebugModeEnabled(customEvent.detail);
+        return;
+      }
+      setDebugModeEnabled(getDebugModeEnabled());
+    };
+
+    const onStorage = (event: StorageEvent) => {
+      if (!event.key) return;
+      if (event.key === DEBUG_MODE_STORAGE_KEY) {
+        setDebugModeEnabled(getDebugModeEnabled());
+      }
+      if (event.key === DASHBOARD_DEBUG_RESPONSES_STORAGE_KEY) {
+        setDebugConsoleEntries(readDashboardDebugResponses());
+      }
+    };
+
+    window.addEventListener(DEBUG_MODE_CHANGED_EVENT, onDebugModeChange as EventListener);
+    window.addEventListener("storage", onStorage);
+    return () => {
+      window.removeEventListener(DEBUG_MODE_CHANGED_EVENT, onDebugModeChange as EventListener);
+      window.removeEventListener("storage", onStorage);
+    };
+  }, []);
+
+  useEffect(() => {
+    const onWindowError = (event: ErrorEvent) => {
+      appendDebugEntry({
+        level: "error",
+        source: "runtime",
+        title: "Unhandled runtime error",
+        message: event.message || "Unknown runtime error",
+        details: {
+          filename: event.filename,
+          lineno: event.lineno,
+          colno: event.colno,
+          stack: event.error instanceof Error ? event.error.stack : null,
+        },
+      });
+    };
+
+    const onUnhandledRejection = (event: PromiseRejectionEvent) => {
+      const reason = event.reason;
+      const message = reason instanceof Error ? reason.message : String(reason);
+      appendDebugEntry({
+        level: "error",
+        source: "runtime",
+        title: "Unhandled promise rejection",
+        message,
+        details: reason instanceof Error ? { name: reason.name, stack: reason.stack } : { reason },
+      });
+    };
+
+    window.addEventListener("error", onWindowError);
+    window.addEventListener("unhandledrejection", onUnhandledRejection);
+    return () => {
+      window.removeEventListener("error", onWindowError);
+      window.removeEventListener("unhandledrejection", onUnhandledRejection);
+    };
+  }, [appendDebugEntry]);
+
+  const onClearDebugConsole = () => {
+    clearDashboardDebugResponses();
+    setDebugConsoleEntries([]);
+  };
+
   const cards = useMemo(
     () => [
       { title: "Total Sales", value: summary?.total_sales ?? 0 },
@@ -152,16 +268,35 @@ export default function DashboardPage() {
   const uploadFile = async (selectedFile: File) => {
     setUploading(true);
     setUploadMessage(null);
+    appendDebugEntry({
+      level: "info",
+      source: "upload",
+      title: "Bill upload started",
+      message: `Uploading ${selectedFile.name}`,
+      file_name: selectedFile.name,
+      details: {
+        size_bytes: selectedFile.size,
+        mime_type: selectedFile.type,
+      },
+    });
 
     try {
       const formData = new FormData();
       formData.append("file", selectedFile);
       formData.append("invoice_type", "sales");
 
-      await apiRequest("/bills/upload", {
+      const response = await apiRequest<BillUploadApiResponse>("/bills/upload", {
         method: "POST",
         body: formData,
         isFormData: true,
+      });
+      appendDebugEntry({
+        level: "success",
+        source: "upload",
+        title: "Bill upload succeeded",
+        message: "Upload pipeline completed successfully",
+        file_name: selectedFile.name,
+        details: response,
       });
       notifyApp({
         title: "Invoice uploaded successfully",
@@ -180,6 +315,14 @@ export default function DashboardPage() {
       await loadSummary();
     } catch (err) {
       const message = err instanceof Error ? err.message : "Upload failed";
+      appendDebugEntry({
+        level: "error",
+        source: "upload",
+        title: "Bill upload failed",
+        message,
+        file_name: selectedFile.name,
+        details: err instanceof Error ? { name: err.name, stack: err.stack } : { error: String(err) },
+      });
       setUploadMessage(message);
       notifyApp({
         title: "Invoice upload failed",
@@ -313,6 +456,70 @@ export default function DashboardPage() {
           </CardContent>
         </Card>
       </div>
+
+      {debugModeEnabled ? (
+        <Card className="bg-white/85">
+          <CardHeader>
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <CardTitle>Debug Console</CardTitle>
+                <CardDescription>
+                  API payloads, upload traces, and runtime errors captured during dashboard activity.
+                </CardDescription>
+              </div>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={onClearDebugConsole}
+                disabled={debugConsoleEntries.length === 0}
+              >
+                Clear all
+              </Button>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {debugConsoleEntries.length === 0 ? (
+              <p className="text-sm text-muted-foreground">
+                No debug logs captured yet.
+              </p>
+            ) : (
+              debugConsoleEntries.map((entry) => (
+                <div key={entry.id} className="rounded-md border border-border bg-background/70 p-3">
+                  <div className="mb-2 flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Badge
+                        variant="outline"
+                        className={
+                          entry.level === "error"
+                            ? "border-red-200 bg-red-50 text-red-700"
+                            : entry.level === "warning"
+                              ? "border-amber-200 bg-amber-50 text-amber-700"
+                              : entry.level === "success"
+                                ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                                : "border-slate-200 bg-slate-50 text-slate-700"
+                        }
+                      >
+                        {entry.level.toUpperCase()}
+                      </Badge>
+                      <span>{entry.source}</span>
+                      {entry.file_name ? <span>File: {entry.file_name}</span> : null}
+                    </div>
+                    <span>{new Date(entry.created_at).toLocaleString("en-IN")}</span>
+                  </div>
+                  <p className="text-sm font-medium">{entry.title}</p>
+                  <p className="mt-1 text-xs text-muted-foreground">{entry.message}</p>
+                  {entry.details !== undefined ? (
+                    <pre className="mt-3 max-h-80 overflow-auto rounded bg-muted p-3 text-xs leading-relaxed">
+                      {JSON.stringify(entry.details, null, 2)}
+                    </pre>
+                  ) : null}
+                </div>
+              ))
+            )}
+          </CardContent>
+        </Card>
+      ) : null}
 
       <input
         ref={quickUploadInputRef}
