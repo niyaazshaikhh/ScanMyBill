@@ -7,7 +7,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 from app.models.invoice import InvoiceSource, InvoiceType
 from app.schemas.validation_rules import STATE_CODE_BY_NAME, STATE_CODE_PATTERN, STATE_NAME_BY_LOWERCASE
 
-INVOICE_NUMBER_PATTERN = re.compile(r'^\d{4}-\d{2}/\d{3}$')
+INVOICE_NUMBER_PATTERN = re.compile(r'^[A-Za-z0-9./#_-]{1,20}$')
 DESCRIPTION_PATTERN = re.compile(r'^[A-Za-z0-9 ]+$')
 HSN_SAC_PATTERN = re.compile(r'^\d{4,8}$')
 MAX_RATE = 10_000.0
@@ -85,7 +85,7 @@ class InvoiceCreate(BaseModel):
     model_config = ConfigDict(extra='forbid', str_strip_whitespace=True)
 
     client_id: str
-    invoice_number: str = Field(min_length=11, max_length=11)
+    invoice_number: str = Field(min_length=1, max_length=20)
     invoice_date: date
     place_of_supply: str = Field(min_length=1, max_length=64)
     place_of_supply_code: str = Field(min_length=2, max_length=2)
@@ -103,15 +103,9 @@ class InvoiceCreate(BaseModel):
     @field_validator('invoice_number')
     @classmethod
     def validate_invoice_number(cls, value: str) -> str:
-        cleaned = value.strip()
+        cleaned = value.strip().upper()
         if not INVOICE_NUMBER_PATTERN.fullmatch(cleaned):
-            raise ValueError('Invoice Number should be in format YYYY-YY/NNN.')
-
-        start_year = int(cleaned[:4])
-        next_year_short = int(cleaned[5:7])
-        expected_next_year_short = (start_year + 1) % 100
-        if next_year_short != expected_next_year_short:
-            raise ValueError('Invoice Number year segment is invalid. Expected YYYY-(YYYY+1)/NNN format.')
+            raise ValueError('Invoice Number should be alphanumeric, can include / - _ . #, and be up to 20 characters.')
         return cleaned
 
     @field_validator('place_of_supply')

@@ -296,7 +296,7 @@ export default function CreateInvoicePage() {
     setInvoiceNumber((previous) => {
       if (!previous) return buildDefaultInvoiceNumber(nextDate);
       const prefix = formatFinancialYearInvoicePrefix(nextDate);
-      if (validateInvoiceNumber(previous) === null) {
+      if (/^\d{4}-\d{2}\/\d{3}$/.test(previous)) {
         return `${prefix}/${previous.slice(8)}`;
       }
       return previous;
@@ -492,8 +492,8 @@ export default function CreateInvoicePage() {
                     sanitizeInvoiceNumberInput(event.target.value),
                   );
                 }}
-                placeholder="YYYY-YY/NNN"
-                maxLength={11}
+                placeholder="Ex: 2024-25/001 or INV#001"
+                maxLength={20}
                 required
               />
             </div>

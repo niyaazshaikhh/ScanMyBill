@@ -1,4 +1,5 @@
-const INVOICE_NUMBER_PATTERN = /^\d{4}-\d{2}\/\d{3}$/;
+const INVOICE_NUMBER_PATTERN = /^[A-Za-z0-9./#_-]{1,20}$/;
+const AUTO_INVOICE_PATTERN = /^\d{4}-\d{2}\/\d{3}$/;
 const DESCRIPTION_PATTERN = /^[A-Za-z0-9 ]+$/;
 const HSN_SAC_PATTERN = /^\d{4,8}$/;
 const NUMBER_WITH_TWO_DECIMALS_PATTERN = /^\d+(\.\d{1,2})?$/;
@@ -24,7 +25,7 @@ export function buildIncrementedInvoiceNumber(
 ): string {
   const prefix = formatFinancialYearInvoicePrefix(dateValue);
   const candidate = (latestInvoiceNumber || '').trim();
-  if (!INVOICE_NUMBER_PATTERN.test(candidate)) {
+  if (!AUTO_INVOICE_PATTERN.test(candidate)) {
     return `${prefix}/001`;
   }
 
@@ -38,21 +39,14 @@ export function buildIncrementedInvoiceNumber(
 }
 
 export function sanitizeInvoiceNumberInput(value: string): string {
-  return value.toUpperCase().replace(/[^0-9/-]/g, '').slice(0, 11);
+  return value.toUpperCase().replace(/[^A-Z0-9./#_-]/g, '').slice(0, 20);
 }
 
 export function validateInvoiceNumber(value: string): string | null {
-  const trimmed = value.trim();
+  const trimmed = value.trim().toUpperCase();
   if (!trimmed) return 'Invoice Number is required.';
   if (!INVOICE_NUMBER_PATTERN.test(trimmed)) {
-    return 'Invoice Number should be in format YYYY-YY/NNN.';
-  }
-
-  const startYear = Number(trimmed.slice(0, 4));
-  const nextYearShort = Number(trimmed.slice(5, 7));
-  const expectedNextYearShort = (startYear + 1) % 100;
-  if (nextYearShort !== expectedNextYearShort) {
-    return 'Invoice Number year segment is invalid. Expected YYYY-(YYYY+1)/NNN format.';
+    return 'Invoice Number should be alphanumeric, can include / - _ . #, and be up to 20 characters.';
   }
   return null;
 }

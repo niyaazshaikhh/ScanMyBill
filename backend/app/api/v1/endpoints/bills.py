@@ -90,10 +90,10 @@ def _coerce_amount(value: Any) -> float:
 
 def _safe_invoice_number(candidate: Any) -> str:
     if isinstance(candidate, str):
-        cleaned = re.sub(r'[^A-Za-z0-9/-]', '', candidate.strip())
+        cleaned = re.sub(r'[^A-Za-z0-9./#_-]', '', candidate.strip().upper())
         if cleaned:
-            return cleaned[:60]
-    return f"OCR-{datetime.now().strftime('%Y%m%d-%H%M%S-%f')}"
+            return cleaned[:20]
+    return f"OCR-{datetime.now().strftime('%y%m%d%H%M%S%f')}"[:20]
 
 
 def _safe_order_number(candidate: Any, *, fallback_sequence: int) -> str:

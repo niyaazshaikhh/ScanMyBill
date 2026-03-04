@@ -168,18 +168,6 @@ export default function ClientAnalyticsPage() {
       .sort((a, b) => b.sales_revenue - a.sales_revenue);
   }, [clients, folderInvoices]);
 
-  const summary = useMemo(() => {
-    const activeClients = analyticsRows.length;
-    const totalSalesBills = analyticsRows.reduce((sum, row) => sum + row.sales_bills, 0);
-    const totalSalesRevenue = analyticsRows.reduce((sum, row) => sum + row.sales_revenue, 0);
-
-    return {
-      activeClients,
-      totalSalesBills,
-      totalSalesRevenue
-    };
-  }, [analyticsRows]);
-
   return (
     <div className='space-y-5'>
       <div className='flex flex-wrap items-end justify-between gap-3'>
@@ -243,27 +231,6 @@ export default function ClientAnalyticsPage() {
           })}
         </CardContent>
       </Card>
-
-      <div className='grid gap-4 sm:grid-cols-3'>
-        <Card className='bg-white/85'>
-          <CardContent className='p-5'>
-            <p className='text-xs text-muted-foreground'>Clients With Sales</p>
-            <p className='text-2xl font-semibold'>{formatAccountingInteger(summary.activeClients)}</p>
-          </CardContent>
-        </Card>
-        <Card className='bg-white/85'>
-          <CardContent className='p-5'>
-            <p className='text-xs text-muted-foreground'>Total Sales Bills</p>
-            <p className='text-2xl font-semibold'>{formatAccountingInteger(summary.totalSalesBills)}</p>
-          </CardContent>
-        </Card>
-        <Card className='bg-white/85'>
-          <CardContent className='p-5'>
-            <p className='text-xs text-muted-foreground'>Total Sales Revenue</p>
-            <p className='text-2xl font-semibold'>Rs {formatAccountingAmount(summary.totalSalesRevenue)}</p>
-          </CardContent>
-        </Card>
-      </div>
 
       <Card className='bg-white/85'>
         <CardHeader>
