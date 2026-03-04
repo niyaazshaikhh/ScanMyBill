@@ -142,6 +142,12 @@ export default function SignInPage() {
             Create an account
           </Link>
         </p>
+        <p className='text-center text-xs text-muted-foreground'>
+          Admin access?{' '}
+          <Link href='/admin/signin' className='font-medium text-primary'>
+            Admin login
+          </Link>
+        </p>
       </CardContent>
     </Card>
   );

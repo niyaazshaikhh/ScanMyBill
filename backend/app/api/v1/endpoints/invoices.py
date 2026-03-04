@@ -9,7 +9,8 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from fastapi.responses import FileResponse, StreamingResponse
-from pypdf import PdfWriter
+from PIL import Image, ImageSequence, UnidentifiedImageError
+from pypdf import PdfReader, PdfWriter
 from starlette.background import BackgroundTask
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
@@ -326,6 +327,70 @@ def _as_uploaded_invoice_file_response(
     )
 
 
+def _image_bytes_to_pdf_bytes(image_bytes: bytes) -> bytes:
+    try:
+        with Image.open(BytesIO(image_bytes)) as image:
+            frames: list[Image.Image]
+            if getattr(image, 'is_animated', False):
+                frames = [frame.convert('RGB') for frame in ImageSequence.Iterator(image)]
+            else:
+                frames = [image.convert('RGB')]
+    except (UnidentifiedImageError, OSError) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail='Uploaded invoice file is not a supported image or PDF for folder export.',
+        ) from exc
+
+    if not frames:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail='Uploaded invoice image has no renderable pages for folder export.',
+        )
+
+    output = BytesIO()
+    first_frame, *remaining_frames = frames
+    first_frame.save(output, format='PDF', save_all=bool(remaining_frames), append_images=remaining_frames)
+    return output.getvalue()
+
+
+def _uploaded_invoice_pdf_bytes(invoice: Invoice) -> bytes:
+    stored_path = invoice.original_file_path
+    if not stored_path:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='Uploaded invoice file not found')
+
+    storage = get_storage_backend()
+    try:
+        file_bytes = storage.read_bytes(stored_path)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='Uploaded invoice file not found') from exc
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail='Failed to read uploaded invoice file',
+        ) from exc
+
+    media_type = mimetypes.guess_type(stored_path)[0] or ''
+    suffix = Path(stored_path).suffix.lower()
+    if media_type == 'application/pdf' or suffix == '.pdf':
+        return file_bytes
+    return _image_bytes_to_pdf_bytes(file_bytes)
+
+
+def _append_pdf_bytes(writer: PdfWriter, pdf_bytes: bytes, *, invoice_number: str) -> None:
+    try:
+        reader = PdfReader(BytesIO(pdf_bytes))
+        if len(reader.pages) == 0:
+            raise ValueError('No pages found in source PDF.')
+        writer.append(reader)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f'Failed to append invoice {invoice_number} to folder export.',
+        ) from exc
+
+
 @router.get('', response_model=InvoiceListResponse)
 def list_invoices(
     period: str = Query('monthly'),
@@ -540,6 +605,11 @@ def export_folder(
 
     try:
         for invoice in invoices:
+            if _is_uploaded_invoice(invoice):
+                uploaded_pdf_bytes = _uploaded_invoice_pdf_bytes(invoice)
+                _append_pdf_bytes(writer, uploaded_pdf_bytes, invoice_number=invoice.invoice_number)
+                continue
+
             absolute_pdf_path, cleanup_path = _resolve_invoice_pdf_for_response(
                 invoice,
                 db=db,
@@ -549,9 +619,8 @@ def export_folder(
             if cleanup_path:
                 temporary_generated_paths.append(cleanup_path)
 
-            # Keep exactly one page per invoice record in folder export.
             try:
-                writer.append(str(absolute_pdf_path), pages=(0, 1))
+                writer.append(str(absolute_pdf_path))
             except Exception as exc:
                 raise HTTPException(
                     status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -568,6 +637,8 @@ def export_folder(
             ) from exc
         pdf_bytes = output.getvalue()
     finally:
+        if hasattr(writer, 'close'):
+            writer.close()
         for path in temporary_generated_paths:
             remove_generated_pdf(path)
 

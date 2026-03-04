@@ -35,6 +35,9 @@ type InvoiceListResponse = {
   invoices: Invoice[];
   count: number;
 };
+type PersonalDetailsPeriodResponse = {
+  gst_filing_period: string | null;
+};
 
 const ALL_FINANCIAL_YEARS = 'all';
 const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -112,6 +115,24 @@ export default function InvoicesPage() {
     loadInvoices();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [invoiceType]);
+
+  useEffect(() => {
+    let active = true;
+    apiRequest<PersonalDetailsPeriodResponse>('/users/personal-details')
+      .then((details) => {
+        if (!active) return;
+        const preferred = (details.gst_filing_period || '').trim().toLowerCase();
+        if (preferred !== 'monthly' && preferred !== 'quarterly') return;
+        setPeriod((current) => (current === 'quarterly' ? preferred : current));
+      })
+      .catch(() => {
+        // Keep existing default period if personal details are unavailable.
+      });
+
+    return () => {
+      active = false;
+    };
+  }, []);
 
   useEffect(() => {
     if (!yearOptions.some((item) => item.value === year)) {

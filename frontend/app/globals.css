@@ -45,6 +45,37 @@ body {
   animation: fadeUp 0.65s ease both;
 }
 
+.invoice-float {
+  transform: rotate(var(--bill-rotate));
+  animation: zeroGravityFloat var(--bill-float-duration) cubic-bezier(0.36, 0, 0.2, 1) infinite;
+  animation-delay: var(--bill-float-delay);
+  will-change: transform;
+}
+
+.invoice-float-dragging {
+  animation-play-state: paused;
+  transform: rotate(var(--bill-rotate)) scale(1.03);
+  box-shadow: 0 22px 42px rgba(87, 83, 78, 0.22);
+}
+
+@keyframes zeroGravityFloat {
+  0% {
+    transform: translate3d(0, 0, 0) rotate(var(--bill-rotate));
+  }
+  22% {
+    transform: translate3d(8px, -10px, 0) rotate(calc(var(--bill-rotate) + 2deg));
+  }
+  48% {
+    transform: translate3d(-5px, -17px, 0) rotate(calc(var(--bill-rotate) - 1.4deg));
+  }
+  76% {
+    transform: translate3d(-9px, -8px, 0) rotate(calc(var(--bill-rotate) + 1.3deg));
+  }
+  100% {
+    transform: translate3d(0, 0, 0) rotate(var(--bill-rotate));
+  }
+}
+
 @keyframes fadeUp {
   from {
     opacity: 0;

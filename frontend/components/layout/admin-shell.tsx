@@ -2,13 +2,31 @@
 
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { BarChart3, Bell, CircleHelp, FileText, LayoutDashboard, Lock, Menu, PlusCircle, Settings, UserCircle2, Users, X } from 'lucide-react';
+import {
+  BarChart3,
+  Bell,
+  BellOff,
+  CircleHelp,
+  FileText,
+  LayoutDashboard,
+  Lock,
+  Mail,
+  Menu,
+  PlusCircle,
+  Settings,
+  ShieldCheck,
+  UserCircle2,
+  Users,
+  X,
+} from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { SubscriptionBadge } from '@/components/SubscriptionBadge';
 import { Button } from '@/components/ui/button';
+import { PopupWindow } from '@/components/ui/popup-window';
 import { apiRequest } from '@/lib/api';
 import { APP_NOTIFICATION_EVENT, type AppNotificationPayload } from '@/lib/app-notification';
+import { APP_POPUP_EVENT, type AppPopupPayload, openAppPopup } from '@/lib/app-popup';
 import { Input } from '@/components/ui/input';
 import { clearAuthSession, getAuthToken, getAuthUser, updateAuthUser } from '@/lib/auth';
 import { useAuthGuard } from '@/hooks/useAuthGuard';
@@ -21,13 +39,18 @@ import {
 } from '@/lib/subscription-access';
 import { cn } from '@/lib/utils';
 
-const nav = [
+const baseNav = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/invoices', label: 'Invoices', icon: FileText },
   { href: '/client-analytics', label: 'Client Analytics', icon: BarChart3 },
   { href: '/clients', label: 'Clients', icon: Users },
   { href: '/create', label: 'Create', icon: PlusCircle },
   { href: '/settings', label: 'Settings', icon: Settings }
+];
+
+const adminNav = [
+  { href: '/admin', label: 'Admin', icon: ShieldCheck },
+  { href: '/newsletter', label: 'Newsletter', icon: Mail },
 ];
 
 type SearchInvoice = {
@@ -81,6 +104,14 @@ type ToastItem = {
   title: string;
   message: string;
   tone: 'info' | 'success' | 'error';
+};
+
+type GlobalPopupState = {
+  open: boolean;
+  title: string;
+  message: string;
+  tone: 'info' | 'success' | 'error';
+  confirmLabel: string;
 };
 
 function formatNotificationTimestamp(value: string): string {
@@ -149,8 +180,10 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
   const [collapsed, setCollapsed] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
   const [displayName, setDisplayName] = useState('User');
+  const [userRole, setUserRole] = useState<'admin' | 'user'>('user');
   const [subscriptionPlan, setSubscriptionPlan] = useState<SubscriptionPlan>('FREE');
   const [subscriptionStatus, setSubscriptionStatus] = useState<SubscriptionStatus>('EXPIRED');
+  const [notificationsEnabled, setNotificationsEnabled] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchLoading, setSearchLoading] = useState(false);
@@ -165,6 +198,13 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
   const [toasts, setToasts] = useState<ToastItem[]>([]);
   const [sessionTimeoutOpen, setSessionTimeoutOpen] = useState(false);
   const [sessionTimeoutMessage, setSessionTimeoutMessage] = useState('Session timed out. Please log in again.');
+  const [globalPopup, setGlobalPopup] = useState<GlobalPopupState>({
+    open: false,
+    title: 'Message',
+    message: '',
+    tone: 'info',
+    confirmLabel: 'OK',
+  });
   const searchContainerRef = useRef<HTMLDivElement | null>(null);
   const notificationsContainerRef = useRef<HTMLDivElement | null>(null);
   const seenNotificationIdsRef = useRef<Set<string>>(new Set());
@@ -180,12 +220,16 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
     const syncUser = async () => {
       const user = getAuthUser();
       setDisplayName(user?.full_name || user?.email || 'User');
+      setUserRole(user?.role === 'admin' ? 'admin' : 'user');
       setSubscriptionPlan(user?.subscription_plan || 'FREE');
       setSubscriptionStatus(user?.subscription_status || 'EXPIRED');
+      setNotificationsEnabled(user?.notifications_enabled ?? true);
 
       if (!getAuthToken()) {
+        setUserRole('user');
         setSubscriptionPlan('FREE');
         setSubscriptionStatus('EXPIRED');
+        setNotificationsEnabled(true);
         return;
       }
 
@@ -194,6 +238,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
           id: string;
           full_name: string;
           email: string;
+          notifications_enabled: boolean;
           subscription_plan: SubscriptionPlan;
           subscription_status: 'ACTIVE' | 'CANCELLED' | 'EXPIRED';
         }>('/users/me');
@@ -202,9 +247,11 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
         setDisplayName(profile.full_name || profile.email || 'User');
         setSubscriptionPlan(profile.subscription_plan || 'FREE');
         setSubscriptionStatus(profile.subscription_status || 'EXPIRED');
+        setNotificationsEnabled(profile.notifications_enabled);
         updateAuthUser({
           full_name: profile.full_name,
           email: profile.email,
+          notifications_enabled: profile.notifications_enabled,
           subscription_plan: profile.subscription_plan,
           subscription_status: profile.subscription_status,
         });
@@ -230,9 +277,14 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
     [subscriptionPlan, subscriptionStatus]
   );
 
+  const nav = useMemo(() => {
+    if (userRole === 'admin') return adminNav;
+    return baseNav;
+  }, [userRole]);
+
   const title = useMemo(() => {
-    return nav.find((item) => pathname.startsWith(item.href))?.label || 'Dashboard';
-  }, [pathname]);
+    return nav.find((item) => pathname.startsWith(item.href))?.label || (userRole === 'admin' ? 'Admin' : 'Dashboard');
+  }, [nav, pathname, userRole]);
 
   const loadSearchData = useCallback(async () => {
     if (searchLoading || searchDataLoaded) return;
@@ -349,6 +401,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
   }, [dismissToast]);
 
   const pushToasts = useCallback((freshNotifications: NotificationItem[]) => {
+    if (!notificationsEnabled) return;
     if (!freshNotifications.length) return;
 
     freshNotifications.forEach((notification) => {
@@ -360,10 +413,11 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
         tone: notification.category === 'alert' ? 'error' : 'info',
       });
     });
-  }, [queueToast]);
+  }, [notificationsEnabled, queueToast]);
 
   useEffect(() => {
     const onAppNotification = (event: Event) => {
+      if (!notificationsEnabled) return;
       const customEvent = event as CustomEvent<AppNotificationPayload>;
       const detail = customEvent.detail;
       if (!detail?.title) return;
@@ -384,10 +438,46 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
     return () => {
       window.removeEventListener(APP_NOTIFICATION_EVENT, onAppNotification as EventListener);
     };
-  }, [queueToast]);
+  }, [notificationsEnabled, queueToast]);
+
+  useEffect(() => {
+    const onAppPopup = (event: Event) => {
+      const customEvent = event as CustomEvent<AppPopupPayload>;
+      const detail = customEvent.detail;
+      if (!detail?.title || !detail?.message) return;
+      setGlobalPopup({
+        open: true,
+        title: detail.title,
+        message: detail.message,
+        tone: detail.tone || 'info',
+        confirmLabel: detail.confirmLabel || 'OK',
+      });
+    };
+
+    window.addEventListener(APP_POPUP_EVENT, onAppPopup as EventListener);
+    return () => {
+      window.removeEventListener(APP_POPUP_EVENT, onAppPopup as EventListener);
+    };
+  }, []);
+
+  useEffect(() => {
+    const originalAlert = window.alert;
+    window.alert = (message?: string) => {
+      openAppPopup({
+        title: 'Message',
+        message: typeof message === 'string' ? message : String(message ?? ''),
+        tone: 'info',
+        confirmLabel: 'OK',
+      });
+    };
+
+    return () => {
+      window.alert = originalAlert;
+    };
+  }, []);
 
   const syncNotifications = useCallback(async (quiet = false) => {
-    if (!getAuthToken()) {
+    if (!getAuthToken() || !notificationsEnabled) {
       setNotifications([]);
       setUnreadNotificationCount(0);
       return;
@@ -423,9 +513,15 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
         setNotificationsLoading(false);
       }
     }
-  }, [pushToasts]);
+  }, [notificationsEnabled, pushToasts]);
 
   useEffect(() => {
+    if (!notificationsEnabled) {
+      setNotificationsOpen(false);
+      setNotifications([]);
+      setUnreadNotificationCount(0);
+      return;
+    }
     void syncNotifications();
     const poll = window.setInterval(() => {
       void syncNotifications(true);
@@ -434,7 +530,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
     return () => {
       window.clearInterval(poll);
     };
-  }, [syncNotifications]);
+  }, [notificationsEnabled, syncNotifications]);
 
   useEffect(() => {
     const timers = toastTimersRef.current;
@@ -635,7 +731,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
       >
         <div className='mb-6 flex items-center justify-between'>
           <Link
-            href='/dashboard'
+            href={userRole === 'admin' ? '/admin' : '/dashboard'}
             className={cn(
               'font-[var(--font-space)] text-primary',
               collapsed
@@ -694,7 +790,13 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
             <UserCircle2 className='h-4 w-4 shrink-0 text-muted-foreground' />
             <div className={cn('flex min-w-0 items-center gap-2', collapsed && 'lg:hidden')}>
               <span className='truncate font-medium'>{displayName}</span>
-              <SubscriptionBadge plan={effectivePlan} />
+              {userRole === 'admin' ? (
+                <span className='rounded-full bg-emerald-600 px-2 py-0.5 text-xs font-semibold text-white'>
+                  Admin
+                </span>
+              ) : (
+                <SubscriptionBadge plan={effectivePlan} />
+              )}
             </div>
           </div>
           <Button onClick={logout} disabled={loggingOut} variant='outline' className={cn('w-full', collapsed && 'lg:px-0')}>
@@ -815,6 +917,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
               ref={notificationsContainerRef}
               className='relative'
               onMouseEnter={() => {
+                if (!notificationsEnabled) return;
                 if (notificationCloseTimerRef.current) {
                   window.clearTimeout(notificationCloseTimerRef.current);
                   notificationCloseTimerRef.current = null;
@@ -825,6 +928,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
                 setNotificationsOpen(true);
               }}
               onMouseLeave={() => {
+                if (!notificationsEnabled) return;
                 notificationCloseTimerRef.current = window.setTimeout(() => {
                   setNotificationsOpen(false);
                   notificationCloseTimerRef.current = null;
@@ -835,6 +939,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
                 variant='outline'
                 size='icon'
                 onClick={() => {
+                  if (!notificationsEnabled) return;
                   const next = !notificationsOpen;
                   setNotificationsOpen(next);
                   if (next) {
@@ -843,16 +948,17 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
                 }}
                 className='relative'
                 aria-label='Notifications'
-                title='Notifications'
+                title={notificationsEnabled ? 'Notifications' : 'Notifications off'}
+                disabled={!notificationsEnabled}
               >
-                <Bell className='h-4 w-4' />
-                {unreadNotificationCount > 0 ? (
+                {notificationsEnabled ? <Bell className='h-4 w-4' /> : <BellOff className='h-4 w-4' />}
+                {notificationsEnabled && unreadNotificationCount > 0 ? (
                   <span className='absolute -right-1 -top-1 grid min-h-5 min-w-5 place-items-center rounded-full bg-destructive px-1 text-[10px] font-semibold text-destructive-foreground'>
                     {unreadNotificationCount > 99 ? '99+' : unreadNotificationCount}
                   </span>
                 ) : null}
               </Button>
-              {notificationsOpen ? (
+              {notificationsEnabled && notificationsOpen ? (
                 <div className='absolute right-0 top-full z-50 w-96 max-w-[calc(100vw-2rem)] overflow-hidden rounded-md border border-border bg-background shadow-lg'>
                   <div className='flex items-center justify-between border-b border-border px-3 py-2'>
                     <p className='text-sm font-semibold text-foreground'>Notifications</p>
@@ -971,6 +1077,19 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
           </div>
         </div>
       ) : null}
+      <PopupWindow
+        open={globalPopup.open}
+        title={globalPopup.title}
+        message={globalPopup.message}
+        confirmLabel={globalPopup.confirmLabel}
+        confirmVariant={globalPopup.tone === 'error' ? 'destructive' : 'default'}
+        onConfirm={() =>
+          setGlobalPopup((previous) => ({
+            ...previous,
+            open: false,
+          }))
+        }
+      />
     </div>
   );
 }

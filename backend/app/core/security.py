@@ -27,8 +27,14 @@ def inactivity_timeout_delta() -> timedelta:
     return timedelta(minutes=SESSION_INACTIVITY_TIMEOUT_MINUTES)
 
 
+def _normalize_bcrypt_password(password: str) -> str:
+    # bcrypt only accepts up to 72 bytes.
+    return password.encode('utf-8')[:72].decode('utf-8', 'ignore')
+
+
 def hash_password(password: str) -> str:
-    return pwd_context.hash(password)
+    normalized = _normalize_bcrypt_password(password)
+    return pwd_context.hash(normalized)
 
 
 def get_password_hash(password: str) -> str:
@@ -40,7 +46,8 @@ def verify_password(plain: str, hashed: str) -> bool:
     if not hashed:
         return False
     try:
-        return pwd_context.verify(plain, hashed)
+        normalized = _normalize_bcrypt_password(plain)
+        return pwd_context.verify(normalized, hashed)
     except (ValueError, TypeError):
         return False
 

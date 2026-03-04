@@ -16,6 +16,7 @@ export type AuthUser = {
   email: string;
   full_name: string;
   role: 'admin' | 'user';
+  notifications_enabled?: boolean;
   subscription_plan?: 'FREE' | 'STANDARD' | 'PRO' | 'BUSINESS';
   subscription_status?: 'ACTIVE' | 'CANCELLED' | 'EXPIRED';
   razorpay_subscription_id?: string | null;

@@ -1,6 +1,8 @@
 import Link from "next/link";
+import { X } from "lucide-react";
 
 import { PricingPlanCards } from "@/components/landing/pricing-plan-cards";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 export const metadata = {
@@ -10,7 +12,19 @@ export const metadata = {
 export default function PricingPage() {
   return (
     <main className="mx-auto max-w-4xl px-4 py-14 sm:px-6">
-      <Card className="border-teal-200 bg-white/90">
+      <Card className="relative border-teal-200 bg-white/90">
+        <Button
+          asChild
+          type="button"
+          variant="ghost"
+          size="icon"
+          className="absolute right-3 top-3 h-8 w-8"
+          aria-label="Close and go to home"
+        >
+          <Link href="/">
+            <X className="h-4 w-4" />
+          </Link>
+        </Button>
         <CardHeader>
           <CardTitle className="font-[var(--font-space)] text-3xl">
             Pricing

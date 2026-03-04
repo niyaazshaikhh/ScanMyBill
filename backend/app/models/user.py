@@ -36,6 +36,7 @@ class User(Base):
     hashed_password: Mapped[str | None] = mapped_column(String(255), nullable=True)
     role: Mapped[UserRole] = mapped_column(SqlEnum(UserRole), default=UserRole.USER)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    notifications_enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     subscription_plan: Mapped[SubscriptionPlan] = mapped_column(
         SqlEnum(SubscriptionPlan, name='subscription_plan_enum'),
         default=SubscriptionPlan.FREE,

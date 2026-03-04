@@ -43,6 +43,7 @@ type PersonalDetailsResponse = {
   address: string | null;
   state_name: string | null;
   state_code: string | null;
+  gst_filing_period: string | null;
   email: string | null;
   bank_name: string | null;
   account_number: string | null;
@@ -57,6 +58,7 @@ type PersonalDetailsForm = {
   address: string;
   state_name: string;
   state_code: string;
+  gst_filing_period: string;
   email: string;
   bank_name: string;
   account_number: string;
@@ -70,6 +72,7 @@ const EMPTY_FORM: PersonalDetailsForm = {
   address: '',
   state_name: '',
   state_code: '',
+  gst_filing_period: '',
   email: '',
   bank_name: '',
   account_number: '',
@@ -87,12 +90,22 @@ function normalizeForm(form: PersonalDetailsForm): PersonalDetailsForm {
     address: sanitizeAddressInput(form.address).trim(),
     state_name: normalizedStateName,
     state_code: normalizedStateCode,
+    gst_filing_period: form.gst_filing_period.trim().toLowerCase(),
     email: form.email.trim().toLowerCase(),
     bank_name: sanitizeBankNameInput(form.bank_name).trim(),
     account_number: sanitizeAccountNumberInput(form.account_number),
     branch: sanitizeBranchInput(form.branch).trim(),
     ifsc_code: sanitizeIfscInput(form.ifsc_code)
   };
+}
+
+function validateGstFilingPeriod(value: string): string | null {
+  const normalized = value.trim().toLowerCase();
+  if (!normalized) return 'GST Filing Period is required.';
+  if (!['monthly', 'quarterly'].includes(normalized)) {
+    return 'GST Filing Period should be either monthly or quarterly.';
+  }
+  return null;
 }
 
 function getFieldErrors(form: PersonalDetailsForm) {
@@ -103,6 +116,7 @@ function getFieldErrors(form: PersonalDetailsForm) {
     address: validateAddress(form.address),
     state_name: validateStateName(form.state_name),
     state_code: validateStateCode(form.state_code) || stateAndCodeError,
+    gst_filing_period: validateGstFilingPeriod(form.gst_filing_period),
     email: validateEmail(form.email),
     bank_name: validateBankName(form.bank_name),
     account_number: validateAccountNumber(form.account_number),
@@ -141,6 +155,7 @@ export default function PersonalDetailsPage() {
           address: details.address || '',
           state_name: loadedStateName,
           state_code: loadedStateCode,
+          gst_filing_period: details.gst_filing_period || '',
           email: details.email || '',
           bank_name: details.bank_name || '',
           account_number: details.account_number || '',
@@ -346,6 +361,30 @@ export default function PersonalDetailsPage() {
                     <p className='text-xs text-destructive'>{fieldErrors.state_code}</p>
                   ) : null}
                 </div>
+              </div>
+              <div className='space-y-1'>
+                <Label htmlFor='gst-filing-period'>
+                  GST Filing Period <span className='text-destructive'>*</span>
+                </Label>
+                <Select
+                  id='gst-filing-period'
+                  value={form.gst_filing_period}
+                  onChange={(event) =>
+                    setForm((prev) => ({
+                      ...prev,
+                      gst_filing_period: event.target.value
+                    }))
+                  }
+                  disabled={!isEditing}
+                  required
+                >
+                  <option value=''>Select filing period</option>
+                  <option value='monthly'>Monthly</option>
+                  <option value='quarterly'>Quarterly</option>
+                </Select>
+                {isEditing && fieldErrors.gst_filing_period ? (
+                  <p className='text-xs text-destructive'>{fieldErrors.gst_filing_period}</p>
+                ) : null}
               </div>
               <div className='space-y-1'>
                 <Label htmlFor='email'>

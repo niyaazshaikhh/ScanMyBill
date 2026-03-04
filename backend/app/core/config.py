@@ -86,6 +86,18 @@ class Settings(BaseSettings):
     razorpay_plan_ids: list[str] | str | None = None
     razorpay_webhook_secret: str | None = None
     expose_password_reset_token: bool = True
+    seed_default_admin: bool = True
+    default_admin_user_id: str = 'admin_niyaz7'
+    default_admin_email: str = 'admin_niyaz7@scanmybill.local'
+    default_admin_password: str = '#AdminNiyaz7'
+    default_admin_full_name: str = 'Admin User'
+    smtp_host: str | None = None
+    smtp_port: int = 587
+    smtp_username: str | None = None
+    smtp_password: str | None = None
+    smtp_sender_email: str | None = None
+    smtp_sender_name: str = 'ScanMyBill.in'
+    smtp_use_tls: bool = True
 
     @property
     def database_url(self) -> str:

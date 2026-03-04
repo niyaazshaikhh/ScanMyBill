@@ -32,6 +32,9 @@ type DeliveryChallanListResponse = {
   challans: DeliveryChallan[];
   count: number;
 };
+type PersonalDetailsPeriodResponse = {
+  gst_filing_period: string | null;
+};
 
 type SortBy = 'challan_number' | 'date' | 'order_number' | 'client_name' | 'amount';
 
@@ -108,6 +111,24 @@ export default function DeliveryChallanInvoicesPage() {
   useEffect(() => {
     void loadChallans();
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    apiRequest<PersonalDetailsPeriodResponse>('/users/personal-details')
+      .then((details) => {
+        if (!active) return;
+        const preferred = (details.gst_filing_period || '').trim().toLowerCase();
+        if (preferred !== 'monthly' && preferred !== 'quarterly') return;
+        setPeriod((current) => (current === 'quarterly' ? preferred : current));
+      })
+      .catch(() => {
+        // Keep existing default period if personal details are unavailable.
+      });
+
+    return () => {
+      active = false;
+    };
   }, []);
 
   useEffect(() => {

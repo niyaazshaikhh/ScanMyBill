@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import { CheckCircle2, Crown, Leaf, Sparkles, type LucideIcon } from 'lucide-react';
 
 import { RazorpayCheckoutButton } from '@/components/landing/razorpay-checkout-button';
 import { Button } from '@/components/ui/button';
@@ -18,29 +19,58 @@ type PaymentConfigResponse = {
   plans: RazorpayPlanOption[];
 };
 
-const planCards = [
+const planCards: Array<{
+  name: string;
+  priceLabel: string;
+  amountPaise: number;
+  description: string;
+  accentClass: string;
+  icon: LucideIcon;
+  points: string[];
+}> = [
   {
     name: 'Standard',
     priceLabel: 'Rs 1 / month',
     amountPaise: 100,
-    description: 'Best for trying ScanMyBill with core invoice and GST workflow features.',
-    accentClass: 'border-slate-200'
+    description: 'Good for one person who wants simple bill work.',
+    accentClass: 'border-slate-200 bg-white/95',
+    icon: Leaf,
+    points: [
+      'Use Dashboard, Invoices, and Settings',
+      'Upload bills and keep records in one place',
+    ],
   },
   {
     name: 'Pro',
     priceLabel: 'Rs 101 / month',
     amountPaise: 10100,
-    description: 'Great for growing teams that need regular OCR processing and analytics.',
-    accentClass: 'border-orange-300 bg-orange-50/40'
+    description: 'Best for small teams handling more clients.',
+    accentClass: 'border-orange-300 bg-orange-50/40',
+    icon: Sparkles,
+    points: [
+      'Everything in Standard plan',
+      'Includes Client Analytics',
+      'Better visibility on client performance',
+      'Helpful for teams with daily bill work',
+    ],
   },
   {
     name: 'Business',
     priceLabel: 'Rs 1001 / month',
     amountPaise: 100100,
-    description: 'Built for high-volume operations with advanced billing and reporting needs.',
-    accentClass: 'border-teal-300 bg-teal-50/40'
+    description: 'Best for busy businesses that need full access.',
+    accentClass: 'border-teal-300 bg-teal-50/40',
+    icon: Crown,
+    points: [
+      'Access to all main routes',
+      'Best for full bill management',
+      'Built for high daily bill volume',
+      'Create and manage bills faster',
+      'Suitable for teams needing full control',
+      'Ideal for growing businesses',
+    ],
   }
-] as const;
+];
 
 export function PricingPlanCards() {
   const [plans, setPlans] = useState<RazorpayPlanOption[]>([]);
@@ -90,26 +120,42 @@ export function PricingPlanCards() {
         {planCards.map((plan) => {
           const planId = planIdByAmount.get(plan.amountPaise);
           const isConfigured = Boolean(planId);
+          const PlanIcon = plan.icon;
 
           return (
-            <Card key={plan.name} className={cn('flex h-full flex-col', plan.accentClass)}>
-              <CardHeader>
-                <CardTitle className='font-[var(--font-space)] text-xl'>{plan.name}</CardTitle>
+            <Card key={plan.name} className={cn('flex h-full min-h-[320px] flex-col', plan.accentClass)}>
+              <CardHeader className='space-y-3'>
+                <div className='flex items-center gap-2'>
+                  <span className='inline-flex h-8 w-8 items-center justify-center rounded-md bg-secondary text-secondary-foreground'>
+                    <PlanIcon className='h-4 w-4' />
+                  </span>
+                  <CardTitle className='font-[var(--font-space)] text-xl'>{plan.name}</CardTitle>
+                </div>
                 <CardDescription className='text-base font-semibold text-foreground'>{plan.priceLabel}</CardDescription>
               </CardHeader>
-              <CardContent className='flex flex-1 flex-col justify-between gap-4'>
+              <CardContent className='flex flex-1 flex-col gap-4'>
                 <p className='text-sm text-muted-foreground'>{plan.description}</p>
-                {loadingPlans ? (
-                  <Button className='w-full' disabled>
-                    Loading plan...
-                  </Button>
-                ) : isConfigured ? (
-                  <RazorpayCheckoutButton className='w-full' defaultPlanId={planId} />
-                ) : (
-                  <Button className='w-full' disabled>
-                    Plan not configured
-                  </Button>
-                )}
+                <ul className='space-y-1.5'>
+                  {plan.points.map((point) => (
+                    <li key={`${plan.name}-${point}`} className='flex items-start gap-2 text-xs text-muted-foreground'>
+                      <CheckCircle2 className='mt-0.5 h-3.5 w-3.5 shrink-0 text-emerald-600' />
+                      <span>{point}</span>
+                    </li>
+                  ))}
+                </ul>
+                <div className='mt-auto'>
+                  {loadingPlans ? (
+                    <Button className='w-full' disabled>
+                      Loading plan...
+                    </Button>
+                  ) : isConfigured ? (
+                    <RazorpayCheckoutButton className='w-full' defaultPlanId={planId} />
+                  ) : (
+                    <Button className='w-full' disabled>
+                      Plan not configured
+                    </Button>
+                  )}
+                </div>
               </CardContent>
             </Card>
           );

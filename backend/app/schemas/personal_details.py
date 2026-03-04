@@ -21,6 +21,7 @@ class PersonalDetailsUpsertRequest(BaseModel):
     address: str = Field(min_length=1, max_length=115)
     state_name: str = Field(min_length=1, max_length=64)
     state_code: str = Field(min_length=2, max_length=2)
+    gst_filing_period: str = Field(min_length=1, max_length=16)
     email: str = Field(min_length=3, max_length=255)
     bank_name: str = Field(min_length=1, max_length=15)
     account_number: str = Field(min_length=6, max_length=34)
@@ -33,6 +34,7 @@ class PersonalDetailsUpsertRequest(BaseModel):
         'address',
         'state_name',
         'state_code',
+        'gst_filing_period',
         'email',
         'bank_name',
         'account_number',
@@ -80,6 +82,14 @@ class PersonalDetailsUpsertRequest(BaseModel):
         if not STATE_CODE_PATTERN.fullmatch(cleaned):
             raise ValueError('State Code should be exactly 2 digits.')
         return cleaned
+
+    @field_validator('gst_filing_period')
+    @classmethod
+    def validate_gst_filing_period(cls, value: str) -> str:
+        normalized = strip_required(value, 'GST Filing Period').lower()
+        if normalized not in {'monthly', 'quarterly'}:
+            raise ValueError('GST Filing Period should be either monthly or quarterly.')
+        return normalized
 
     @field_validator('email')
     @classmethod
@@ -129,6 +139,7 @@ class PersonalDetailsResponse(BaseModel):
     address: str | None
     state_name: str | None
     state_code: str | None
+    gst_filing_period: str | None
     email: str | None
     bank_name: str | None
     account_number: str | None

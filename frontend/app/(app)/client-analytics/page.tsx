@@ -31,6 +31,9 @@ type InvoiceListResponse = {
   invoices: SalesInvoice[];
   count: number;
 };
+type PersonalDetailsPeriodResponse = {
+  gst_filing_period: string | null;
+};
 
 type ClientAnalyticsRow = {
   id: string;
@@ -90,6 +93,24 @@ export default function ClientAnalyticsPage() {
     };
 
     void load();
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    apiRequest<PersonalDetailsPeriodResponse>('/users/personal-details')
+      .then((details) => {
+        if (!active) return;
+        const preferred = (details.gst_filing_period || '').trim().toLowerCase();
+        if (preferred !== 'monthly' && preferred !== 'quarterly') return;
+        setPeriod((current) => (current === 'quarterly' ? preferred : current));
+      })
+      .catch(() => {
+        // Keep existing default period if personal details are unavailable.
+      });
+
+    return () => {
+      active = false;
+    };
   }, []);
 
   const yearOptions = useMemo(() => {

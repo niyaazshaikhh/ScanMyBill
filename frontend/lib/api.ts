@@ -1,5 +1,6 @@
 import type { AuthUser } from '@/lib/auth';
 import { getAuthToken, getAuthUser, isAuthTokenExpired, setAuthSession } from '@/lib/auth';
+import { showAppErrorPopup } from '@/lib/app-popup';
 import { emitSessionTimeout } from '@/lib/session-timeout';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1';
@@ -17,6 +18,80 @@ type RefreshResponse = {
   token_type: string;
   user: AuthUser;
 };
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
+function formatValidationErrors(detail: unknown): string | null {
+  if (!Array.isArray(detail)) {
+    return null;
+  }
+
+  const messages = detail
+    .map((entry) => {
+      if (!isRecord(entry)) {
+        return null;
+      }
+
+      const rawMessage = entry.msg;
+      if (typeof rawMessage !== 'string' || !rawMessage.trim()) {
+        return null;
+      }
+
+      const rawLoc = entry.loc;
+      if (!Array.isArray(rawLoc)) {
+        return rawMessage.trim();
+      }
+
+      const location = rawLoc
+        .filter((segment): segment is string | number => typeof segment === 'string' || typeof segment === 'number')
+        .map((segment) => String(segment))
+        .filter((segment) => segment !== 'body' && segment !== 'query' && segment !== 'path')
+        .join('.');
+
+      if (!location) {
+        return rawMessage.trim();
+      }
+
+      return `${location}: ${rawMessage.trim()}`;
+    })
+    .filter((message): message is string => Boolean(message));
+
+  if (!messages.length) {
+    return null;
+  }
+
+  return messages.join('; ');
+}
+
+function extractApiErrorMessage(payload: unknown, fallback: string): string {
+  if (!isRecord(payload)) {
+    return fallback;
+  }
+
+  const detail = payload.detail;
+  if (typeof detail === 'string' && detail.trim()) {
+    return detail.trim();
+  }
+
+  const validationMessage = formatValidationErrors(detail);
+  if (validationMessage) {
+    return validationMessage;
+  }
+
+  const message = payload.message;
+  if (typeof message === 'string' && message.trim()) {
+    return message.trim();
+  }
+
+  const error = payload.error;
+  if (typeof error === 'string' && error.trim()) {
+    return error.trim();
+  }
+
+  return fallback;
+}
 
 async function refreshAccessToken(): Promise<boolean> {
   try {
@@ -100,9 +175,9 @@ export async function apiRequest<T = unknown>(
           ? ' Mixed-content blocked: frontend is HTTPS but API URL is HTTP.'
           : '';
       const reason = error instanceof Error ? error.message : 'Failed to fetch';
-      throw new Error(
-        `Network error: Unable to reach API at ${url}. ${reason}.${mixedContentHint}`,
-      );
+      const message = `Network error: Unable to reach API at ${url}. ${reason}.${mixedContentHint}`;
+      showAppErrorPopup(message, 'Network Error');
+      throw new Error(message);
     }
   };
 
@@ -125,12 +200,21 @@ export async function apiRequest<T = unknown>(
   if (!res.ok) {
 
     let message = `API Error (${res.status})`;
+    const contentType = (res.headers.get('content-type') || '').toLowerCase();
     try {
-      const json = await res.json();
-      message = json.detail || message;
+      if (contentType.includes('application/json')) {
+        const json = await res.json();
+        message = extractApiErrorMessage(json, message);
+      } else {
+        const text = await res.text();
+        if (text.trim()) {
+          message = text.trim();
+        }
+      }
     } catch {
       // Ignore JSON parsing errors for non-JSON responses.
     }
+    showAppErrorPopup(message, 'Request Failed');
     throw new Error(message);
   }
 

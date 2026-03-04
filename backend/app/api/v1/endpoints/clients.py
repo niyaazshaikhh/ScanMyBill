@@ -119,11 +119,7 @@ def create_client(
         message=f'Client {client.name} has been added.',
     )
 
-    return ClientResponse(
-        **client.__dict__,
-        total_transactions=0,
-        total_revenue=0.0,
-    )
+    return ClientResponse.model_validate(client, from_attributes=True)
 
 
 @router.get('/analytics', response_model=ClientsOverview)

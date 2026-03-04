@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ChevronDown, ChevronRight, Eye, EyeOff, X } from "lucide-react";
+import { Bell, BellOff, ChevronDown, ChevronRight, Eye, EyeOff, X } from "lucide-react";
 
 export const dynamic = "force-dynamic";
 
@@ -25,6 +25,7 @@ type CurrentUser = {
   email: string;
   full_name: string;
   role: "admin" | "user";
+  notifications_enabled: boolean;
   subscription_plan: SubscriptionPlan;
   subscription_status: SubscriptionStatus;
   razorpay_subscription_id?: string | null;
@@ -104,6 +105,7 @@ export default function SettingsPage() {
   const [actionMessage, setActionMessage] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [cancelLoading, setCancelLoading] = useState(false);
+  const [notificationUpdating, setNotificationUpdating] = useState(false);
   const [cancelConfirmOpen, setCancelConfirmOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
   const [subscriptionExpanded, setSubscriptionExpanded] = useState(false);
@@ -117,6 +119,7 @@ export default function SettingsPage() {
       updateAuthUser({
         full_name: profile.full_name,
         email: profile.email,
+        notifications_enabled: profile.notifications_enabled,
         subscription_plan: profile.subscription_plan,
         subscription_status: profile.subscription_status,
         razorpay_subscription_id: profile.razorpay_subscription_id,
@@ -223,6 +226,32 @@ export default function SettingsPage() {
     const next = !debugModeEnabled;
     setDebugModeEnabledState(next);
     setDebugModeEnabled(next);
+  };
+
+  const handleToggleNotifications = async () => {
+    if (!user || notificationUpdating) return;
+
+    const next = !user.notifications_enabled;
+    setNotificationUpdating(true);
+    setActionError(null);
+    setActionMessage(null);
+    try {
+      const updated = await apiRequest<CurrentUser>("/users/notification-preference", {
+        method: "PUT",
+        body: { notifications_enabled: next },
+      });
+      setUser(updated);
+      updateAuthUser({ notifications_enabled: updated.notifications_enabled });
+      setActionMessage(
+        updated.notifications_enabled
+          ? "Notifications turned on."
+          : "Notifications turned off.",
+      );
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : "Failed to update notification preference");
+    } finally {
+      setNotificationUpdating(false);
+    }
   };
 
   return (
@@ -386,6 +415,31 @@ export default function SettingsPage() {
               <EyeOff className="h-4 w-4" />
             )}
             Debugging mode {debugModeEnabled ? "On" : "Off"}
+          </Button>
+        </CardContent>
+      </Card>
+
+      <Card className="bg-white/85">
+        <CardHeader>
+          <CardTitle>Notification Preferences</CardTitle>
+        </CardHeader>
+        <CardContent className="flex items-center justify-between gap-3">
+          <p className="text-sm text-muted-foreground">
+            Turn pop-up notifications on or off for this account.
+          </p>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => void handleToggleNotifications()}
+            disabled={notificationUpdating || loadingUser || !user}
+            className="shrink-0"
+          >
+            {user?.notifications_enabled ? (
+              <Bell className="h-4 w-4" />
+            ) : (
+              <BellOff className="h-4 w-4" />
+            )}
+            Notifications {user?.notifications_enabled ? "On" : "Off"}
           </Button>
         </CardContent>
       </Card>

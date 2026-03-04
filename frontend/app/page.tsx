@@ -1,6 +1,15 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { Instagram, Linkedin, Twitter } from "lucide-react";
+import {
+  BarChart3,
+  FileSearch2,
+  FolderOpen,
+  Instagram,
+  Linkedin,
+  TrendingUp,
+  Twitter,
+  type LucideIcon,
+} from "lucide-react";
 
 import { DraggableBills } from "@/components/landing/draggable-bills";
 import { NewsletterForm } from "@/components/landing/newsletter-form";
@@ -14,22 +23,30 @@ export const metadata: Metadata = {
     "OCR-powered billing and GST workflow platform for Indian businesses. Create invoices, track analytics, and export PDFs quickly.",
 };
 
-const features = [
+const features: Array<{
+  title: string;
+  body: string;
+  icon: LucideIcon;
+}> = [
   {
     title: "OCR-Powered Bill Capture",
     body: "Upload image/PDF bills and auto-extract date, GSTIN, amount, and bill type.",
+    icon: FileSearch2,
   },
   {
     title: "GST Dashboard Intelligence",
     body: "Track GST collected, paid, and payable with period-wise analytics and visual trends.",
+    icon: BarChart3,
   },
   {
     title: "Folder-Based Invoices",
     body: "Browse monthly/quarterly/semi-annual/yearly folders and export consolidated PDFs.",
+    icon: FolderOpen,
   },
   {
     title: "Client Revenue Insights",
     body: "See top clients, transactions, and revenue instantly without manual reconciliation.",
+    icon: TrendingUp,
   },
 ];
 
@@ -61,19 +78,40 @@ const pricingHighlights = [
     name: "Standard",
     price: "Rs 1 / month",
     description:
-      "Basic plan for solo users getting started with bill uploads and GST tracking.",
+      "Good for one person who wants simple bill and tax tracking.",
+    accent: "border-slate-200 bg-white",
+    points: [
+      "Use Dashboard, Invoices, and Settings",
+      "Upload bills and keep records in one place",
+    ],
   },
   {
     name: "Pro",
     price: "Rs 101 / month",
     description:
-      "Popular plan for growing teams that need regular OCR and dashboard insights.",
+      "Best for small teams that want better reports and faster daily work.",
+    accent: "border-orange-300 bg-orange-50/40",
+    points: [
+      "Everything in Standard plan",
+      "Includes Client Analytics",
+      "Better visibility on client performance",
+      "Helpful for teams handling more clients",
+    ],
   },
   {
     name: "Business",
     price: "Rs 1001 / month",
     description:
-      "Advanced plan for high-volume operations with deeper workflow support.",
+      "Best for busy businesses that need every section of the app.",
+    accent: "border-teal-300 bg-teal-50/40",
+    points: [
+      "Access to all main routes",
+      "Best for full billing workflow",
+      "Built for high daily bill volume",
+      "Create and manage bills faster with less manual work",
+      "Suitable for teams needing complete control",
+      "Ideal for growing businesses with regular billing load",
+    ],
   },
 ];
 
@@ -160,7 +198,12 @@ export default function LandingPage() {
                 className="border-orange-200/70 bg-white/75"
               >
                 <CardContent className="space-y-2 p-5">
-                  <h3 className="font-semibold">{feature.title}</h3>
+                  <div className="flex items-center gap-2">
+                    <span className="inline-flex h-8 w-8 items-center justify-center rounded-md bg-secondary text-secondary-foreground">
+                      <feature.icon className="h-4 w-4" />
+                    </span>
+                    <h3 className="font-semibold">{feature.title}</h3>
+                  </div>
                   <p className="text-sm text-muted-foreground">
                     {feature.body}
                   </p>
@@ -193,15 +236,25 @@ export default function LandingPage() {
                 {pricingHighlights.map((plan) => (
                   <div
                     key={plan.name}
-                    className="rounded-lg border border-teal-200 bg-white/80 p-4"
+                    className={`rounded-xl border p-4 ${plan.accent} min-h-[280px]`}
                   >
-                    <p className="font-semibold">{plan.name}</p>
-                    <p className="mt-1 text-sm font-semibold text-primary">
+                    <p className="font-[var(--font-space)] text-lg font-semibold">
+                      {plan.name}
+                    </p>
+                    <p className="mt-1 text-base font-semibold text-primary">
                       {plan.price}
                     </p>
-                    <p className="mt-2 text-xs text-muted-foreground">
+                    <p className="mt-2 text-sm text-muted-foreground">
                       {plan.description}
                     </p>
+                    <ul className="mt-3 space-y-1.5">
+                      {plan.points.map((point) => (
+                        <li key={`${plan.name}-${point}`} className="flex items-start gap-2 text-xs text-muted-foreground">
+                          <span className="mt-0.5 text-emerald-600">✓</span>
+                          <span>{point}</span>
+                        </li>
+                      ))}
+                    </ul>
                   </div>
                 ))}
               </div>

@@ -23,6 +23,7 @@ class PersonalDetails(Base):
     address: Mapped[str | None] = mapped_column(String(115))
     state_name: Mapped[str | None] = mapped_column(String(64))
     state_code: Mapped[str | None] = mapped_column(String(2))
+    gst_filing_period: Mapped[str | None] = mapped_column(String(16))
     email: Mapped[str | None] = mapped_column(String(255))
     bank_name: Mapped[str | None] = mapped_column(String(15))
     account_number: Mapped[str | None] = mapped_column(String(34))

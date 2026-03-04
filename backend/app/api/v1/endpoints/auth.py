@@ -31,6 +31,7 @@ from app.models.revoked_token import RevokedToken
 from app.models.token_blacklist import TokenBlacklist
 from app.models.user import User, UserRole
 from app.models.user_session import UserSession
+from app.schemas.admin import AdminLoginRequest
 from app.schemas.auth import (
     CreateAccountRequest,
     ForgotPasswordRequest,
@@ -49,6 +50,7 @@ from app.schemas.user import (
     UserCreate,
     UserLogin,
 )
+from app.services.admin_bootstrap import default_admin_identity, ensure_default_admin_user
 
 router = APIRouter(prefix='/auth')
 PASSWORD_RESET_TOKEN_EXPIRE_MINUTES = 15
@@ -70,6 +72,10 @@ def _auth_error(
 
 def _normalize_email(email: str) -> str:
     return email.strip().lower()
+
+
+def _normalize_admin_id(admin_id: str) -> str:
+    return admin_id.strip().lower()
 
 
 def _create_local_account(email: str, password: str, full_name: str, db: Session) -> User:
@@ -267,6 +273,44 @@ def login(
         raise _auth_error('User account is inactive', status.HTTP_401_UNAUTHORIZED)
 
     return _create_session_response(user, response, db)
+
+
+@router.post('/admin/login', response_model=TokenResponse)
+def admin_login(
+    payload: AdminLoginRequest,
+    response: Response,
+    db: Session = Depends(get_db),
+) -> TokenResponse:
+    configured_admin_id, configured_admin_email = default_admin_identity()
+    provided_admin_id = _normalize_admin_id(payload.admin_id)
+    if provided_admin_id != _normalize_admin_id(configured_admin_id):
+        raise _auth_error(
+            'Invalid credentials',
+            status.HTTP_401_UNAUTHORIZED,
+            headers={'WWW-Authenticate': 'Bearer'},
+        )
+
+    admin_user = ensure_default_admin_user(db)
+    if admin_user is None:
+        admin_user = db.scalar(select(User).where(User.email == configured_admin_email))
+
+    if (
+        not admin_user
+        or _normalize_email(admin_user.email) != _normalize_email(configured_admin_email)
+        or admin_user.role != UserRole.ADMIN
+        or not admin_user.hashed_password
+        or not verify_password(payload.password, admin_user.hashed_password)
+    ):
+        raise _auth_error(
+            'Invalid credentials',
+            status.HTTP_401_UNAUTHORIZED,
+            headers={'WWW-Authenticate': 'Bearer'},
+        )
+
+    if not admin_user.is_active:
+        raise _auth_error('User account is inactive', status.HTTP_401_UNAUTHORIZED)
+
+    return _create_session_response(admin_user, response, db)
 
 
 @router.post('/forgot-password', response_model=ForgotPasswordResponse)

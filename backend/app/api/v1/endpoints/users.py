@@ -8,6 +8,7 @@ from app.models.personal_details import PersonalDetails
 from app.models.user import User
 from app.schemas.personal_details import PersonalDetailsResponse, PersonalDetailsUpsertRequest
 from app.schemas.user import CurrentUserResponse
+from app.schemas.user import NotificationPreferenceUpdate
 from app.services.notifications import create_notification
 
 router = APIRouter()
@@ -40,6 +41,18 @@ def me(current_user: User = Depends(get_current_user)) -> CurrentUserResponse:
     return CurrentUserResponse.model_validate(current_user)
 
 
+@router.put('/notification-preference', response_model=CurrentUserResponse)
+def update_notification_preference(
+    payload: NotificationPreferenceUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> CurrentUserResponse:
+    current_user.notifications_enabled = payload.notifications_enabled
+    db.commit()
+    db.refresh(current_user)
+    return CurrentUserResponse.model_validate(current_user)
+
+
 @router.get('/personal-details', response_model=PersonalDetailsResponse)
 def get_personal_details(
     db: Session = Depends(get_db),
@@ -53,6 +66,7 @@ def get_personal_details(
             address=None,
             state_name=None,
             state_code=None,
+            gst_filing_period=None,
             email=None,
             bank_name=None,
             account_number=None,
@@ -91,6 +105,7 @@ def upsert_personal_details(
             address=payload.address,
             state_name=payload.state_name,
             state_code=payload.state_code,
+            gst_filing_period=payload.gst_filing_period,
             email=payload.email,
             bank_name=payload.bank_name,
             account_number=payload.account_number,
@@ -104,6 +119,7 @@ def upsert_personal_details(
         details.address = payload.address
         details.state_name = payload.state_name
         details.state_code = payload.state_code
+        details.gst_filing_period = payload.gst_filing_period
         details.email = payload.email
         details.bank_name = payload.bank_name
         details.account_number = payload.account_number

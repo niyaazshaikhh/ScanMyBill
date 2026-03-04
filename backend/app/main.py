@@ -16,7 +16,7 @@ from app.api.v1.api import api_router
 from app.core.auth_exceptions import AuthException, auth_error_payload
 from app.core.auth_middleware import AuthSessionMiddleware
 from app.core.config import settings
-from app.core.database import Base, engine
+from app.core.database import Base, SessionLocal, engine
 from app.core.middleware import (
     RateLimitMiddleware,
     RequestContextMiddleware,
@@ -24,6 +24,7 @@ from app.core.middleware import (
     SecurityHeadersMiddleware,
 )
 from app.models import *  # noqa: F401,F403
+from app.services.admin_bootstrap import ensure_default_admin_user
 
 
 def _configure_logging() -> None:
@@ -162,6 +163,7 @@ def _ensure_personal_details_columns() -> None:
         'address': 'VARCHAR(115)',
         'state_name': 'VARCHAR(64)',
         'state_code': 'VARCHAR(2)',
+        'gst_filing_period': 'VARCHAR(16)',
         'email': 'VARCHAR(255)',
         'bank_name': 'VARCHAR(15)',
         'account_number': 'VARCHAR(34)',
@@ -445,6 +447,38 @@ def _ensure_non_gst_challan_sequence_numbers() -> None:
             pass
 
 
+def _ensure_user_columns() -> None:
+    expected_columns: dict[str, str] = {
+        'notifications_enabled': 'BOOLEAN NOT NULL DEFAULT TRUE',
+    }
+
+    inspector = inspect(engine)
+    if 'users' not in inspector.get_table_names():
+        return
+
+    existing_columns = {column['name'] for column in inspector.get_columns('users')}
+    missing_columns = [column for column in expected_columns if column not in existing_columns]
+
+    if not missing_columns:
+        return
+
+    with engine.begin() as connection:
+        for column_name in missing_columns:
+            column_type = expected_columns[column_name]
+            connection.execute(text(f'ALTER TABLE users ADD COLUMN {column_name} {column_type}'))
+
+
+def _ensure_default_admin() -> None:
+    session = SessionLocal()
+    try:
+        admin_user = ensure_default_admin_user(session)
+        if admin_user is None:
+            return
+        logger.info('Default admin user is ready for %s', admin_user.email)
+    finally:
+        session.close()
+
+
 @app.on_event('startup')
 def on_startup() -> None:
     _validate_security_configuration()
@@ -458,6 +492,8 @@ def on_startup() -> None:
     _ensure_invoice_unique_constraint()
     _ensure_non_gst_challan_unique_constraint()
     _ensure_non_gst_challan_sequence_numbers()
+    _ensure_user_columns()
+    _ensure_default_admin()
 
 
 @app.get('/health')

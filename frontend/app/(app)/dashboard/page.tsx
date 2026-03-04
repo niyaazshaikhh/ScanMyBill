@@ -54,6 +54,9 @@ type InvoiceYearListResponse = {
 };
 
 type BillUploadApiResponse = Record<string, unknown>;
+type PersonalDetailsPeriodResponse = {
+  gst_filing_period: string | null;
+};
 
 const periodOptions = ["monthly", "quarterly", "semi-annually", "annually"];
 
@@ -174,6 +177,24 @@ export default function DashboardPage() {
   useEffect(() => {
     void loadYearOptions();
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    apiRequest<PersonalDetailsPeriodResponse>("/users/personal-details")
+      .then((details) => {
+        if (!active) return;
+        const preferred = (details.gst_filing_period || "").trim().toLowerCase();
+        if (preferred !== "monthly" && preferred !== "quarterly") return;
+        setPeriod((current) => (current === "monthly" ? preferred : current));
+      })
+      .catch(() => {
+        // Keep existing default period if personal details are unavailable.
+      });
+
+    return () => {
+      active = false;
+    };
   }, []);
 
   useEffect(() => {

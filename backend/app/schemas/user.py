@@ -32,6 +32,7 @@ class CurrentUserResponse(BaseModel):
     id: str
     full_name: str
     email: EmailStr
+    notifications_enabled: bool = True
     subscription_plan: SubscriptionPlan
     subscription_status: SubscriptionStatus
 
@@ -50,3 +51,7 @@ class ForgotPasswordRequest(_StrictRequestModel):
 class ResetPasswordRequest(_StrictRequestModel):
     token: str = Field(min_length=16, max_length=255)
     new_password: str = Field(min_length=8, max_length=128)
+
+
+class NotificationPreferenceUpdate(_StrictRequestModel):
+    notifications_enabled: bool

@@ -10,6 +10,7 @@ class UserPublic(BaseModel):
     email: EmailStr
     full_name: str
     role: UserRole
+    notifications_enabled: bool = True
     subscription_plan: SubscriptionPlan
     subscription_status: SubscriptionStatus
     razorpay_subscription_id: str | None = None
