@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.core.database import get_db
 from app.core.deps import get_current_user
-from app.core.storage import remove_temp_file
+from app.core.storage import get_storage_backend, remove_temp_file
 from app.models.invoice import Invoice, InvoiceItem, InvoiceSource, InvoiceType
 from app.models.non_gst_challan import NonGSTChallan, NonGSTChallanItem
 from app.models.personal_details import PersonalDetails
@@ -421,6 +421,9 @@ async def upload_bill(
     created_challan: NonGSTChallan | None = None
     extracted: dict[str, Any] = {}
     processed: dict[str, Any] = {}
+    stored_original_path: str | None = None
+    committed = False
+    storage = get_storage_backend()
 
     try:
         user_personal_details = db.scalar(
@@ -438,6 +441,19 @@ async def upload_bill(
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                 detail=str(exc),
+            ) from exc
+
+        try:
+            stored_original_path = storage.save_bytes(
+                payload,
+                safe_original_name,
+                subdir=f'bills/original/{current_user.id}',
+            )
+        except Exception as exc:
+            logger.exception('Failed to persist uploaded bill file')
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail='Failed to store uploaded bill file',
             ) from exc
 
         gst_payload_model = processed.get('gst_invoice')
@@ -501,12 +517,14 @@ async def upload_bill(
                 client_id=client_id,
                 extracted=extracted,
             )
+            created_challan.original_file_path = stored_original_path
             db.add(created_challan)
         else:
             created_invoice = _build_invoice_from_extraction(
                 owner_id=current_user.id,
                 extracted=extracted,
             )
+            created_invoice.original_file_path = stored_original_path
             invoice_number = created_invoice.invoice_number.strip()
             created_invoice.invoice_number = invoice_number
             existing_invoice = (
@@ -532,6 +550,7 @@ async def upload_bill(
             db.add(created_invoice)
 
         db.commit()
+        committed = True
 
         if created_invoice is not None:
             db.refresh(created_invoice)
@@ -539,6 +558,11 @@ async def upload_bill(
             db.refresh(created_challan)
     except Exception:
         db.rollback()
+        if not committed and stored_original_path:
+            try:
+                storage.delete_file(stored_original_path)
+            except Exception:
+                logger.warning('Failed to cleanup stored bill file after upload error: %s', stored_original_path)
         raise
     finally:
         remove_temp_file(processing_path)
@@ -564,7 +588,7 @@ async def upload_bill(
             document_type='gst_invoice',
             target_route='/invoices',
             file_name=safe_original_name,
-            file_path='',
+            file_path=created_invoice.original_file_path or '',
             invoice_date=created_invoice.invoice_date,
             gst_number=created_invoice.gst_number,
             total_amount=round(created_invoice.total_amount, 2),
@@ -602,7 +626,7 @@ async def upload_bill(
         document_type='delivery_challan',
         target_route='/invoices/delivery-challan',
         file_name=safe_original_name,
-        file_path='',
+        file_path=created_challan.original_file_path or '',
         invoice_date=created_challan.challan_date,
         gst_number=extracted.get('gst_number') if isinstance(extracted.get('gst_number'), str) else None,
         total_amount=round(created_challan.subtotal, 2),

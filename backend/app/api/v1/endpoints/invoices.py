@@ -2,7 +2,9 @@ from __future__ import annotations
 
 from datetime import date
 from io import BytesIO
+import mimetypes
 from pathlib import Path
+import re
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
@@ -280,6 +282,48 @@ def _resolve_invoice_pdf_for_response(
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail='Generated invoice PDF missing')
 
     return absolute_pdf_path, generated_pdf_path
+
+
+def _is_uploaded_invoice(invoice: Invoice) -> bool:
+    return invoice.source == InvoiceSource.UPLOADED and bool(invoice.original_file_path)
+
+
+def _build_uploaded_invoice_filename(invoice: Invoice) -> str:
+    suffix = Path(invoice.original_file_path or '').suffix.lower() or '.bin'
+    base = re.sub(r'[^A-Za-z0-9._-]+', '-', invoice.invoice_number or 'uploaded-invoice').strip('-_.')
+    if not base:
+        base = 'uploaded-invoice'
+    return f'{base[:80]}{suffix}'
+
+
+def _as_uploaded_invoice_file_response(
+    invoice: Invoice,
+    *,
+    inline: bool,
+) -> Response:
+    stored_path = invoice.original_file_path
+    if not stored_path:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='Uploaded invoice file not found')
+
+    storage = get_storage_backend()
+    try:
+        file_bytes = storage.read_bytes(stored_path)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='Uploaded invoice file not found') from exc
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail='Failed to read uploaded invoice file',
+        ) from exc
+
+    media_type = mimetypes.guess_type(stored_path)[0] or 'application/octet-stream'
+    filename = _build_uploaded_invoice_filename(invoice)
+    disposition = 'inline' if inline else 'attachment'
+    return Response(
+        content=file_bytes,
+        media_type=media_type,
+        headers={'Content-Disposition': f'{disposition}; filename="{filename}"'},
+    )
 
 
 @router.get('', response_model=InvoiceListResponse)
@@ -627,6 +671,10 @@ def get_invoice_preview(
     )
     if not invoice:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='Invoice not found')
+
+    if _is_uploaded_invoice(invoice):
+        return _as_uploaded_invoice_file_response(invoice, inline=True)
+
     company_details = db.scalar(select(PersonalDetails).where(PersonalDetails.owner_id == current_user.id))
     absolute_pdf_path, cleanup_path = _resolve_invoice_pdf_for_response(
         invoice,
@@ -654,7 +702,7 @@ def get_invoice_pdf(
     invoice_id: str,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
-) -> FileResponse:
+) -> Response:
     invoice = db.scalar(
         select(Invoice)
         .options(selectinload(Invoice.client), selectinload(Invoice.items))
@@ -662,6 +710,16 @@ def get_invoice_pdf(
     )
     if not invoice:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='Invoice not found')
+
+    if _is_uploaded_invoice(invoice):
+        _create_notification_best_effort(
+            db,
+            user_id=current_user.id,
+            title='Invoice File Downloaded',
+            message=f'Invoice {invoice.invoice_number} file has been downloaded.',
+            route='/invoices',
+        )
+        return _as_uploaded_invoice_file_response(invoice, inline=False)
 
     company_details = db.scalar(select(PersonalDetails).where(PersonalDetails.owner_id == current_user.id))
     absolute_pdf_path, cleanup_path = _resolve_invoice_pdf_for_response(

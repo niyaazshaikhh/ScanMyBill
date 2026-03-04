@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import mimetypes
+from pathlib import Path
+import re
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
@@ -11,6 +14,7 @@ from starlette.background import BackgroundTask
 
 from app.core.database import get_db
 from app.core.deps import get_current_user
+from app.core.storage import get_storage_backend
 from app.models.client import Client
 from app.models.non_gst_challan import NonGSTChallan, NonGSTChallanItem
 from app.models.personal_details import PersonalDetails
@@ -188,6 +192,45 @@ def _as_pdf_file_response(
         media_type='application/pdf',
         filename=filename,
         background=background,
+    )
+
+
+def _build_uploaded_challan_filename(challan: NonGSTChallan) -> str:
+    suffix = Path(challan.original_file_path or '').suffix.lower() or '.bin'
+    base_label = challan.challan_number or str(challan.sequence_number or 'uploaded-challan')
+    base = re.sub(r'[^A-Za-z0-9._-]+', '-', base_label).strip('-_.')
+    if not base:
+        base = 'uploaded-challan'
+    return f'{base[:80]}{suffix}'
+
+
+def _as_uploaded_file_response(
+    challan: NonGSTChallan,
+    *,
+    inline: bool,
+) -> Response:
+    stored_path = challan.original_file_path
+    if not stored_path:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='Uploaded challan file not found')
+
+    storage = get_storage_backend()
+    try:
+        file_bytes = storage.read_bytes(stored_path)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='Uploaded challan file not found') from exc
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail='Failed to read uploaded challan file',
+        ) from exc
+
+    media_type = mimetypes.guess_type(stored_path)[0] or 'application/octet-stream'
+    disposition = 'inline' if inline else 'attachment'
+    filename = _build_uploaded_challan_filename(challan)
+    return Response(
+        content=file_bytes,
+        media_type=media_type,
+        headers={'Content-Disposition': f'{disposition}; filename="{filename}"'},
     )
 
 
@@ -409,7 +452,11 @@ def delete_non_gst_challan(
     db.commit()
 
     if stored_path:
-        remove_generated_pdf(stored_path)
+        storage = get_storage_backend()
+        try:
+            storage.delete_file(stored_path)
+        except Exception:
+            pass
 
     _create_notification_best_effort(
         db,
@@ -427,7 +474,7 @@ def preview_non_gst_challan_pdf(
     challan_id: str,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
-) -> FileResponse:
+) -> Response:
     challan = db.scalar(
         select(NonGSTChallan)
         .options(selectinload(NonGSTChallan.client), selectinload(NonGSTChallan.items))
@@ -435,6 +482,8 @@ def preview_non_gst_challan_pdf(
     )
     if not challan:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='Challan not found')
+    if challan.original_file_path:
+        return _as_uploaded_file_response(challan, inline=True)
 
     client_name = challan.client.name if challan.client else 'N/A'
     company_details = db.scalar(select(PersonalDetails).where(PersonalDetails.owner_id == current_user.id))
@@ -459,7 +508,7 @@ def get_non_gst_challan_pdf(
     challan_id: str,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
-) -> FileResponse:
+) -> Response:
     challan = db.scalar(
         select(NonGSTChallan)
         .options(selectinload(NonGSTChallan.client), selectinload(NonGSTChallan.items))
@@ -467,6 +516,15 @@ def get_non_gst_challan_pdf(
     )
     if not challan:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='Challan not found')
+    if challan.original_file_path:
+        _create_notification_best_effort(
+            db,
+            user_id=current_user.id,
+            title='Delivery Challan File Downloaded',
+            message=f'Delivery challan {challan.challan_number} file has been downloaded.',
+            route='/invoices/delivery-challan',
+        )
+        return _as_uploaded_file_response(challan, inline=False)
 
     client_name = challan.client.name if challan.client else 'N/A'
     company_details = db.scalar(select(PersonalDetails).where(PersonalDetails.owner_id == current_user.id))

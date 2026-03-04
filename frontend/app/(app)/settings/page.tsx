@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ChevronRight, Eye, EyeOff, X } from "lucide-react";
+import { ChevronDown, ChevronRight, Eye, EyeOff, X } from "lucide-react";
 
 export const dynamic = "force-dynamic";
 
@@ -14,7 +14,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useAuthGuard } from "@/hooks/useAuthGuard";
 import { apiRequest } from "@/lib/api";
 import { updateAuthUser } from "@/lib/auth";
-import { getDebugModeEnabled, setDebugModeEnabled } from "@/lib/debugging";
+import { setDebugModeEnabled } from "@/lib/debugging";
 
 type SubscriptionPlan = "FREE" | "STANDARD" | "PRO" | "BUSINESS";
 type SubscriptionStatus = "ACTIVE" | "CANCELLED" | "EXPIRED";
@@ -104,6 +104,7 @@ export default function SettingsPage() {
   const [actionError, setActionError] = useState<string | null>(null);
   const [cancelLoading, setCancelLoading] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
+  const [subscriptionExpanded, setSubscriptionExpanded] = useState(false);
   const [debugModeEnabled, setDebugModeEnabledState] = useState(false);
 
   const loadUser = useCallback(async () => {
@@ -149,7 +150,8 @@ export default function SettingsPage() {
   }, []);
 
   useEffect(() => {
-    setDebugModeEnabledState(getDebugModeEnabled());
+    setDebugModeEnabledState(false);
+    setDebugModeEnabled(false);
   }, []);
 
   useEffect(() => {
@@ -252,10 +254,23 @@ export default function SettingsPage() {
       </Card>
 
       <Card className="bg-white/85">
-        <CardHeader>
+        <CardHeader className="flex flex-row items-center justify-between space-y-0">
           <CardTitle>Subscription</CardTitle>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={() => setSubscriptionExpanded((prev) => !prev)}
+            className="gap-1"
+            aria-expanded={subscriptionExpanded}
+            aria-label={subscriptionExpanded ? "Collapse subscription card" : "Expand subscription card"}
+          >
+            {subscriptionExpanded ? "Collapse" : "Expand"}
+            <ChevronDown className={`h-4 w-4 transition-transform ${subscriptionExpanded ? "rotate-180" : ""}`} />
+          </Button>
         </CardHeader>
-        <CardContent className="space-y-4">
+        {subscriptionExpanded ? (
+          <CardContent className="space-y-4">
           <div className="grid gap-3 rounded-md border border-border bg-background/70 p-3 text-sm md:grid-cols-2">
             <p className="flex items-center gap-2">
               <span className="font-medium">Current Plan:</span>
@@ -328,7 +343,8 @@ export default function SettingsPage() {
           {configError ? <p className="text-sm text-destructive">{configError}</p> : null}
           {actionError ? <p className="text-sm text-destructive">{actionError}</p> : null}
           {actionMessage ? <p className="text-sm text-emerald-700">{actionMessage}</p> : null}
-        </CardContent>
+          </CardContent>
+        ) : null}
       </Card>
 
       <Card className="bg-white/85">
@@ -355,7 +371,7 @@ export default function SettingsPage() {
         <CardHeader>
           <CardTitle>Developer Tools</CardTitle>
         </CardHeader>
-        <CardContent className="space-y-3">
+        <CardContent className="flex items-center justify-between gap-3">
           <p className="text-sm text-muted-foreground">
             Toggle Debug Console visibility on the dashboard upload flow.
           </p>
@@ -363,7 +379,7 @@ export default function SettingsPage() {
             type="button"
             variant="outline"
             onClick={handleToggleDebugMode}
-            className="w-full sm:w-auto"
+            className="shrink-0"
           >
             {debugModeEnabled ? (
               <Eye className="h-4 w-4" />
