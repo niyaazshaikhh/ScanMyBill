@@ -239,23 +239,25 @@ def delete_client(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='Client not found')
     client_name = client.name
 
-    invoices = db.scalars(
-        select(Invoice).where(
+    invoice_references = db.scalar(
+        select(func.count(Invoice.id)).where(
             Invoice.owner_id == current_user.id,
             Invoice.client_id == client.id,
         )
-    ).all()
-    for invoice in invoices:
-        invoice.client_id = None
+    ) or 0
 
-    challans = db.scalars(
-        select(NonGSTChallan).where(
+    challan_references = db.scalar(
+        select(func.count(NonGSTChallan.id)).where(
             NonGSTChallan.owner_id == current_user.id,
             NonGSTChallan.client_id == client.id,
         )
-    ).all()
-    for challan in challans:
-        challan.client_id = None
+    ) or 0
+
+    if invoice_references > 0 or challan_references > 0:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail='Client cannot be deleted because invoices or delivery challans are linked to it.',
+        )
 
     db.delete(client)
     db.commit()

@@ -85,6 +85,11 @@ if settings.trusted_hosts:
 if settings.enforce_https:
     app.add_middleware(HTTPSRedirectMiddleware)
 
+app.add_middleware(RequestContextMiddleware)
+app.add_middleware(RequestSizeLimitMiddleware)
+app.add_middleware(RateLimitMiddleware)
+app.add_middleware(SecurityHeadersMiddleware)
+app.add_middleware(AuthSessionMiddleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins,
@@ -93,11 +98,6 @@ app.add_middleware(
     allow_headers=['*'],
     expose_headers=['X-Access-Token', 'X-Token-Refreshed'],
 )
-app.add_middleware(RequestContextMiddleware)
-app.add_middleware(RequestSizeLimitMiddleware)
-app.add_middleware(RateLimitMiddleware)
-app.add_middleware(SecurityHeadersMiddleware)
-app.add_middleware(AuthSessionMiddleware)
 
 app.include_router(api_router, prefix=settings.api_v1_prefix)
 

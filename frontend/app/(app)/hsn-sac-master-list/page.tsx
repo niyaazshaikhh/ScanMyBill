@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { PopupWindow } from "@/components/ui/popup-window";
 import {
   Table,
   TableBody,
@@ -93,6 +94,7 @@ export default function HsnSacMasterListPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [pendingDeleteEntry, setPendingDeleteEntry] = useState<HsnSacMasterEntry | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
 
@@ -171,9 +173,6 @@ export default function HsnSacMasterListPage() {
   };
 
   const onDelete = async (entryId: string) => {
-    const shouldDelete = window.confirm("Delete this HSN/SAC entry?");
-    if (!shouldDelete) return;
-
     setDeletingId(entryId);
     setMessage(null);
     setError(null);
@@ -190,6 +189,13 @@ export default function HsnSacMasterListPage() {
     } finally {
       setDeletingId(null);
     }
+  };
+
+  const onConfirmDelete = () => {
+    if (!pendingDeleteEntry) return;
+    const targetEntryId = pendingDeleteEntry.id;
+    setPendingDeleteEntry(null);
+    void onDelete(targetEntryId);
   };
 
   return (
@@ -326,7 +332,7 @@ export default function HsnSacMasterListPage() {
                           <Button
                             variant="destructive"
                             size="sm"
-                            onClick={() => onDelete(entry.id)}
+                            onClick={() => setPendingDeleteEntry(entry)}
                             disabled={deletingId === entry.id}
                           >
                             {deletingId === entry.id ? "Deleting..." : "Delete"}
@@ -341,6 +347,20 @@ export default function HsnSacMasterListPage() {
           ) : null}
         </CardContent>
       </Card>
+      <PopupWindow
+        open={Boolean(pendingDeleteEntry)}
+        title="Delete HSN/SAC Entry"
+        message={
+          pendingDeleteEntry
+            ? `Delete ${pendingDeleteEntry.description} (${pendingDeleteEntry.hsn_sac_code})?`
+            : ""
+        }
+        confirmLabel="Delete"
+        cancelLabel="Cancel"
+        confirmVariant="destructive"
+        onCancel={() => setPendingDeleteEntry(null)}
+        onConfirm={onConfirmDelete}
+      />
     </div>
   );
 }

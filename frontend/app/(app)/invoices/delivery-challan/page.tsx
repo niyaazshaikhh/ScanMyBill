@@ -9,6 +9,7 @@ export const dynamic = "force-dynamic";
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
+import { PopupWindow } from '@/components/ui/popup-window';
 import { Select } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { useAuthGuard } from '@/hooks/useAuthGuard';
@@ -81,6 +82,7 @@ export default function DeliveryChallanInvoicesPage() {
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [uploadingBill, setUploadingBill] = useState(false);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
+  const [pendingDeleteChallan, setPendingDeleteChallan] = useState<{ id: string; challanNumber: string } | null>(null);
   const quickUploadInputRef = useRef<HTMLInputElement | null>(null);
 
   const yearOptions = useMemo(() => {
@@ -235,9 +237,6 @@ export default function DeliveryChallanInvoicesPage() {
   };
 
   const deleteChallan = async (challanId: string, challanNumber: string) => {
-    const confirmed = window.confirm(`Delete delivery challan ${challanNumber}? This cannot be undone.`);
-    if (!confirmed) return;
-
     setDeletingId(challanId);
     setActionMessage(null);
     try {
@@ -249,6 +248,14 @@ export default function DeliveryChallanInvoicesPage() {
     } finally {
       setDeletingId(null);
     }
+  };
+
+  const confirmDeleteChallan = () => {
+    if (!pendingDeleteChallan) return;
+    const targetId = pendingDeleteChallan.id;
+    const targetNumber = pendingDeleteChallan.challanNumber;
+    setPendingDeleteChallan(null);
+    void deleteChallan(targetId, targetNumber);
   };
 
   const quickUploadBill = async (selectedFile: File) => {
@@ -484,7 +491,12 @@ export default function DeliveryChallanInvoicesPage() {
                           <Button
                             variant='outline'
                             size='icon'
-                            onClick={() => deleteChallan(challan.id, challan.order_number)}
+                            onClick={() =>
+                              setPendingDeleteChallan({
+                                id: challan.id,
+                                challanNumber: challan.order_number,
+                              })
+                            }
                             disabled={
                               deletingId === challan.id || previewingId === challan.id || downloadingId === challan.id
                             }
@@ -525,6 +537,20 @@ export default function DeliveryChallanInvoicesPage() {
       >
         {uploadingBill ? <Loader2 className='h-6 w-6 animate-spin' /> : <Plus className='h-7 w-7' />}
       </Button>
+      <PopupWindow
+        open={Boolean(pendingDeleteChallan)}
+        title='Delete Delivery Challan'
+        message={
+          pendingDeleteChallan
+            ? `Delete delivery challan ${pendingDeleteChallan.challanNumber}? This action cannot be undone.`
+            : ''
+        }
+        confirmLabel='Delete'
+        cancelLabel='Cancel'
+        confirmVariant='destructive'
+        onCancel={() => setPendingDeleteChallan(null)}
+        onConfirm={confirmDeleteChallan}
+      />
     </div>
   );
 }

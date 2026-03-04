@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 
 import { Button } from '@/components/ui/button';
+import { PopupWindow } from '@/components/ui/popup-window';
 import { apiRequest } from '@/lib/api';
 import { getAuthToken } from '@/lib/auth';
 
@@ -68,6 +69,7 @@ export function RazorpayCheckoutButton({
   const [plans, setPlans] = useState<RazorpayPlanOption[]>([]);
   const [selectedPlanId, setSelectedPlanId] = useState(defaultPlanId || '');
   const [configError, setConfigError] = useState<string | null>(null);
+  const [popupErrorMessage, setPopupErrorMessage] = useState<string | null>(null);
 
   useEffect(() => {
     if (!showPlanSelector) return;
@@ -160,7 +162,7 @@ export function RazorpayCheckoutButton({
             setLoading(false);
           } catch (error) {
             const message = error instanceof Error ? error.message : 'Unable to verify payment';
-            alert(message);
+            setPopupErrorMessage(message);
             setLoading(false);
           }
         },
@@ -172,7 +174,7 @@ export function RazorpayCheckoutButton({
       razorpay.open();
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unable to start payment';
-      alert(message);
+      setPopupErrorMessage(message);
       setLoading(false);
     }
   };
@@ -208,6 +210,13 @@ export function RazorpayCheckoutButton({
       >
         {loading ? 'Launching Checkout...' : buttonLabel}
       </Button>
+      <PopupWindow
+        open={Boolean(popupErrorMessage)}
+        title='Checkout Error'
+        message={popupErrorMessage || ''}
+        confirmLabel='Close'
+        onConfirm={() => setPopupErrorMessage(null)}
+      />
     </div>
   );
 }

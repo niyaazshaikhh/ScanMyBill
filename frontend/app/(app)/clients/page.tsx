@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { PopupWindow } from '@/components/ui/popup-window';
 import { Select } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Textarea } from '@/components/ui/textarea';
@@ -22,7 +23,7 @@ import {
   sanitizeGstinInput,
   validateAddress,
   validateClientName,
-  validateRequiredGstin,
+  validateOptionalGstin,
   validateStateAndCodePair,
   validateStateCode,
   validateStateName
@@ -38,6 +39,11 @@ type ClientRow = {
   gst_number: string | null;
   total_transactions: number;
   total_revenue: number;
+};
+
+type PersonalDetailsResponse = {
+  state_name: string | null;
+  state_code: string | null;
 };
 
 export default function ClientsPage() {
@@ -57,14 +63,17 @@ export default function ClientsPage() {
   const [gst, setGst] = useState('');
   const [editingClientId, setEditingClientId] = useState<string | null>(null);
   const [deletingClientId, setDeletingClientId] = useState<string | null>(null);
+  const [pendingDeleteClient, setPendingDeleteClient] = useState<ClientRow | null>(null);
   const [saving, setSaving] = useState(false);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
+  const [defaultStateName, setDefaultStateName] = useState('');
+  const [defaultStateCode, setDefaultStateCode] = useState('');
 
   const resetForm = () => {
     setName('');
     setAddress('');
-    setStateName('');
-    setStateCode('');
+    setStateName(defaultStateName);
+    setStateCode(defaultStateCode);
     setEmail('');
     setGst('');
     setEditingClientId(null);
@@ -87,6 +96,51 @@ export default function ClientsPage() {
     void load();
   }, []);
 
+  useEffect(() => {
+    let active = true;
+
+    apiRequest<PersonalDetailsResponse>('/users/personal-details')
+      .then((details) => {
+        if (!active) return;
+        const configuredStateName = (details.state_name || '').trim();
+        const configuredStateCode =
+          getStateCodeByName(configuredStateName)
+          || (details.state_code || '').trim();
+        setDefaultStateName(configuredStateName);
+        setDefaultStateCode(configuredStateCode);
+      })
+      .catch(() => {
+        if (!active) return;
+        setDefaultStateName('');
+        setDefaultStateCode('');
+      });
+
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!showForm || editingClientId) return;
+    if (!defaultStateName) return;
+    setStateName((current) => current || defaultStateName);
+    setStateCode((current) => current || defaultStateCode);
+  }, [defaultStateCode, defaultStateName, editingClientId, showForm]);
+
+  const mergeClientInState = (incomingClient: ClientRow) => {
+    setClients((previousClients) => {
+      const existingIndex = previousClients.findIndex(
+        (existingClient) => existingClient.id === incomingClient.id,
+      );
+      if (existingIndex >= 0) {
+        return previousClients.map((existingClient) =>
+          existingClient.id === incomingClient.id ? incomingClient : existingClient,
+        );
+      }
+      return [incomingClient, ...previousClients];
+    });
+  };
+
   const toggleCreateForm = () => {
     setActionMessage(null);
     setError(null);
@@ -106,11 +160,11 @@ export default function ClientsPage() {
 
     const payload = {
       name: name.trim(),
-      address: address.trim(),
-      state_name: stateName.trim(),
-      state_code: stateCode.trim(),
+      address: address.trim() || null,
+      state_name: stateName.trim() || null,
+      state_code: stateCode.trim() || null,
       email: email.trim() || null,
-      gst_number: gst.trim().toUpperCase()
+      gst_number: gst.trim().toUpperCase() || null
     };
 
     const nameError = validateClientName(payload.name);
@@ -119,55 +173,65 @@ export default function ClientsPage() {
       return;
     }
 
-    const addressError = validateAddress(payload.address);
-    if (addressError) {
-      setActionMessage(addressError);
-      return;
+    if (payload.address) {
+      const addressError = validateAddress(payload.address);
+      if (addressError) {
+        setActionMessage(addressError);
+        return;
+      }
     }
 
-    const stateNameError = validateStateName(payload.state_name);
-    if (stateNameError) {
-      setActionMessage(stateNameError);
-      return;
+    if (payload.state_name || payload.state_code) {
+      const stateNameError = validateStateName(payload.state_name || '');
+      if (stateNameError) {
+        setActionMessage(stateNameError);
+        return;
+      }
+
+      const stateCodeError = validateStateCode(payload.state_code || '');
+      if (stateCodeError) {
+        setActionMessage(stateCodeError);
+        return;
+      }
+
+      const statePairError = validateStateAndCodePair(payload.state_name || '', payload.state_code || '');
+      if (statePairError) {
+        setActionMessage(statePairError);
+        return;
+      }
     }
 
-    const stateCodeError = validateStateCode(payload.state_code);
-    if (stateCodeError) {
-      setActionMessage(stateCodeError);
-      return;
+    if (payload.gst_number) {
+      const gstValidationError = validateOptionalGstin(payload.gst_number);
+      if (gstValidationError) {
+        setActionMessage(gstValidationError);
+        return;
+      }
     }
 
-    const statePairError = validateStateAndCodePair(payload.state_name, payload.state_code);
-    if (statePairError) {
-      setActionMessage(statePairError);
-      return;
-    }
-
-    const gstValidationError = validateRequiredGstin(payload.gst_number);
-    if (gstValidationError) {
-      setActionMessage(gstValidationError);
-      return;
-    }
-
+    const targetEditingClientId = editingClientId;
+    setShowForm(false);
     setSaving(true);
     try {
-      if (editingClientId) {
-        await apiRequest(`/clients/${editingClientId}`, {
+      let savedClient: ClientRow;
+      if (targetEditingClientId) {
+        savedClient = await apiRequest<ClientRow>(`/clients/${targetEditingClientId}`, {
           method: 'PUT',
           body: payload
         });
+        mergeClientInState(savedClient);
         setActionMessage('Client updated successfully.');
       } else {
-        await apiRequest('/clients', {
+        savedClient = await apiRequest<ClientRow>('/clients', {
           method: 'POST',
           body: payload
         });
+        mergeClientInState(savedClient);
         setActionMessage('Client added successfully.');
       }
 
       resetForm();
       setShowForm(false);
-      await load();
     } catch (err) {
       setActionMessage(err instanceof Error ? err.message : 'Unable to save client');
     } finally {
@@ -189,11 +253,6 @@ export default function ClientsPage() {
   };
 
   const deleteClient = async (clientId: string) => {
-    const confirmed = window.confirm(
-      'Delete this client? Linked invoices will remain but be unlinked from this client.'
-    );
-    if (!confirmed) return;
-
     setActionMessage(null);
     setError(null);
     setDeletingClientId(clientId);
@@ -211,6 +270,13 @@ export default function ClientsPage() {
     } finally {
       setDeletingClientId(null);
     }
+  };
+
+  const confirmDeleteClient = () => {
+    if (!pendingDeleteClient) return;
+    const targetClientId = pendingDeleteClient.id;
+    setPendingDeleteClient(null);
+    void deleteClient(targetClientId);
   };
 
   return (
@@ -233,7 +299,9 @@ export default function ClientsPage() {
           <CardContent>
             <form onSubmit={saveClient} className='grid gap-3 md:grid-cols-2'>
               <div className='space-y-1'>
-                <Label>Name</Label>
+                <Label>
+                  Name <span className='text-destructive'>*</span>
+                </Label>
                 <Input
                   value={name}
                   onChange={(event) => setName(sanitizeClientNameInput(event.target.value))}
@@ -247,7 +315,6 @@ export default function ClientsPage() {
                   value={gst}
                   onChange={(event) => setGst(sanitizeGstinInput(event.target.value))}
                   maxLength={15}
-                  required
                 />
               </div>
               <div className='space-y-1 md:col-span-2'>
@@ -256,7 +323,6 @@ export default function ClientsPage() {
                   value={address}
                   onChange={(event) => setAddress(sanitizeAddressInput(event.target.value))}
                   maxLength={115}
-                  required
                 />
                 <p className='text-xs text-muted-foreground'>{address.length}/115</p>
               </div>
@@ -270,7 +336,6 @@ export default function ClientsPage() {
                     setStateName(selectedStateName);
                     setStateCode(selectedStateCode);
                   }}
-                  required
                 >
                   <option value=''>Select State / Union Territory</option>
                   {INDIAN_STATES_AND_UTS.map((stateOption) => (
@@ -282,7 +347,7 @@ export default function ClientsPage() {
               </div>
               <div className='space-y-1'>
                 <Label>State Code</Label>
-                <Input value={stateCode} readOnly required />
+                <Input value={stateCode} readOnly />
               </div>
               <div className='space-y-1 md:col-span-2'>
                 <Label>Email</Label>
@@ -366,7 +431,7 @@ export default function ClientsPage() {
                           <Button
                             variant='destructive'
                             size='sm'
-                            onClick={() => deleteClient(client.id)}
+                            onClick={() => setPendingDeleteClient(client)}
                             disabled={deletingClientId === client.id}
                           >
                             {deletingClientId === client.id ? 'Deleting...' : 'Delete'}
@@ -381,6 +446,20 @@ export default function ClientsPage() {
           ) : null}
         </CardContent>
       </Card>
+      <PopupWindow
+        open={Boolean(pendingDeleteClient)}
+        title='Delete Client'
+        message={
+          pendingDeleteClient
+            ? `Delete ${pendingDeleteClient.name}? This is allowed only when no invoices or delivery challans are linked to this client.`
+            : ''
+        }
+        confirmLabel='Delete'
+        cancelLabel='Cancel'
+        confirmVariant='destructive'
+        onCancel={() => setPendingDeleteClient(null)}
+        onConfirm={confirmDeleteClient}
+      />
     </div>
   );
 }

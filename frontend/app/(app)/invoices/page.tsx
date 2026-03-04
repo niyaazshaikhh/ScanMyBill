@@ -10,6 +10,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
+import { PopupWindow } from '@/components/ui/popup-window';
 import { Select } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { useAuthGuard } from '@/hooks/useAuthGuard';
@@ -83,6 +84,8 @@ export default function InvoicesPage() {
   const [downloadingInvoiceId, setDownloadingInvoiceId] = useState<string | null>(null);
   const [uploadingBill, setUploadingBill] = useState(false);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
+  const [popupErrorMessage, setPopupErrorMessage] = useState<string | null>(null);
+  const [pendingDeleteInvoice, setPendingDeleteInvoice] = useState<Invoice | null>(null);
   const quickUploadInputRef = useRef<HTMLInputElement | null>(null);
 
   const yearOptions = useMemo(() => {
@@ -201,14 +204,11 @@ export default function InvoicesPage() {
       link.click();
       URL.revokeObjectURL(url);
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Failed to export folder');
+      setPopupErrorMessage(err instanceof Error ? err.message : 'Failed to export folder');
     }
   };
 
   const deleteInvoice = async (invoiceId: string) => {
-    const shouldDelete = window.confirm('Delete this bill? This action cannot be undone.');
-    if (!shouldDelete) return;
-
     setDeletingInvoiceId(invoiceId);
     setActionMessage(null);
 
@@ -221,6 +221,13 @@ export default function InvoicesPage() {
     } finally {
       setDeletingInvoiceId(null);
     }
+  };
+
+  const confirmDeleteInvoice = () => {
+    if (!pendingDeleteInvoice) return;
+    const targetInvoiceId = pendingDeleteInvoice.id;
+    setPendingDeleteInvoice(null);
+    void deleteInvoice(targetInvoiceId);
   };
 
   const previewInvoice = async (invoiceId: string) => {
@@ -520,7 +527,7 @@ export default function InvoicesPage() {
                           <Button
                             variant='destructive'
                             size='sm'
-                            onClick={() => deleteInvoice(invoice.id)}
+                            onClick={() => setPendingDeleteInvoice(invoice)}
                             disabled={
                               deletingInvoiceId === invoice.id
                               || previewingInvoiceId === invoice.id
@@ -561,6 +568,31 @@ export default function InvoicesPage() {
       >
         {uploadingBill ? <Loader2 className='h-6 w-6 animate-spin' /> : <Plus className='h-7 w-7' />}
       </Button>
+      <PopupWindow
+        open={Boolean(popupErrorMessage)}
+        title='Action Failed'
+        message={popupErrorMessage || ''}
+        confirmLabel='Close'
+        onConfirm={() => setPopupErrorMessage(null)}
+      />
+      <PopupWindow
+        open={Boolean(pendingDeleteInvoice)}
+        title='Delete Bill'
+        message={
+          pendingDeleteInvoice
+            ? `Delete bill ${pendingDeleteInvoice.invoice_number}? This action cannot be undone.`
+            : ''
+        }
+        confirmLabel='Delete'
+        cancelLabel='Cancel'
+        confirmVariant='destructive'
+        onCancel={() => setPendingDeleteInvoice(null)}
+        onConfirm={confirmDeleteInvoice}
+        loading={Boolean(
+          pendingDeleteInvoice
+          && deletingInvoiceId === pendingDeleteInvoice.id
+        )}
+      />
     </div>
   );
 }

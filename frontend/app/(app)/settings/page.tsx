@@ -11,6 +11,7 @@ import { SubscriptionBadge } from "@/components/SubscriptionBadge";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { PopupWindow } from "@/components/ui/popup-window";
 import { useAuthGuard } from "@/hooks/useAuthGuard";
 import { apiRequest } from "@/lib/api";
 import { updateAuthUser } from "@/lib/auth";
@@ -103,6 +104,7 @@ export default function SettingsPage() {
   const [actionMessage, setActionMessage] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [cancelLoading, setCancelLoading] = useState(false);
+  const [cancelConfirmOpen, setCancelConfirmOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
   const [subscriptionExpanded, setSubscriptionExpanded] = useState(false);
   const [debugModeEnabled, setDebugModeEnabledState] = useState(false);
@@ -196,10 +198,6 @@ export default function SettingsPage() {
 
   const handleCancelSubscription = async () => {
     if (!canCancel) return;
-    const confirmed = window.confirm(
-      "Cancel your subscription now? This stops future charges on Razorpay.",
-    );
-    if (!confirmed) return;
 
     setCancelLoading(true);
     setActionError(null);
@@ -217,6 +215,7 @@ export default function SettingsPage() {
       setActionError(error instanceof Error ? error.message : "Failed to cancel subscription");
     } finally {
       setCancelLoading(false);
+      setCancelConfirmOpen(false);
     }
   };
 
@@ -331,7 +330,7 @@ export default function SettingsPage() {
                 <Button
                   className="w-full"
                   variant="destructive"
-                  onClick={handleCancelSubscription}
+                  onClick={() => setCancelConfirmOpen(true)}
                   disabled={!canCancel || cancelLoading}
                 >
                   {cancelLoading ? "Cancelling..." : "Cancel Subscription"}
@@ -466,6 +465,23 @@ export default function SettingsPage() {
           </div>
         </div>
       ) : null}
+      <PopupWindow
+        open={cancelConfirmOpen}
+        title="Cancel Subscription"
+        message="Cancel your subscription now? This stops future charges on Razorpay."
+        confirmLabel={cancelLoading ? "Cancelling..." : "Cancel Subscription"}
+        cancelLabel="Keep Subscription"
+        confirmVariant="destructive"
+        loading={cancelLoading}
+        onCancel={() => {
+          if (cancelLoading) return;
+          setCancelConfirmOpen(false);
+        }}
+        onConfirm={() => {
+          if (cancelLoading) return;
+          void handleCancelSubscription();
+        }}
+      />
     </div>
   );
 }

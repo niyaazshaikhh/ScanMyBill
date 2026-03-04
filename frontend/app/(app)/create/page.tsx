@@ -22,6 +22,7 @@ import { buildBillPdfFilename } from "@/lib/pdf-filename";
 import {
   INDIAN_STATES_AND_UTS,
   getStateCodeByName,
+  validateOptionalGstin,
 } from "@/lib/validation/business-details";
 import {
   buildDefaultInvoiceNumber,
@@ -42,10 +43,15 @@ import {
 type Client = {
   id: string;
   name: string;
+  gst_number?: string | null;
 };
 
 type LatestCreatedInvoiceResponse = {
   invoice_number: string | null;
+};
+
+type PersonalDetailsResponse = {
+  state_name: string | null;
 };
 
 type HsnSacMasterEntry = {
@@ -160,6 +166,7 @@ export default function CreateInvoicePage() {
   const [exporting, setExporting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const invoiceNumberManuallyEditedRef = useRef(false);
+  const placeOfSupplyManuallyEditedRef = useRef(false);
   const invoiceDateRef = useRef(invoiceDate);
   const invoiceDatePickerRef = useRef<HTMLInputElement | null>(null);
 
@@ -170,12 +177,20 @@ export default function CreateInvoicePage() {
   useEffect(() => {
     apiRequest<Client[]>("/clients")
       .then((data) => {
-        setClients(data);
+        const gstEnabledClients = data.filter(
+          (client) =>
+            typeof client.gst_number === "string" &&
+            client.gst_number.trim().length > 0 &&
+            validateOptionalGstin(client.gst_number.trim().toUpperCase()) === null,
+        );
+        setClients(gstEnabledClients);
         if (
           requestedClientId &&
-          data.some((client) => client.id === requestedClientId)
+          gstEnabledClients.some((client) => client.id === requestedClientId)
         ) {
           setClientId(requestedClientId);
+        } else if (requestedClientId) {
+          setClientId("");
         }
       })
       .catch(() => setClients([]));
@@ -191,6 +206,27 @@ export default function CreateInvoicePage() {
       .catch(() => {
         if (!active) return;
         setHsnSacMasters([]);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    apiRequest<PersonalDetailsResponse>("/users/personal-details")
+      .then((details) => {
+        if (!active || placeOfSupplyManuallyEditedRef.current) return;
+        const configuredState = (details.state_name || "").trim();
+        if (!configuredState) return;
+        const configuredStateCode = getStateCodeByName(configuredState);
+        if (!configuredStateCode) return;
+        setPlaceOfSupply(configuredState);
+        setPlaceOfSupplyCode(configuredStateCode);
+      })
+      .catch(() => {
+        // Keep existing defaults if personal details are unavailable.
       });
 
     return () => {
@@ -472,7 +508,9 @@ export default function CreateInvoicePage() {
                 onChange={(event) => setClientId(event.target.value)}
                 required
               >
-                <option value="">Select client</option>
+                <option value="">
+                  {clients.length ? "Select client" : "No clients with GST Number"}
+                </option>
                 {clients.map((client) => (
                   <option key={client.id} value={client.id}>
                     {client.name}
@@ -556,6 +594,7 @@ export default function CreateInvoicePage() {
               <Select
                 value={placeOfSupply}
                 onChange={(event) => {
+                  placeOfSupplyManuallyEditedRef.current = true;
                   const selectedState = event.target.value;
                   setPlaceOfSupply(selectedState);
                   setPlaceOfSupplyCode(getStateCodeByName(selectedState) || "");
