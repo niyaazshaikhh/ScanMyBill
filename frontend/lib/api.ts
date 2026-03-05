@@ -12,20 +12,26 @@ function isLocalhost(hostname: string): boolean {
 function shouldUseLocalFallback(configuredBase: string): boolean {
   if (typeof window === 'undefined') return false;
   if (!isLocalhost(window.location.hostname.toLowerCase())) return false;
-  if (!configuredBase) return true;
+  return !configuredBase;
+}
 
-  try {
-    const parsed = new URL(configuredBase);
-    return parsed.hostname.toLowerCase() === 'scanmybill.xyz';
-  } catch {
-    return false;
+function resolveConfiguredApiBase(configuredBase: string): string {
+  if (!configuredBase) return '';
+
+  if (configuredBase.startsWith('/')) {
+    if (typeof window === 'undefined') return configuredBase;
+    return `${window.location.origin}${configuredBase}`;
   }
+  return configuredBase;
 }
 
 function resolveApiBase(): string {
-  const configuredBase = (process.env.NEXT_PUBLIC_API_URL || '').trim();
+  const configuredBase = resolveConfiguredApiBase((process.env.NEXT_PUBLIC_API_URL || '').trim());
   if (shouldUseLocalFallback(configuredBase)) {
     return DEFAULT_LOCAL_API_BASE;
+  }
+  if (!configuredBase && typeof window !== 'undefined' && !isLocalhost(window.location.hostname.toLowerCase())) {
+    return `${window.location.origin}/api/v1`;
   }
   return configuredBase || DEFAULT_LOCAL_API_BASE;
 }

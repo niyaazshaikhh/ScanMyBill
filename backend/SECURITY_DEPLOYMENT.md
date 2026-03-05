@@ -43,6 +43,7 @@ Set these values in your runtime secret manager or environment:
 - `SECRET_KEY` (32+ random characters)
 - `POSTGRES_SERVER`, `POSTGRES_PORT`, `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB`
   - or `DATABASE_URL_OVERRIDE`
+  - if `DATABASE_URL_OVERRIDE` is used, `POSTGRES_PASSWORD` can remain a placeholder
 - `COOKIE_SECURE=true`
 - `ENFORCE_HTTPS=true`
 - `CORS_ORIGINS` with exact frontend domain(s)

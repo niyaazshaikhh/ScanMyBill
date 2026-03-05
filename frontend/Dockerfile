@@ -27,17 +27,14 @@ ENV NODE_ENV=production \
     PORT=3000 \
     HOSTNAME=0.0.0.0
 
-COPY package.json package-lock.json ./
-RUN npm ci --omit=dev && npm cache clean --force
-
-COPY --from=builder /app/.next ./.next
-COPY --from=builder /app/public ./public
-RUN chown -R node:node /app
+COPY --from=builder --chown=node:node /app/.next/standalone ./
+COPY --from=builder --chown=node:node /app/.next/static ./.next/static
+COPY --from=builder --chown=node:node /app/public ./public
 
 USER node
 
 EXPOSE 3000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=45s --retries=3 \
-  CMD wget -q --spider http://127.0.0.1:3000/ || exit 1
+  CMD wget -q --spider "http://127.0.0.1:${PORT:-3000}/" || exit 1
 
-CMD ["npm", "run", "start", "--", "-H", "0.0.0.0", "-p", "3000"]
+CMD ["node", "server.js"]

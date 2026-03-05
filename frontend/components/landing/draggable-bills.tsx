@@ -11,7 +11,7 @@ type BillCard = {
   left: number;
   top: number;
   rotate: number;
-  color: string;
+  accent: string;
 };
 
 const initialCards: BillCard[] = [
@@ -24,7 +24,7 @@ const initialCards: BillCard[] = [
     left: 12,
     top: 12,
     rotate: -8,
-    color: 'bg-gradient-to-br from-amber-50 to-amber-100'
+    accent: 'bg-amber-400'
   },
   {
     id: 2,
@@ -35,7 +35,7 @@ const initialCards: BillCard[] = [
     left: 44,
     top: 30,
     rotate: 6,
-    color: 'bg-gradient-to-br from-lime-50 to-lime-100'
+    accent: 'bg-lime-500'
   },
   {
     id: 3,
@@ -46,7 +46,7 @@ const initialCards: BillCard[] = [
     left: 22,
     top: 56,
     rotate: -3,
-    color: 'bg-gradient-to-br from-sky-50 to-sky-100'
+    accent: 'bg-sky-500'
   }
 ];
 
@@ -142,7 +142,7 @@ export function DraggableBills() {
             left: `${card.left}%`,
             top: `${card.top}%`
           }}
-          className='absolute w-48 -translate-x-1/2 -translate-y-1/2 touch-none select-none transition-[left,top] duration-150 ease-out'
+          className='absolute w-[190px] -translate-x-1/2 -translate-y-1/2 touch-none select-none transition-[left,top] duration-150 ease-out sm:w-[200px]'
         >
           <div
             style={
@@ -152,20 +152,30 @@ export function DraggableBills() {
                 '--bill-float-duration': `${6.5 + card.id * 0.9}s`,
               } as CSSProperties
             }
-            className={`invoice-float w-full cursor-grab rounded-xl border border-stone-300 ${card.color} p-4 shadow-md active:cursor-grabbing ${
+            className={`invoice-float relative aspect-[3/4] w-full cursor-grab border border-stone-300 bg-white p-3 shadow-[0_14px_24px_rgba(41,37,36,0.2)] active:cursor-grabbing ${
               activeId === card.id ? 'invoice-float-dragging' : ''
             }`}
           >
-            <p className='text-xs font-medium text-stone-600'>AI Processed Bill</p>
-            <h4 className='mt-1 text-sm font-semibold text-stone-800'>{card.title}</h4>
+            <div className='pointer-events-none absolute right-0 top-0 h-0 w-0 border-b-[16px] border-l-[16px] border-b-stone-200/80 border-l-transparent' />
+            <div className={`mb-2 h-1.5 w-full ${card.accent}`} />
+
+            <p className='text-[10px] font-semibold uppercase tracking-wide text-stone-600'>Invoice</p>
+            <h4 className='mt-1 line-clamp-1 text-sm font-semibold text-stone-800'>{card.title}</h4>
             <p className='mt-2 text-lg font-bold text-stone-900'>{card.amount}</p>
-            <div className='mt-2 flex items-center justify-between gap-2 text-[11px] text-stone-600'>
+
+            <div className='mt-2 space-y-1.5'>
+              <div className='h-1 w-full bg-stone-200' />
+              <div className='h-1 w-5/6 bg-stone-200' />
+              <div className='h-1 w-3/4 bg-stone-200' />
+            </div>
+
+            <div className='mt-3 flex items-center justify-between gap-2 text-[11px] text-stone-600'>
               <span>{card.insight}</span>
               <span className='rounded-full bg-emerald-100 px-2 py-0.5 font-semibold text-emerald-700'>
                 {card.aiScore}
               </span>
             </div>
-            <p className='mt-1 text-xs text-stone-500'>Drag to organize MSME workflow</p>
+            <p className='mt-2 text-[11px] text-stone-500'>Drag to organize MSME workflow</p>
           </div>
         </div>
       ))}

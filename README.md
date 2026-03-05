@@ -7,7 +7,7 @@ AI-powered billing and GST workflow platform specially made for Indian MSMEs.
 - Backend: FastAPI, SQLAlchemy, JWT auth, Google OAuth login
 - Database: PostgreSQL
 - AI/Document Processing: OpenAI/Azure OpenAI, Tesseract OCR fallback, PDF/image parsers
-- Payments: Razorpay subscriptions
+- Payments: Razorpay (order-based checkout with backend signature verification)
 - DevOps: Docker + Docker Compose
 
 ## Core Capabilities
@@ -112,6 +112,27 @@ Notes:
 - Backend waits for PostgreSQL health.
 - Uploaded files are persisted in the `backend_uploads` Docker volume.
 
+## Cloud Compatibility (Provider-Agnostic)
+
+The project is container-first and cloud-portable:
+- Backend supports managed DB via `DATABASE_URL_OVERRIDE`.
+- Backend and frontend support dynamic runtime port via `PORT` env.
+- Frontend supports `NEXT_PUBLIC_API_URL=/api/v1` for same-domain reverse proxy setups.
+- Frontend uses Next.js standalone runtime for leaner cloud deployments.
+
+### Managed Database Compose Mode
+
+Use this when deploying on providers with external managed PostgreSQL:
+
+```bash
+docker compose -f docker-compose.cloud.yml --env-file .env up -d --build
+```
+
+Required:
+- `DATABASE_URL_OVERRIDE`
+- `CORS_ORIGINS`
+- `TRUSTED_HOSTS`
+
 ## Production Checklist
 
 Set strong values before deploying:
@@ -125,10 +146,22 @@ Set strong values before deploying:
 - `EXPOSE_PASSWORD_RESET_TOKEN=false`
 - `RAZORPAY_*`, `SMTP_*`, and AI provider keys (`OPENAI_*` / `AZURE_OPENAI_*`) as needed
 
+## Production Payment Flow
+
+The checkout implementation follows this flow:
+
+1. User clicks pay.
+2. Backend creates Razorpay order (`POST /payments/orders`).
+3. Frontend opens Razorpay Checkout with `order_id`.
+4. User completes payment.
+5. Backend verifies Razorpay signature (`POST /payments/verify`).
+6. Backend marks the order `PAID` in database (`payment_events`).
+
 ## Documentation
 - API summary: `docs/API.md`
 - Database schema: `docs/DATABASE_SCHEMA.md`
 - ERD description: `docs/ERD.md`
+- Cloud deployment guide: `docs/CLOUD_DEPLOYMENT.md`
 
 ## Important Notes
 - API docs (`/docs`) are disabled when `ENVIRONMENT=production` and `ENABLE_DOCS=false`.

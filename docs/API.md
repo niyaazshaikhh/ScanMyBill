@@ -75,10 +75,19 @@ Routes are under `/hsn-sac-master-list`.
 Routes are under `/payments`.
 
 - `GET /payments/config`
+- `POST /payments/orders` (recommended production checkout flow)
 - `POST /payments/subscriptions`
 - `POST /payments/subscriptions/cancel`
 - `POST /payments/verify`
 - `POST /payments/webhook`
+
+### Recommended Production Checkout Sequence
+
+1. Frontend calls `POST /payments/orders`.
+2. Backend creates Razorpay order and stores status as `ORDER_CREATED`.
+3. Frontend opens Razorpay checkout with `order_id`.
+4. Frontend posts `razorpay_order_id`, `razorpay_payment_id`, `razorpay_signature` to `POST /payments/verify`.
+5. Backend verifies signature + payment status and updates DB order status to `PAID`.
 
 ## User Profile and Preferences
 

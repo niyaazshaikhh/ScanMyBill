@@ -74,7 +74,8 @@ def _validate_security_configuration() -> None:
             issues.append("CORS_ORIGINS cannot include '*' in production.")
         if settings.seed_default_admin:
             issues.append('SEED_DEFAULT_ADMIN must be false in production.')
-        if settings.postgres_password.strip().lower() in {'', 'postgres'}:
+        # When DATABASE_URL_OVERRIDE is provided (managed DB/cloud), POSTGRES_* values may be placeholders.
+        if not settings.database_url_override and settings.postgres_password.strip().lower() in {'', 'postgres'}:
             issues.append('POSTGRES_PASSWORD must be configured with a strong value in production.')
         if not settings.enforce_https:
             issues.append('ENFORCE_HTTPS must be true in production.')

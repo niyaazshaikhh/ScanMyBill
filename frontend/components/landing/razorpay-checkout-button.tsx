@@ -32,12 +32,20 @@ type PaymentConfigResponse = {
   key_id: string | null;
   plans: RazorpayPlanOption[];
 };
-type SubscriptionResponse = {
-  subscription_id: string;
+type OrderResponse = {
+  order_id: string;
   status: string;
-  short_url?: string | null;
+  amount: number;
+  currency: string;
+  plan_id: string;
+  plan_name?: string | null;
 };
-type VerifyResponse = { verified: boolean };
+type VerifyResponse = {
+  verified: boolean;
+  flow?: 'order' | 'subscription';
+  order_status?: string;
+  order_id?: string;
+};
 
 function formatPlanLabel(plan: RazorpayPlanOption) {
   const amount =
@@ -125,7 +133,7 @@ export function RazorpayCheckoutButton({
         throw new Error('No Razorpay plan is configured.');
       }
 
-      const subscription = await apiRequest<SubscriptionResponse>('/payments/subscriptions', {
+      const order = await apiRequest<OrderResponse>('/payments/orders', {
         method: 'POST',
         body: { plan_id: planId }
       });
@@ -136,9 +144,11 @@ export function RazorpayCheckoutButton({
 
       const razorpay = new window.Razorpay({
         key: checkoutKey,
-        subscription_id: subscription.subscription_id,
+        order_id: order.order_id,
+        amount: order.amount,
+        currency: order.currency,
         name: 'ScanMyBill',
-        description: 'ScanMyBill Pro Subscription',
+        description: order.plan_name ? `${order.plan_name} Plan Payment` : 'ScanMyBill Plan Payment',
         theme: { color: '#d85b1b' },
         handler: async (response) => {
           try {
@@ -147,7 +157,7 @@ export function RazorpayCheckoutButton({
               body: {
                 razorpay_signature: response.razorpay_signature,
                 razorpay_payment_id: response.razorpay_payment_id,
-                razorpay_subscription_id: response.razorpay_subscription_id
+                razorpay_order_id: response.razorpay_order_id || order.order_id
               }
             });
             if (!verification.verified) {
