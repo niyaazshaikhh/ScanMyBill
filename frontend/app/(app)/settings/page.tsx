@@ -476,9 +476,9 @@ export default function SettingsPage() {
             <span className="font-medium">Support Email:</span>{" "}
             <a
               className="text-primary hover:underline"
-              href="mailto:support@scanmybill.xyz?subject=ScanMyBill%20Support%20Request"
+              href="mailto:scanmybill@gmail.com?subject=ScanMyBill%20Support%20Request"
             >
-              support@scanmybill.xyz
+              scanmybill@gmail.com
             </a>
           </p>
           <button
@@ -522,8 +522,8 @@ export default function SettingsPage() {
               </p>
               <p>
                 <span className="font-medium">Support:</span>{" "}
-                <a className="text-primary hover:underline" href="mailto:support@scanmybill.xyz">
-                  support@scanmybill.xyz
+                <a className="text-primary hover:underline" href="mailto:scanmybill@gmail.com">
+                  scanmybill@gmail.com
                 </a>
               </p>
               <p className="text-muted-foreground">Quick FAQ:</p>

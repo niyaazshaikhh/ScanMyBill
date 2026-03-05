@@ -327,8 +327,8 @@ export default function LandingPage() {
           <div>
             <h4 className="font-semibold">Contact</h4>
             <p className="mt-2 text-muted-foreground">
-              <a className="text-primary" href="mailto:support@scanmybill.xyz">
-                support@scanmybill.xyz
+              <a className="text-primary" href="mailto:scanmybill@gmail.com">
+                scanmybill@gmail.com
               </a>
             </p>
             <p className="mt-1 text-muted-foreground">

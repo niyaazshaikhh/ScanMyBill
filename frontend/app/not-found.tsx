@@ -38,8 +38,8 @@ export default function NotFound() {
 
           <p className='text-xs text-muted-foreground'>
             Need help?{' '}
-            <a className='text-primary hover:underline' href='mailto:support@scanmybill.xyz'>
-              support@scanmybill.xyz
+            <a className='text-primary hover:underline' href='mailto:scanmybill@gmail.com'>
+              scanmybill@gmail.com
             </a>
           </p>
         </CardContent>

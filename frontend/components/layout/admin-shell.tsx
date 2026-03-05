@@ -1057,9 +1057,9 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
                   Support email:{" "}
                   <a
                     className="font-medium text-primary hover:underline"
-                    href="mailto:support@scanmybill.xyz"
+                    href="mailto:scanmybill@gmail.com"
                   >
-                    support@scanmybill.xyz
+                    scanmybill@gmail.com
                   </a>
                 </p>
                 <p className="mt-2">

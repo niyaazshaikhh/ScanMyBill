@@ -19,8 +19,14 @@ pnpm-debug.log*
 .env.development.local
 .env.test.local
 .env.production.local
+.env.*
+!.env.example
 backend/.env
 frontend/.env
+backend/.env.*
+frontend/.env.*
+!backend/.env.example
+!frontend/.env.example
 
 # Python
 __pycache__/
@@ -46,3 +52,14 @@ dist/
 # Backend runtime artifacts
 backend/uploads/*
 !backend/uploads/.gitkeep
+
+# Local/personal notes and snapshots
+Razor pay setup guide.txt
+project_tree.txt
+
+# Common private key/certificate artifacts
+*.pem
+*.key
+*.p12
+*.pfx
+*.crt
