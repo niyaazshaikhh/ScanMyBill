@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 
 import { Button } from '@/components/ui/button';
@@ -14,6 +15,7 @@ type MessageResponse = {
 };
 
 export default function ResetPasswordPage() {
+  const router = useRouter();
   const [token, setToken] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -25,6 +27,7 @@ export default function ResetPasswordPage() {
     const tokenFromQuery = new URLSearchParams(window.location.search).get('token');
     if (tokenFromQuery) {
       setToken(tokenFromQuery);
+      window.history.replaceState({}, document.title, window.location.pathname);
     }
   }, []);
 
@@ -34,7 +37,7 @@ export default function ResetPasswordPage() {
     setSuccess(null);
 
     if (!token) {
-      setError('Reset token is required');
+      setError('Reset link is invalid or expired. Please request a new reset email.');
       return;
     }
 
@@ -57,6 +60,7 @@ export default function ResetPasswordPage() {
       setNewPassword('');
       setConfirmPassword('');
       setToken('');
+      router.push('/signin');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unable to reset password');
     } finally {
@@ -72,16 +76,6 @@ export default function ResetPasswordPage() {
       </CardHeader>
       <CardContent className='space-y-5'>
         <form className='space-y-4' onSubmit={onSubmit}>
-          <div className='space-y-2'>
-            <Label htmlFor='token'>Reset Token</Label>
-            <Input
-              id='token'
-              value={token}
-              onChange={(event) => setToken(event.target.value)}
-              placeholder='Paste your reset token'
-              required
-            />
-          </div>
           <div className='space-y-2'>
             <Label htmlFor='new-password'>New Password</Label>
             <Input

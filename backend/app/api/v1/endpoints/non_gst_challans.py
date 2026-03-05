@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import mimetypes
 from pathlib import Path
@@ -117,7 +117,7 @@ def _build_delivery_challan_pdf_data(
 
     return {
         'user_id': owner_id,
-        'company_name': company_details.company_name if company_details and company_details.company_name else 'ScanMyBill.in',
+        'company_name': company_details.company_name if company_details and company_details.company_name else 'ScanMyBill',
         'company_address': company_details.address if company_details and company_details.address else 'N/A',
         'company_gstin': company_details.gstin_number if company_details and company_details.gstin_number else 'N/A',
         'challan_number': challan.sequence_number or 0,
@@ -550,3 +550,4 @@ def get_non_gst_challan_pdf(
         stored_path=generated_path,
         cleanup_after_response=True,
     )
+

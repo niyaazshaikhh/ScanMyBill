@@ -418,11 +418,13 @@ export default function CreateDeliveryChallanPage() {
                   onClick={() => {
                     const picker = challanDatePickerRef.current;
                     if (!picker) return;
-                    if ("showPicker" in picker) {
-                      (picker as HTMLInputElement & { showPicker: () => void }).showPicker();
-                    } else {
-                      picker.click();
+                    const pickerWithShow = picker as HTMLInputElement & { showPicker?: () => void };
+                    if (typeof pickerWithShow.showPicker === "function") {
+                      pickerWithShow.showPicker();
+                      return;
                     }
+                    picker.focus();
+                    picker.click();
                   }}
                   aria-label="Pick challan date"
                   title="Pick challan date"

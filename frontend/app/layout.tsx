@@ -1,7 +1,9 @@
-import type { Metadata } from 'next';
+import type { Metadata, Viewport } from 'next';
 import { Manrope, Space_Grotesk } from 'next/font/google';
 
 import '@/app/globals.css';
+import { PWARegister } from '@/components/pwa/pwa-register';
+import { CustomCursor } from '@/components/ui/custom-cursor';
 import { Providers } from '@/components/providers';
 
 const manrope = Manrope({
@@ -16,17 +18,21 @@ const spaceGrotesk = Space_Grotesk({
 
 export const metadata: Metadata = {
   metadataBase: new URL(process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'),
-  applicationName: 'ScanMyBill.in',
+  applicationName: 'ScanMyBill',
   authors: [{ name: 'Niyaz Shaikh' }],
   creator: 'Niyaz Shaikh',
+  manifest: '/manifest.webmanifest',
   icons: {
-    icon: [{ url: '/icon.svg', type: 'image/svg+xml' }],
-    shortcut: ['/icon.svg'],
-    apple: [{ url: '/icon.svg', type: 'image/svg+xml' }],
+    icon: [
+      { url: '/icon.svg', type: 'image/svg+xml' },
+      { url: '/icons/icon-192.png', sizes: '192x192', type: 'image/png' }
+    ],
+    shortcut: [{ url: '/icons/icon-192.png', sizes: '192x192', type: 'image/png' }],
+    apple: [{ url: '/icons/apple-touch-icon.png', sizes: '180x180', type: 'image/png' }]
   },
   title: {
-    default: 'ScanMyBill.in | Smart Bill Management for Indian SMBs',
-    template: '%s | ScanMyBill.in'
+    default: 'ScanMyBill | Smart Bill Management for Indian SMBs',
+    template: '%s | ScanMyBill'
   },
   description:
     'Stop manual entries. Start smart bill management with OCR-powered uploads, GST analytics, and invoice exports.',
@@ -38,13 +44,13 @@ export const metadata: Metadata = {
     'invoice OCR',
     'GST dashboard',
     'SaaS billing software',
-    'ScanMyBill.in'
+    'ScanMyBill'
   ],
   openGraph: {
-    title: 'ScanMyBill.in',
+    title: 'ScanMyBill',
     description: 'Stop Manual Entries. Start Smart Bill Management.',
     url: '/',
-    siteName: 'ScanMyBill.in',
+    siteName: 'ScanMyBill',
     locale: 'en_IN',
     type: 'website'
   },
@@ -54,11 +60,22 @@ export const metadata: Metadata = {
   }
 };
 
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  viewportFit: 'cover',
+  themeColor: '#d4550d'
+};
+
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang='en'>
       <body className={`${manrope.variable} ${spaceGrotesk.variable} font-[var(--font-manrope)]`}>
-        <Providers>{children}</Providers>
+        <Providers>
+          <PWARegister />
+          <CustomCursor />
+          {children}
+        </Providers>
       </body>
     </html>
   );

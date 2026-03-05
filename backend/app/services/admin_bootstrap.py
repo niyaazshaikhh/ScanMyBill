@@ -1,9 +1,14 @@
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.core.security import get_password_hash, verify_password
 from app.models.user import SubscriptionPlan, SubscriptionStatus, User, UserRole
+
+LEGACY_DEFAULT_ADMIN_EMAILS = {
+    'niyaz7@scanmybill.xyz',
+    'admin_niyaz7@scanmybill.xyz',
+}
 
 
 def default_admin_identity() -> tuple[str, str]:
@@ -20,7 +25,23 @@ def ensure_default_admin_user(db: Session) -> User | None:
     default_password = settings.default_admin_password
     default_full_name = settings.default_admin_full_name.strip() or 'Admin User'
 
-    user = db.scalar(select(User).where(User.email == admin_email))
+    user = db.scalar(select(User).where(func.lower(User.email) == admin_email))
+    updated = False
+
+    if user is None and admin_email not in LEGACY_DEFAULT_ADMIN_EMAILS:
+        legacy_user = db.scalar(
+            select(User)
+            .where(
+                func.lower(User.email).in_(LEGACY_DEFAULT_ADMIN_EMAILS),
+                User.role == UserRole.ADMIN,
+            )
+            .order_by(User.created_at.asc())
+        )
+        if legacy_user is not None:
+            legacy_user.email = admin_email
+            user = legacy_user
+            updated = True
+
     if user is None:
         user = User(
             email=admin_email,
@@ -36,7 +57,6 @@ def ensure_default_admin_user(db: Session) -> User | None:
         db.refresh(user)
         return user
 
-    updated = False
     if user.role != UserRole.ADMIN:
         user.role = UserRole.ADMIN
         updated = True

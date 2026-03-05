@@ -9,9 +9,12 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { apiRequest } from '@/lib/api';
 import { cn } from '@/lib/utils';
 
+type SubscriptionPlan = 'FREE' | 'STANDARD' | 'PRO' | 'BUSINESS';
+
 type RazorpayPlanOption = {
   id: string;
-  amount?: number | null;
+  item_name?: string | null;
+  mapped_plan?: SubscriptionPlan | null;
 };
 
 type PaymentConfigResponse = {
@@ -20,18 +23,18 @@ type PaymentConfigResponse = {
 };
 
 const planCards: Array<{
+  tier: Exclude<SubscriptionPlan, 'FREE'>;
   name: string;
   priceLabel: string;
-  amountPaise: number;
   description: string;
   accentClass: string;
   icon: LucideIcon;
   points: string[];
 }> = [
   {
+    tier: 'STANDARD',
     name: 'Standard',
     priceLabel: 'Rs 1 / month',
-    amountPaise: 100,
     description: 'Good for one person who wants simple bill work.',
     accentClass: 'border-slate-200 bg-white/95',
     icon: Leaf,
@@ -41,9 +44,9 @@ const planCards: Array<{
     ],
   },
   {
+    tier: 'PRO',
     name: 'Pro',
     priceLabel: 'Rs 101 / month',
-    amountPaise: 10100,
     description: 'Best for small teams handling more clients.',
     accentClass: 'border-orange-300 bg-orange-50/40',
     icon: Sparkles,
@@ -55,9 +58,9 @@ const planCards: Array<{
     ],
   },
   {
+    tier: 'BUSINESS',
     name: 'Business',
     priceLabel: 'Rs 1001 / month',
-    amountPaise: 100100,
     description: 'Best for busy businesses that need full access.',
     accentClass: 'border-teal-300 bg-teal-50/40',
     icon: Crown,
@@ -71,6 +74,35 @@ const planCards: Array<{
     ],
   }
 ];
+
+function inferPlanFromOption(plan: RazorpayPlanOption): Exclude<SubscriptionPlan, 'FREE'> | null {
+  if (plan.mapped_plan && plan.mapped_plan !== 'FREE') {
+    return plan.mapped_plan;
+  }
+
+  const source = `${plan.item_name || ''} ${plan.id || ''}`.toLowerCase();
+  const normalized = source.replace(/[_-]+/g, ' ');
+
+  if (
+    normalized.includes('business')
+    || normalized.includes('enterprise')
+    || normalized.includes('premium')
+  ) {
+    return 'BUSINESS';
+  }
+  if (/\bpro\b/.test(normalized) || normalized.includes('professional')) {
+    return 'PRO';
+  }
+  if (
+    normalized.includes('standard')
+    || normalized.includes('starter')
+    || normalized.includes('basic')
+  ) {
+    return 'STANDARD';
+  }
+
+  return null;
+}
 
 export function PricingPlanCards() {
   const [plans, setPlans] = useState<RazorpayPlanOption[]>([]);
@@ -104,11 +136,12 @@ export function PricingPlanCards() {
     };
   }, []);
 
-  const planIdByAmount = useMemo(() => {
-    const map = new Map<number, string>();
+  const planIdByTier = useMemo(() => {
+    const map = new Map<Exclude<SubscriptionPlan, 'FREE'>, string>();
     for (const plan of plans) {
-      if (typeof plan.amount === 'number') {
-        map.set(plan.amount, plan.id);
+      const tier = inferPlanFromOption(plan);
+      if (tier && !map.has(tier)) {
+        map.set(tier, plan.id);
       }
     }
     return map;
@@ -118,7 +151,7 @@ export function PricingPlanCards() {
     <div className='space-y-4'>
       <div className='grid gap-4 md:grid-cols-3'>
         {planCards.map((plan) => {
-          const planId = planIdByAmount.get(plan.amountPaise);
+          const planId = planIdByTier.get(plan.tier);
           const isConfigured = Boolean(planId);
           const PlanIcon = plan.icon;
 
@@ -165,7 +198,7 @@ export function PricingPlanCards() {
       {configError ? <p className='text-xs text-destructive'>{configError}</p> : null}
       {!loadingPlans && !configError ? (
         <p className='text-xs text-muted-foreground'>
-          Checkout buttons are enabled only for plans that match configured Razorpay plan amounts.
+          Checkout buttons are enabled for plans mapped from Razorpay plan metadata.
         </p>
       ) : null}
     </div>

@@ -21,7 +21,14 @@ from app.schemas.invoice import (
     InvoiceListResponse,
     InvoiceResponse,
 )
-from app.schemas.newsletter import NewsletterCreate, NewsletterSubscribeResponse
+from app.schemas.newsletter import (
+    NewsletterCreate,
+    NewsletterResponse,
+    NewsletterSend,
+    NewsletterSubscribeRequest,
+    NewsletterSubscribe,
+    NewsletterSubscribeResponse,
+)
 from app.schemas.notification import NotificationListResponse, NotificationResponse, NotificationStatusResponse
 from app.schemas.non_gst_challan import (
     LatestCreatedNonGSTChallanResponse,
@@ -78,6 +85,10 @@ __all__ = [
     'InvoiceListResponse',
     'InvoiceResponse',
     'NewsletterCreate',
+    'NewsletterSubscribeRequest',
+    'NewsletterSubscribe',
+    'NewsletterSend',
+    'NewsletterResponse',
     'NewsletterSubscribeResponse',
     'NotificationResponse',
     'NotificationListResponse',

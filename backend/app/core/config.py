@@ -1,4 +1,4 @@
-from functools import lru_cache
+﻿from functools import lru_cache
 from typing import Any, Literal
 
 from pydantic import Field, field_validator
@@ -8,7 +8,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file='.env', env_file_encoding='utf-8', extra='ignore')
 
-    app_name: str = 'ScanMyBill.in API'
+    app_name: str = 'ScanMyBill API'
     api_v1_prefix: str = '/api/v1'
     environment: Literal['development', 'staging', 'production'] = 'development'
     debug: bool = False
@@ -88,7 +88,7 @@ class Settings(BaseSettings):
     expose_password_reset_token: bool = True
     seed_default_admin: bool = True
     default_admin_user_id: str = 'admin_niyaz7'
-    default_admin_email: str = 'admin_niyaz7@scanmybill.local'
+    default_admin_email: str = 'admin@scanmybill.xyz'
     default_admin_password: str = '#AdminNiyaz7'
     default_admin_full_name: str = 'Admin User'
     smtp_host: str | None = None
@@ -96,7 +96,7 @@ class Settings(BaseSettings):
     smtp_username: str | None = None
     smtp_password: str | None = None
     smtp_sender_email: str | None = None
-    smtp_sender_name: str = 'ScanMyBill.in'
+    smtp_sender_name: str = 'ScanMyBill'
     smtp_use_tls: bool = True
 
     @property
@@ -229,3 +229,5 @@ def get_settings() -> Settings:
 
 
 settings = get_settings()
+
+

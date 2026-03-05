@@ -3,7 +3,32 @@ import { getAuthToken, getAuthUser, isAuthTokenExpired, setAuthSession } from '@
 import { showAppErrorPopup } from '@/lib/app-popup';
 import { emitSessionTimeout } from '@/lib/session-timeout';
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1';
+const DEFAULT_LOCAL_API_BASE = 'http://localhost:8000/api/v1';
+
+function isLocalhost(hostname: string): boolean {
+  return hostname === 'localhost' || hostname === '127.0.0.1';
+}
+
+function shouldUseLocalFallback(configuredBase: string): boolean {
+  if (typeof window === 'undefined') return false;
+  if (!isLocalhost(window.location.hostname.toLowerCase())) return false;
+  if (!configuredBase) return true;
+
+  try {
+    const parsed = new URL(configuredBase);
+    return parsed.hostname.toLowerCase() === 'scanmybill.xyz';
+  } catch {
+    return false;
+  }
+}
+
+function resolveApiBase(): string {
+  const configuredBase = (process.env.NEXT_PUBLIC_API_URL || '').trim();
+  if (shouldUseLocalFallback(configuredBase)) {
+    return DEFAULT_LOCAL_API_BASE;
+  }
+  return configuredBase || DEFAULT_LOCAL_API_BASE;
+}
 
 type ApiOptions = {
   method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
@@ -95,7 +120,8 @@ function extractApiErrorMessage(payload: unknown, fallback: string): string {
 
 async function refreshAccessToken(): Promise<boolean> {
   try {
-    const res = await fetch(`${API_BASE}/auth/refresh`, {
+    const apiBase = resolveApiBase();
+    const res = await fetch(`${apiBase}/auth/refresh`, {
       method: 'POST',
       credentials: 'include',
     });
@@ -135,6 +161,7 @@ export async function apiRequest<T = unknown>(
   } = options;
 
   const executeRequest = async (tokenOverride?: string | null) => {
+    const apiBase = resolveApiBase();
     const headers: HeadersInit = {};
     if (!isFormData) {
       headers['Content-Type'] = 'application/json';
@@ -149,7 +176,7 @@ export async function apiRequest<T = unknown>(
       headers.Authorization = `Bearer ${token}`;
     }
 
-    const url = `${API_BASE}${path}`;
+    const url = `${apiBase}${path}`;
     try {
       return await fetch(url, {
         method,
@@ -171,7 +198,7 @@ export async function apiRequest<T = unknown>(
       const mixedContentHint =
         typeof window !== 'undefined'
         && window.location.protocol === 'https:'
-        && API_BASE.startsWith('http://')
+        && apiBase.startsWith('http://')
           ? ' Mixed-content blocked: frontend is HTTPS but API URL is HTTP.'
           : '';
       const reason = error instanceof Error ? error.message : 'Failed to fetch';
@@ -230,5 +257,5 @@ export async function apiRequest<T = unknown>(
 }
 
 export function getApiBaseUrl() {
-  return API_BASE;
+  return resolveApiBase();
 }

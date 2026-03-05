@@ -1,8 +1,9 @@
-export default function Head() {
+﻿export default function Head() {
   return (
     <>
-      <title>Newsletter | ScanMyBill.in</title>
-      <meta name='description' content='Admin newsletter subscriber management and email composer' />
+      <title>Newsletter and Notifications | ScanMyBill</title>
+      <meta name='description' content='Admin newsletter subscriber management, email delivery, and in-app notification dispatch.' />
     </>
   );
 }
+

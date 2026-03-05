@@ -1,5 +1,5 @@
-import secrets
-from datetime import datetime, timedelta, timezone
+import logging
+from datetime import datetime
 from uuid import uuid4
 
 from fastapi import APIRouter, Cookie, Depends, Request, Response, status
@@ -26,7 +26,6 @@ from app.core.security import (
     utc_now,
     verify_password,
 )
-from app.models.password_reset_token import PasswordResetToken
 from app.models.revoked_token import RevokedToken
 from app.models.token_blacklist import TokenBlacklist
 from app.models.user import User, UserRole
@@ -35,26 +34,25 @@ from app.schemas.admin import AdminLoginRequest
 from app.schemas.auth import (
     CreateAccountRequest,
     ForgotPasswordRequest,
-    ForgotPasswordResponse,
     GoogleAuthRequest,
-    LoginRequest,
     MessageResponse,
-    RegisterRequest,
     ResetPasswordRequest,
     TokenResponse,
     UserPublic,
 )
-from app.schemas.user import (
-    ForgotPasswordRequest as UserForgotPasswordRequest,
-    ResetPasswordRequest as UserResetPasswordRequest,
-    UserCreate,
-    UserLogin,
-)
+from app.schemas.user import UserCreate, UserLogin
 from app.services.admin_bootstrap import default_admin_identity, ensure_default_admin_user
+from app.services.email_service import EmailDeliveryError, send_password_reset_email
+from app.services.password_reset_service import (
+    build_password_reset_link,
+    create_reset_token,
+    reset_user_password,
+)
 
 router = APIRouter(prefix='/auth')
-PASSWORD_RESET_TOKEN_EXPIRE_MINUTES = 15
 REFRESH_COOKIE_MAX_AGE = REFRESH_TOKEN_EXPIRE_DAYS * 24 * 60 * 60
+PASSWORD_RESET_GENERIC_MESSAGE = 'If the email is registered, a password reset link has been sent.'
+logger = logging.getLogger(__name__)
 
 
 def _auth_error(
@@ -313,51 +311,29 @@ def admin_login(
     return _create_session_response(admin_user, response, db)
 
 
-@router.post('/forgot-password', response_model=ForgotPasswordResponse)
+@router.post('/forgot-password', response_model=MessageResponse)
 def forgot_password(
-    payload: UserForgotPasswordRequest,
+    payload: ForgotPasswordRequest,
     db: Session = Depends(get_db),
-) -> ForgotPasswordResponse:
-    generic_message = 'If an account with that email exists, a password reset link has been generated.'
+) -> MessageResponse:
     user = db.scalar(select(User).where(User.email == _normalize_email(str(payload.email))))
-    if not user:
-        return ForgotPasswordResponse(message=generic_message)
+    if user:
+        raw_token = create_reset_token(db, user)
+        reset_link = build_password_reset_link(raw_token)
+        try:
+            send_password_reset_email(user.email, reset_link)
+        except EmailDeliveryError:
+            logger.exception('Failed to send password reset email', extra={'user_id': user.id})
 
-    expires_at = datetime.now(timezone.utc) + timedelta(minutes=PASSWORD_RESET_TOKEN_EXPIRE_MINUTES)
-    raw_token = secrets.token_urlsafe(32)
-
-    user.reset_token = hash_token(raw_token)
-    user.reset_token_expiry = expires_at
-    db.commit()
-
-    # Keep backward compatibility via env flag while allowing secure production behavior.
-    return ForgotPasswordResponse(
-        message=generic_message,
-        reset_token=raw_token if settings.expose_password_reset_token else None,
-        expires_at=expires_at if settings.expose_password_reset_token else None,
-    )
+    return MessageResponse(message=PASSWORD_RESET_GENERIC_MESSAGE)
 
 
 @router.post('/reset-password', response_model=MessageResponse)
-def reset_password(payload: UserResetPasswordRequest, db: Session = Depends(get_db)) -> MessageResponse:
-    now = datetime.now(timezone.utc)
-
-    user = db.scalar(
-        select(User).where(
-            User.reset_token == hash_token(payload.token),
-            User.reset_token_expiry.is_not(None),
-            User.reset_token_expiry > now,
-        )
-    )
-    if not user:
+def reset_password(payload: ResetPasswordRequest, db: Session = Depends(get_db)) -> MessageResponse:
+    if not reset_user_password(db, payload.token, payload.new_password):
         raise _auth_error('Invalid or expired reset token', status.HTTP_400_BAD_REQUEST)
 
-    user.hashed_password = get_password_hash(payload.new_password)
-    user.reset_token = None
-    user.reset_token_expiry = None
-
-    db.commit()
-    return MessageResponse(message='Password reset successful. You can now log in.')
+    return MessageResponse(message='Password reset successful')
 
 
 @router.post('/google', response_model=TokenResponse)

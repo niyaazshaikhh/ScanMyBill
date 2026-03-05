@@ -1,19 +1,24 @@
 import logging
+import re
+from html import unescape
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
 from sqlalchemy import case, func, or_, select
 from sqlalchemy.orm import Session
 
-from app.core.database import get_db
+from app.core.database import SessionLocal, get_db
 from app.core.deps import require_roles
-from app.models.newsletter_subscriber import NewsletterSubscriber
 from app.core.security import get_password_hash
+from app.models.notification import NotificationCategory
+from app.models.newsletter_subscriber import NewsletterSubscriber
 from app.models.user import User, UserRole
 from app.schemas.newsletter import (
     NewsletterSendRequest,
     NewsletterSendResponse,
     NewsletterSubscriberListResponse,
     NewsletterSubscriberResponse,
+    NewsletterUserListResponse,
+    NewsletterUserTargetResponse,
 )
 from app.schemas.admin import (
     AdminActionResponse,
@@ -22,14 +27,91 @@ from app.schemas.admin import (
     AdminUserUpdateRequest,
     AdminUsersResponse,
 )
-from app.services.newsletter_sender import NewsletterDeliveryError, send_newsletter_email_batch
+from app.services.email_service import EmailDeliveryError, validate_email_configuration
+from app.services.newsletter_service import send_newsletter
+from app.services.notifications import create_notification
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
+HTML_TAG_PATTERN = re.compile(r'<[^>]+>')
+
+
+def _unique_emails(emails: list[str]) -> list[str]:
+    deduped: dict[str, str] = {}
+    for email in emails:
+        normalized = email.strip().lower()
+        if not normalized:
+            continue
+        if normalized not in deduped:
+            deduped[normalized] = email.strip()
+    return list(deduped.values())
+
+
+def _notification_message(html_message: str) -> str:
+    plain_text = HTML_TAG_PATTERN.sub(' ', html_message)
+    plain_text = unescape(plain_text)
+    collapsed = ' '.join(plain_text.split())
+    return collapsed[:1000] if collapsed else 'You have a new newsletter update.'
 
 
 def _admin_guard(current_user: User = Depends(require_roles([UserRole.ADMIN]))) -> User:
     return current_user
+
+
+def _send_newsletter_background(
+    *,
+    recipient_emails: list[str],
+    notification_user_ids: list[str],
+    send_email: bool,
+    send_notifications: bool,
+    subject: str,
+    message: str,
+    admin_user_id: str,
+) -> None:
+    db = SessionLocal()
+    try:
+        sent_count = 0
+        failed_recipients: list[str] = []
+        notification_count = 0
+
+        if send_email and recipient_emails:
+            sent_count, failed_recipients = send_newsletter(
+                db,
+                subject,
+                message,
+                recipient_emails=recipient_emails,
+            )
+
+        if send_notifications and notification_user_ids:
+            notification_body = _notification_message(message)
+            for user_id in notification_user_ids:
+                created = create_notification(
+                    db,
+                    user_id=user_id,
+                    title=subject,
+                    message=notification_body,
+                    route='/newsletter',
+                    category=NotificationCategory.SYSTEM,
+                )
+                if created is not None:
+                    notification_count += 1
+            db.commit()
+
+        logger.info(
+            'Admin newsletter dispatch complete',
+            extra={
+                'admin_user_id': admin_user_id,
+                'attempted': len(recipient_emails),
+                'sent': sent_count,
+                'failed': len(failed_recipients),
+                'notifications': notification_count,
+            },
+        )
+    except Exception:
+        db.rollback()
+        logger.exception('Admin newsletter background dispatch failed', extra={'admin_user_id': admin_user_id})
+    finally:
+        db.close()
 
 
 @router.get('/users', response_model=AdminUsersResponse)
@@ -163,7 +245,7 @@ def list_newsletter_subscribers(
 ) -> NewsletterSubscriberListResponse:
     _ = current_user
 
-    query = select(NewsletterSubscriber).order_by(NewsletterSubscriber.created_at.desc())
+    query = select(NewsletterSubscriber).order_by(NewsletterSubscriber.subscribed_at.desc())
     normalized_search = (search or '').strip()
     if normalized_search:
         search_term = f'%{normalized_search}%'
@@ -185,68 +267,172 @@ def list_newsletter_subscribers(
     )
 
 
-@router.post('/newsletter/send', response_model=NewsletterSendResponse)
-def send_newsletter_message(
-    payload: NewsletterSendRequest,
+@router.get('/newsletter/users', response_model=NewsletterUserListResponse)
+def list_newsletter_users(
+    search: str | None = Query(default=None, min_length=1, max_length=120),
     db: Session = Depends(get_db),
     current_user: User = Depends(_admin_guard),
-) -> NewsletterSendResponse:
-    selected_ids = [subscriber_id.strip() for subscriber_id in payload.subscriber_ids if subscriber_id.strip()]
-    if not selected_ids:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='No recipients selected')
+) -> NewsletterUserListResponse:
+    _ = current_user
 
-    subscribers = db.scalars(
-        select(NewsletterSubscriber).where(
-            NewsletterSubscriber.id.in_(selected_ids),
-            NewsletterSubscriber.is_active.is_(True),
+    query = select(User).order_by(
+        case((User.role == UserRole.ADMIN, 0), else_=1),
+        User.created_at.desc(),
+    )
+    normalized_search = (search or '').strip()
+    if normalized_search:
+        search_term = f'%{normalized_search}%'
+        query = query.where(
+            or_(
+                User.email.ilike(search_term),
+                User.full_name.ilike(search_term),
+            )
         )
-    ).all()
-    if not subscribers:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='No active subscribers found')
 
-    recipient_emails = [subscriber.email for subscriber in subscribers]
-    try:
-        sent_count, failed_recipients = send_newsletter_email_batch(
-            recipients=recipient_emails,
-            subject=payload.subject,
-            message=payload.message,
-        )
-    except NewsletterDeliveryError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail=str(exc),
-        ) from exc
-    except Exception as exc:
-        logger.exception('Newsletter send failed', extra={'admin_user_id': current_user.id})
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail='Unable to send newsletter message',
-        ) from exc
+    users = db.scalars(query).all()
+    total_users = db.scalar(select(func.count(User.id))) or 0
+    active_users = db.scalar(select(func.count(User.id)).where(User.is_active.is_(True))) or 0
 
-    attempted_count = len(recipient_emails)
-    failed_count = len(failed_recipients)
-    success = sent_count > 0 and failed_count == 0
-    status_message = (
-        f'Newsletter sent to {sent_count} recipient(s)'
-        if failed_count == 0
-        else f'Newsletter sent to {sent_count} recipient(s), {failed_count} failed'
+    return NewsletterUserListResponse(
+        total_users=int(total_users),
+        active_users=int(active_users),
+        users=[
+            NewsletterUserTargetResponse.model_validate(user, from_attributes=True)
+            for user in users
+        ],
     )
 
+
+@router.delete('/newsletter/subscribers/{subscriber_id}', status_code=status.HTTP_204_NO_CONTENT)
+def delete_newsletter_subscriber(
+    subscriber_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(_admin_guard),
+) -> None:
+    subscriber = db.get(NewsletterSubscriber, subscriber_id)
+    if not subscriber:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='Subscriber not found')
+
+    subscriber_email = subscriber.email
+    db.delete(subscriber)
+    db.commit()
+
     logger.info(
-        'Newsletter dispatch complete',
+        'Newsletter subscriber deleted',
         extra={
             'admin_user_id': current_user.id,
-            'attempted': attempted_count,
-            'sent': sent_count,
-            'failed': failed_count,
+            'subscriber_id': subscriber_id,
+            'subscriber_email': subscriber_email,
         },
     )
 
+
+@router.post('/newsletter/send', response_model=NewsletterSendResponse)
+def send_newsletter_message(
+    payload: NewsletterSendRequest,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(_admin_guard),
+) -> NewsletterSendResponse:
+    selected_subscriber_ids = [
+        subscriber_id.strip()
+        for subscriber_id in payload.subscriber_ids
+        if subscriber_id.strip()
+    ]
+    selected_user_ids = [user_id.strip() for user_id in payload.user_ids if user_id.strip()]
+
+    subscribers: list[NewsletterSubscriber] = []
+    if selected_subscriber_ids:
+        subscribers = db.scalars(
+            select(NewsletterSubscriber).where(
+                NewsletterSubscriber.id.in_(selected_subscriber_ids),
+                NewsletterSubscriber.is_active.is_(True),
+            )
+        ).all()
+    elif payload.send_email and not selected_user_ids:
+        # Backward compatibility: no explicit selection means "all active subscribers".
+        subscribers = db.scalars(
+            select(NewsletterSubscriber).where(NewsletterSubscriber.is_active.is_(True))
+        ).all()
+
+    users: list[User] = []
+    if selected_user_ids:
+        users = db.scalars(
+            select(User).where(
+                User.id.in_(selected_user_ids),
+                User.is_active.is_(True),
+            )
+        ).all()
+
+    if payload.send_notifications and not selected_user_ids:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail='Select at least one active user to send notifications',
+        )
+
+    recipient_emails: list[str] = []
+    if payload.send_email:
+        recipient_emails = _unique_emails(
+            [subscriber.email for subscriber in subscribers] + [user.email for user in users]
+        )
+        if recipient_emails:
+            try:
+                validate_email_configuration()
+            except EmailDeliveryError as exc:
+                raise HTTPException(
+                    status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                    detail=str(exc),
+                ) from exc
+
+    notification_user_ids: list[str] = []
+    if payload.send_notifications:
+        notification_user_ids = sorted({user.id for user in users if user.notifications_enabled})
+
+    attempted_count = len(recipient_emails)
+    queued_notification_count = len(notification_user_ids)
+
+    if attempted_count < 1 and queued_notification_count < 1:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail='No eligible recipients found',
+        )
+
+    background_tasks.add_task(
+        _send_newsletter_background,
+        recipient_emails=recipient_emails,
+        notification_user_ids=notification_user_ids,
+        send_email=payload.send_email,
+        send_notifications=payload.send_notifications,
+        subject=payload.subject,
+        message=payload.message,
+        admin_user_id=current_user.id,
+    )
+
+    logger.info(
+        'Newsletter dispatch queued',
+        extra={
+            'admin_user_id': current_user.id,
+            'attempted': attempted_count,
+            'notifications': queued_notification_count,
+        },
+    )
+
+    if attempted_count and queued_notification_count:
+        message = (
+            f'Newsletter queued for {attempted_count} email recipient(s) '
+            f'and {queued_notification_count} notification target(s)'
+        )
+    elif attempted_count:
+        message = f'Newsletter queued for {attempted_count} email recipient(s)'
+    else:
+        message = f'Newsletter notifications queued for {queued_notification_count} user(s)'
+
     return NewsletterSendResponse(
-        success=success,
-        message=status_message,
+        success=True,
+        message=message,
         attempted=attempted_count,
-        sent=sent_count,
-        failed=failed_count,
-        failed_recipients=failed_recipients,
+        sent=0,
+        failed=0,
+        queued_notifications=queued_notification_count,
+        failed_recipients=[],
     )

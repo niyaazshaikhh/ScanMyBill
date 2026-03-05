@@ -1,4 +1,4 @@
-import type { Metadata } from 'next';
+﻿import type { Metadata } from 'next';
 import Link from 'next/link';
 import { Instagram, Linkedin, Twitter } from 'lucide-react';
 
@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 
 export const metadata: Metadata = {
   title: 'About Us',
-  description: 'Know the developer behind ScanMyBill.in and connect on social profiles.'
+  description: 'Know the developer behind ScanMyBill and connect on social profiles.'
 };
 
 const socialLinks = [
@@ -34,7 +34,7 @@ export default function AboutPage() {
         <div>
           <h1 className='font-[var(--font-space)] text-3xl font-semibold'>About Us</h1>
           <p className='mt-2 text-sm text-muted-foreground'>
-            ScanMyBill.in is built to simplify invoice management and GST workflows for Indian businesses.
+            ScanMyBill is built to simplify invoice management and GST workflows for Indian businesses.
           </p>
         </div>
         <Link href='/' className='text-sm font-medium text-primary'>
@@ -76,3 +76,4 @@ export default function AboutPage() {
     </main>
   );
 }
+

@@ -1,57 +1,123 @@
-from fastapi import APIRouter, Depends, status
-from fastapi.responses import JSONResponse
+from __future__ import annotations
+
+import logging
+
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
+from pydantic import EmailStr
 from sqlalchemy import select
-from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session
 
-from app.core.database import get_db
-from app.models.newsletter_subscriber import NewsletterSubscriber
-from app.schemas.newsletter import NewsletterCreate, NewsletterSubscribeResponse
+from app.core.database import SessionLocal, get_db
+from app.core.deps import require_roles
+from app.models.newsletter import NewsletterSubscriber
+from app.models.user import User, UserRole
+from app.schemas.newsletter import NewsletterResponse, NewsletterSend, NewsletterSubscribeRequest
+from app.services.email_service import EmailDeliveryError, validate_email_configuration
+from app.services.newsletter_service import (
+    get_all_active_subscribers,
+    send_newsletter,
+    subscribe_email,
+    unsubscribe_email,
+)
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
+
+
+def _admin_guard(current_user: User = Depends(require_roles([UserRole.ADMIN]))) -> User:
+    return current_user
 
 
 @router.post(
     '/subscribe',
-    response_model=NewsletterSubscribeResponse,
+    response_model=NewsletterResponse,
     status_code=status.HTTP_201_CREATED,
-    responses={
-        status.HTTP_409_CONFLICT: {'model': NewsletterSubscribeResponse},
-        status.HTTP_500_INTERNAL_SERVER_ERROR: {'model': NewsletterSubscribeResponse},
-    },
 )
-def subscribe(payload: NewsletterCreate, db: Session = Depends(get_db)) -> NewsletterSubscribeResponse | JSONResponse:
-    normalized_email = str(payload.email).strip().lower()
-    duplicate_response = NewsletterSubscribeResponse(
-        success=False,
-        message='You already subscribed for SMB Newsletters',
+def subscribe(payload: NewsletterSubscribeRequest, db: Session = Depends(get_db)) -> NewsletterResponse:
+    subscriber = subscribe_email(db, str(payload.email))
+    return NewsletterResponse.model_validate(subscriber, from_attributes=True)
+
+
+@router.post('/unsubscribe', response_model=NewsletterResponse)
+def unsubscribe(payload: NewsletterSubscribeRequest, db: Session = Depends(get_db)) -> NewsletterResponse:
+    subscriber = unsubscribe_email(db, str(payload.email))
+    if subscriber is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='Subscriber not found')
+    return NewsletterResponse.model_validate(subscriber, from_attributes=True)
+
+
+@router.get('/unsubscribe', response_model=NewsletterResponse)
+def unsubscribe_via_link(email: EmailStr = Query(...), db: Session = Depends(get_db)) -> NewsletterResponse:
+    subscriber = unsubscribe_email(db, str(email))
+    if subscriber is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='Subscriber not found')
+    return NewsletterResponse.model_validate(subscriber, from_attributes=True)
+
+
+@router.get('/subscribers', response_model=list[NewsletterResponse])
+def list_subscribers(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(_admin_guard),
+) -> list[NewsletterResponse]:
+    _ = current_user
+    subscribers = db.scalars(select(NewsletterSubscriber).order_by(NewsletterSubscriber.subscribed_at.desc())).all()
+    return [NewsletterResponse.model_validate(subscriber, from_attributes=True) for subscriber in subscribers]
+
+
+def _send_newsletter_background(*, subject: str, message: str) -> None:
+    db = SessionLocal()
+    try:
+        sent_count, failed_recipients = send_newsletter(db, subject, message)
+        logger.info(
+            'Newsletter background task complete',
+            extra={
+                'sent_count': sent_count,
+                'failed_count': len(failed_recipients),
+            },
+        )
+    except Exception:
+        logger.exception('Newsletter background task failed')
+    finally:
+        db.close()
+
+
+@router.post('/send', status_code=status.HTTP_202_ACCEPTED)
+def send_newsletter_to_active_subscribers(
+    payload: NewsletterSend,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(_admin_guard),
+) -> dict[str, int | str | bool]:
+    try:
+        validate_email_configuration()
+    except EmailDeliveryError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=str(exc),
+        ) from exc
+
+    active_subscribers = get_all_active_subscribers(db)
+    recipient_count = len(active_subscribers)
+
+    if recipient_count == 0:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='No active subscribers found')
+
+    background_tasks.add_task(
+        _send_newsletter_background,
+        subject=payload.subject,
+        message=payload.message,
     )
 
-    # Prevent duplicate subscriptions for the same email.
-    existing = db.scalar(select(NewsletterSubscriber).where(NewsletterSubscriber.email == normalized_email))
-    if existing:
-        return JSONResponse(
-            status_code=status.HTTP_409_CONFLICT,
-            content=duplicate_response.model_dump(),
-        )
+    logger.info(
+        'Newsletter queued',
+        extra={
+            'admin_user_id': current_user.id,
+            'recipient_count': recipient_count,
+        },
+    )
 
-    db.add(NewsletterSubscriber(email=normalized_email))
-    try:
-        db.commit()
-    except IntegrityError:
-        db.rollback()
-        return JSONResponse(
-            status_code=status.HTTP_409_CONFLICT,
-            content=duplicate_response.model_dump(),
-        )
-    except SQLAlchemyError:
-        db.rollback()
-        return JSONResponse(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            content=NewsletterSubscribeResponse(
-                success=False,
-                message='Unable to process newsletter subscription',
-            ).model_dump(),
-        )
-
-    return NewsletterSubscribeResponse(success=True, message='Subscribed successfully')
+    return {
+        'success': True,
+        'message': f'Newsletter queued for {recipient_count} subscriber(s)',
+        'queued': recipient_count,
+    }

@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useEffect, useState } from 'react';
 
@@ -26,6 +26,7 @@ type RazorpayPlanOption = {
   period?: string | null;
   amount?: number | null;
   currency?: string | null;
+  mapped_plan?: 'FREE' | 'STANDARD' | 'PRO' | 'BUSINESS' | null;
 };
 type PaymentConfigResponse = {
   key_id: string | null;
@@ -136,7 +137,7 @@ export function RazorpayCheckoutButton({
       const razorpay = new window.Razorpay({
         key: checkoutKey,
         subscription_id: subscription.subscription_id,
-        name: 'ScanMyBill.in',
+        name: 'ScanMyBill',
         description: 'ScanMyBill Pro Subscription',
         theme: { color: '#d85b1b' },
         handler: async (response) => {
@@ -220,3 +221,4 @@ export function RazorpayCheckoutButton({
     </div>
   );
 }
+

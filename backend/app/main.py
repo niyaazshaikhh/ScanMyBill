@@ -468,6 +468,74 @@ def _ensure_user_columns() -> None:
             connection.execute(text(f'ALTER TABLE users ADD COLUMN {column_name} {column_type}'))
 
 
+def _ensure_newsletter_subscriber_columns() -> None:
+    inspector = inspect(engine)
+    if 'newsletter_subscribers' not in inspector.get_table_names():
+        return
+
+    existing_columns = {column['name'] for column in inspector.get_columns('newsletter_subscribers')}
+    dialect = engine.dialect.name
+    timestamp_type = 'TIMESTAMP WITH TIME ZONE' if dialect == 'postgresql' else 'DATETIME'
+
+    with engine.begin() as connection:
+        if 'subscribed_at' not in existing_columns:
+            connection.execute(
+                text(
+                    f'ALTER TABLE newsletter_subscribers '
+                    f'ADD COLUMN subscribed_at {timestamp_type}'
+                )
+            )
+
+            if 'created_at' in existing_columns:
+                connection.execute(
+                    text(
+                        'UPDATE newsletter_subscribers '
+                        'SET subscribed_at = created_at '
+                        'WHERE subscribed_at IS NULL'
+                    )
+                )
+
+            now_expression = 'NOW()' if dialect == 'postgresql' else 'CURRENT_TIMESTAMP'
+            connection.execute(
+                text(
+                    'UPDATE newsletter_subscribers '
+                    f'SET subscribed_at = {now_expression} '
+                    'WHERE subscribed_at IS NULL'
+                )
+            )
+        else:
+            now_expression = 'NOW()' if dialect == 'postgresql' else 'CURRENT_TIMESTAMP'
+            connection.execute(
+                text(
+                    'UPDATE newsletter_subscribers '
+                    f'SET subscribed_at = {now_expression} '
+                    'WHERE subscribed_at IS NULL'
+                )
+            )
+
+        if 'unsubscribed_at' not in existing_columns:
+            connection.execute(
+                text(
+                    f'ALTER TABLE newsletter_subscribers '
+                    f'ADD COLUMN unsubscribed_at {timestamp_type}'
+                )
+            )
+
+        if dialect == 'postgresql':
+            connection.execute(
+                text(
+                    'ALTER TABLE newsletter_subscribers '
+                    'ALTER COLUMN subscribed_at SET DEFAULT NOW()'
+                )
+            )
+            connection.execute(
+                text(
+                    'ALTER TABLE newsletter_subscribers '
+                    'ALTER COLUMN subscribed_at SET NOT NULL'
+                )
+            )
+
+
 def _ensure_default_admin() -> None:
     session = SessionLocal()
     try:
@@ -493,6 +561,7 @@ def on_startup() -> None:
     _ensure_non_gst_challan_unique_constraint()
     _ensure_non_gst_challan_sequence_numbers()
     _ensure_user_columns()
+    _ensure_newsletter_subscriber_columns()
     _ensure_default_admin()
 
 

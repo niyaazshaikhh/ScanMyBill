@@ -1,4 +1,4 @@
-import Link from 'next/link';
+﻿import Link from 'next/link';
 
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -38,8 +38,8 @@ export default function NotFound() {
 
           <p className='text-xs text-muted-foreground'>
             Need help?{' '}
-            <a className='text-primary hover:underline' href='mailto:support@scanmybill.in'>
-              support@scanmybill.in
+            <a className='text-primary hover:underline' href='mailto:support@scanmybill.xyz'>
+              support@scanmybill.xyz
             </a>
           </p>
         </CardContent>
@@ -47,3 +47,4 @@ export default function NotFound() {
     </main>
   );
 }
+

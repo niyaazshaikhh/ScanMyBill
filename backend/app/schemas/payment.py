@@ -2,6 +2,8 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.models.user import SubscriptionPlan
+
 
 class RazorpayPlanOption(BaseModel):
     id: str
@@ -10,6 +12,7 @@ class RazorpayPlanOption(BaseModel):
     period: str | None = None
     amount: int | None = None
     currency: str | None = None
+    mapped_plan: SubscriptionPlan | None = None
 
 
 class RazorpayConfigResponse(BaseModel):

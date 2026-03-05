@@ -1,7 +1,6 @@
 'use client';
 
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 
 import { Button } from '@/components/ui/button';
@@ -12,12 +11,9 @@ import { apiRequest } from '@/lib/api';
 
 type ForgotPasswordResponse = {
   message: string;
-  reset_token?: string | null;
 };
 
 export default function ForgotPasswordPage() {
-  const router = useRouter();
-
   const [email, setEmail] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -37,9 +33,6 @@ export default function ForgotPasswordPage() {
       });
 
       setMessage(data.message);
-      if (data.reset_token) {
-        router.push(`/reset-password?token=${encodeURIComponent(data.reset_token)}`);
-      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unable to process request');
     } finally {

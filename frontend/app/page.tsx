@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+﻿import type { Metadata } from "next";
 import Link from "next/link";
 import {
   BarChart3,
@@ -14,6 +14,7 @@ import {
 import { DraggableBills } from "@/components/landing/draggable-bills";
 import { NewsletterForm } from "@/components/landing/newsletter-form";
 import { RazorpayCheckoutButton } from "@/components/landing/razorpay-checkout-button";
+import { InstallAppButton } from "@/components/pwa/install-app-button";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 
@@ -52,7 +53,7 @@ const features: Array<{
 
 const faqs = [
   {
-    question: "How does ScanMyBill.in pricing work?",
+    question: "How does ScanMyBill pricing work?",
     answer:
       "Pricing is subscription-based through Razorpay. You can start checkout from this page and billing will follow your selected plan cycle.",
   },
@@ -77,8 +78,7 @@ const pricingHighlights = [
   {
     name: "Standard",
     price: "Rs 1 / month",
-    description:
-      "Good for one person who wants simple bill and tax tracking.",
+    description: "Good for one person who wants simple bill and tax tracking.",
     accent: "border-slate-200 bg-white",
     points: [
       "Use Dashboard, Invoices, and Settings",
@@ -101,8 +101,7 @@ const pricingHighlights = [
   {
     name: "Business",
     price: "Rs 1001 / month",
-    description:
-      "Best for busy businesses that need every section of the app.",
+    description: "Best for busy businesses that need every section of the app.",
     accent: "border-teal-300 bg-teal-50/40",
     points: [
       "Access to all main routes",
@@ -127,7 +126,7 @@ export default function LandingPage() {
               SMB
             </span>
             <span className="font-[var(--font-space)] text-xl font-bold tracking-tight text-primary">
-              ScanMyBill.in
+              ScanMyBill
             </span>
           </Link>
           <nav className="hidden items-center gap-5 text-sm font-medium md:flex">
@@ -142,8 +141,9 @@ export default function LandingPage() {
             <Button asChild size="sm">
               <Link href="/signup">Sign up</Link>
             </Button>
+            <InstallAppButton />
           </nav>
-          <div className="flex items-center gap-2 md:hidden">
+          <div className="flex flex-wrap items-center justify-end gap-2 md:hidden">
             <Button asChild size="sm" variant="ghost">
               <Link href="/about">About</Link>
             </Button>
@@ -153,6 +153,7 @@ export default function LandingPage() {
             <Button asChild size="sm">
               <Link href="/signup">Sign up</Link>
             </Button>
+            <InstallAppButton />
           </div>
         </div>
       </header>
@@ -167,8 +168,8 @@ export default function LandingPage() {
               Stop Manual Entries. Start Smart Bill Management.
             </h1>
             <p className="max-w-xl text-lg text-muted-foreground">
-              ScanMyBill.in helps Indian businesses process bills faster with
-              OCR, track GST exposure, and export grouped invoices in one click.
+              ScanMyBill helps Indian businesses process bills faster with OCR,
+              track GST exposure, and export grouped invoices in one click.
             </p>
             <Button asChild size="lg" className="w-full sm:max-w-md">
               <Link href="/signup">Sign up</Link>
@@ -225,7 +226,7 @@ export default function LandingPage() {
                 </h3>
                 <p className="mt-2 text-sm text-muted-foreground">
                   Activate a secure Razorpay subscription checkout for your
-                  ScanMyBill.in plan.
+                  ScanMyBill plan.
                 </p>
                 <p className="mt-2 text-sm text-muted-foreground">
                   Monthly plan with GST invoicing support, OCR processing,
@@ -249,7 +250,10 @@ export default function LandingPage() {
                     </p>
                     <ul className="mt-3 space-y-1.5">
                       {plan.points.map((point) => (
-                        <li key={`${plan.name}-${point}`} className="flex items-start gap-2 text-xs text-muted-foreground">
+                        <li
+                          key={`${plan.name}-${point}`}
+                          className="flex items-start gap-2 text-xs text-muted-foreground"
+                        >
                           <span className="mt-0.5 text-emerald-600">✓</span>
                           <span>{point}</span>
                         </li>
@@ -323,8 +327,8 @@ export default function LandingPage() {
           <div>
             <h4 className="font-semibold">Contact</h4>
             <p className="mt-2 text-muted-foreground">
-              <a className="text-primary" href="mailto:support@scanmybill.in">
-                support@scanmybill.in
+              <a className="text-primary" href="mailto:support@scanmybill.xyz">
+                support@scanmybill.xyz
               </a>
             </p>
             <p className="mt-1 text-muted-foreground">
@@ -369,9 +373,9 @@ export default function LandingPage() {
           <div>
             <h4 className="font-semibold">Terms & Conditions</h4>
             <p className="mt-2 text-muted-foreground">
-              By using ScanMyBill.in, you agree to subscription billing, fair
-              usage limits, and acceptable use rules. Subscriptions auto-renew
-              until canceled before the next billing date.
+              By using ScanMyBill, you agree to subscription billing, fair usage
+              limits, and acceptable use rules. Subscriptions auto-renew until
+              canceled before the next billing date.
             </p>
           </div>
           <div>
@@ -384,12 +388,12 @@ export default function LandingPage() {
           </div>
         </div>
         <div className="border-t border-border/70">
-          <div className="mx-auto flex w-full max-w-7xl items-center justify-between gap-3 px-4 py-4 sm:px-6 lg:px-8">
+          <div className="mx-auto flex w-full max-w-7xl flex-col items-start gap-3 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6 lg:px-8">
             <span className="flex h-8 w-8 items-center justify-center rounded-md bg-primary font-[var(--font-space)] text-xs font-bold text-primary-foreground">
               SMB
             </span>
             <p className="text-xs text-muted-foreground">
-              © {currentYear} ScanMyBill.in. All rights reserved.
+              © {currentYear} ScanMyBill All rights reserved.
             </p>
           </div>
         </div>

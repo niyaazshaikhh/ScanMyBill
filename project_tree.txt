@@ -26,6 +26,8 @@ D:.
 │   ├───templates
 │   ├───uploads
 │   │   └───bills
+│   │       └───original
+│   │           └───2ac9fc12-3aaa-411f-a417-d07f796c7afc
 │   ├───venv
 │   │   ├───Include
 │   │   │   └───site
@@ -51,7 +53,7 @@ D:.
 │   │   │       │   └───licenses
 │   │   │       ├───bcrypt
 │   │   │       │   └───__pycache__
-│   │   │       ├───bcrypt-5.0.0.dist-info
+│   │   │       ├───bcrypt-4.0.1.dist-info
 │   │   │       ├───boto3
 │   │   │       │   ├───data
 │   │   │       │   │   ├───cloudformation
@@ -1898,7 +1900,8 @@ D:.
 │   │   │       │   └───__pycache__
 │   │   │       ├───_yaml
 │   │   │       │   └───__pycache__
-│   │   │       └───__pycache__
+│   │   │       ├───__pycache__
+│   │   │       └───~crypt
 │   │   ├───Scripts
 │   │   │   └───__pycache__
 │   │   └───share
@@ -1924,15 +1927,15 @@ D:.
 │   │   ├───server
 │   │   │   ├───app
 │   │   │   │   ├───(app)
-│   │   │   │   │   ├───client-analytics
-│   │   │   │   │   ├───clients
-│   │   │   │   │   ├───create
+│   │   │   │   │   ├───admin
 │   │   │   │   │   ├───dashboard
-│   │   │   │   │   ├───invoices
-│   │   │   │   │   └───settings
-│   │   │   │   │       └───personal_details
+│   │   │   │   │   └───newsletter
 │   │   │   │   ├───(auth)
-│   │   │   │   │   └───signin
+│   │   │   │   │   ├───admin
+│   │   │   │   │   │   └───signin
+│   │   │   │   │   ├───forgot-password
+│   │   │   │   │   ├───signin
+│   │   │   │   │   └───signup
 │   │   │   │   └───icon.svg
 │   │   │   ├───static
 │   │   │   │   └───webpack
@@ -1941,15 +1944,15 @@ D:.
 │   │   │   ├───chunks
 │   │   │   │   └───app
 │   │   │   │       ├───(app)
-│   │   │   │       │   ├───client-analytics
-│   │   │   │       │   ├───clients
-│   │   │   │       │   ├───create
+│   │   │   │       │   ├───admin
 │   │   │   │       │   ├───dashboard
-│   │   │   │       │   ├───invoices
-│   │   │   │       │   └───settings
-│   │   │   │       │       └───personal_details
+│   │   │   │       │   └───newsletter
 │   │   │   │       └───(auth)
-│   │   │   │           └───signin
+│   │   │   │           ├───admin
+│   │   │   │           │   └───signin
+│   │   │   │           ├───forgot-password
+│   │   │   │           ├───signin
+│   │   │   │           └───signup
 │   │   │   ├───css
 │   │   │   │   └───app
 │   │   │   ├───development
@@ -1957,26 +1960,23 @@ D:.
 │   │   │   └───webpack
 │   │   │       └───app
 │   │   │           └───(app)
-│   │   │               ├───client-analytics
-│   │   │               ├───clients
-│   │   │               ├───create
-│   │   │               ├───dashboard
-│   │   │               ├───invoices
-│   │   │               └───settings
+│   │   │               ├───admin
+│   │   │               └───newsletter
 │   │   └───types
 │   │       └───app
 │   │           ├───(app)
-│   │           │   ├───client-analytics
-│   │           │   ├───clients
-│   │           │   ├───create
+│   │           │   ├───admin
 │   │           │   ├───dashboard
-│   │           │   ├───invoices
-│   │           │   └───settings
-│   │           │       └───personal_details
+│   │           │   └───newsletter
 │   │           └───(auth)
-│   │               └───signin
+│   │               ├───admin
+│   │               │   └───signin
+│   │               ├───forgot-password
+│   │               ├───signin
+│   │               └───signup
 │   ├───app
 │   │   ├───(app)
+│   │   │   ├───admin
 │   │   │   ├───client-analytics
 │   │   │   ├───clients
 │   │   │   ├───create
@@ -1985,9 +1985,12 @@ D:.
 │   │   │   ├───hsn-sac-master-list
 │   │   │   ├───invoices
 │   │   │   │   └───delivery-challan
+│   │   │   ├───newsletter
 │   │   │   └───settings
 │   │   │       └───personal_details
 │   │   ├───(auth)
+│   │   │   ├───admin
+│   │   │   │   └───signin
 │   │   │   ├───forgot-password
 │   │   │   ├───reset-password
 │   │   │   ├───signin
@@ -4332,3 +4335,5 @@ D:.
 │   │   └───yocto-queue
 │   └───types
 └───test
+
+D:\Projects\ScanMyBill_IN>

@@ -1,4 +1,4 @@
-import Link from "next/link";
+﻿import Link from "next/link";
 import { X } from "lucide-react";
 
 import { PricingPlanCards } from "@/components/landing/pricing-plan-cards";
@@ -32,7 +32,7 @@ export default function PricingPage() {
         </CardHeader>
         <CardContent className="space-y-4 text-sm">
           <p>
-            Start your ScanMyBill.in subscription with secure Razorpay checkout.
+            Start your ScanMyBill subscription with secure Razorpay checkout.
           </p>
           <PricingPlanCards />
           <p>
@@ -47,3 +47,4 @@ export default function PricingPage() {
     </main>
   );
 }
+

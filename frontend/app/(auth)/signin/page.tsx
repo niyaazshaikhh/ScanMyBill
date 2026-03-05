@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -69,7 +69,7 @@ export default function SignInPage() {
       </Button>
       <CardHeader>
         <CardTitle className='font-[var(--font-space)] text-2xl'>Log in</CardTitle>
-        <CardDescription>Access your ScanMyBill.in workspace.</CardDescription>
+        <CardDescription>Access your ScanMyBill workspace.</CardDescription>
       </CardHeader>
       <CardContent className='space-y-5'>
         <form className='space-y-4' onSubmit={onSubmit}>
@@ -152,3 +152,4 @@ export default function SignInPage() {
     </Card>
   );
 }
+

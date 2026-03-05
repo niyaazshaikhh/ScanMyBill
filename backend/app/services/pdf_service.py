@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from io import BytesIO
 
@@ -24,7 +24,7 @@ def build_invoice_pdf(invoice: Invoice) -> bytes:
     styles = getSampleStyleSheet()
     elements = []
 
-    elements.append(Paragraph('ScanMyBill.in - Invoice', styles['Title']))
+    elements.append(Paragraph('ScanMyBill - Invoice', styles['Title']))
     elements.append(Spacer(1, 12))
 
     details_data = [
@@ -96,7 +96,7 @@ def build_folder_export_pdf(invoices: list[Invoice], folder_label: str, period: 
     styles = getSampleStyleSheet()
     elements = []
 
-    elements.append(Paragraph('ScanMyBill.in - Folder Export', styles['Title']))
+    elements.append(Paragraph('ScanMyBill - Folder Export', styles['Title']))
     elements.append(Spacer(1, 8))
     elements.append(Paragraph(f'Period: {period} | Folder: {folder_label}', styles['Normal']))
     elements.append(Spacer(1, 12))
@@ -132,3 +132,4 @@ def build_folder_export_pdf(invoices: list[Invoice], folder_label: str, period: 
 
     doc.build(elements)
     return buffer.getvalue()
+

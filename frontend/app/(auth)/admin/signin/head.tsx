@@ -1,8 +1,9 @@
-export default function Head() {
+﻿export default function Head() {
   return (
     <>
-      <title>Admin Login | ScanMyBill.in</title>
-      <meta name='description' content='Admin access portal for ScanMyBill.in' />
+      <title>Admin Login | ScanMyBill</title>
+      <meta name='description' content='Admin access portal for ScanMyBill' />
     </>
   );
 }
+

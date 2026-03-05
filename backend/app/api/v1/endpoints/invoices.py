@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from datetime import date
 from io import BytesIO
@@ -163,7 +163,7 @@ def _build_invoice_pdf_data(
 
     return {
         'user_id': owner_id,
-        'company_name': company_details.company_name if company_details and company_details.company_name else 'ScanMyBill.in',
+        'company_name': company_details.company_name if company_details and company_details.company_name else 'ScanMyBill',
         'company_address': company_details.address if company_details and company_details.address else 'N/A',
         'gstin': company_details.gstin_number if company_details and company_details.gstin_number else 'N/A',
         'invoice_number': invoice.invoice_number,
@@ -819,3 +819,4 @@ def get_invoice_pdf(
         filename=filename,
         background=background,
     )
+

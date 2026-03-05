@@ -34,6 +34,60 @@ body {
   min-height: 100vh;
 }
 
+html,
+body {
+  width: 100%;
+  overflow-x: hidden;
+}
+
+html.custom-cursor-enabled,
+html.custom-cursor-enabled * {
+  cursor: none !important;
+}
+
+.custom-cursor {
+  position: fixed;
+  left: 0;
+  top: 0;
+  z-index: 2147483647;
+  width: 24px;
+  height: 24px;
+  pointer-events: none;
+  color: #fff;
+  mix-blend-mode: difference;
+  filter: drop-shadow(0 0 1px rgba(0, 0, 0, 0.75)) drop-shadow(0 0 1px rgba(255, 255, 255, 0.9));
+  opacity: 0;
+  transform: translate3d(-100px, -100px, 0);
+  transition: opacity 90ms linear;
+  will-change: transform;
+}
+
+.custom-cursor svg {
+  display: block;
+}
+
+.custom-cursor-visible {
+  opacity: 1;
+}
+
+.custom-cursor-text {
+  width: 20px;
+  height: 24px;
+}
+
+.custom-cursor-not-allowed {
+  width: 22px;
+  height: 22px;
+}
+
+img,
+svg,
+video,
+canvas {
+  max-width: 100%;
+  height: auto;
+}
+
 .hero-grid {
   background-image:
     linear-gradient(to right, rgba(120, 113, 108, 0.14) 1px, transparent 1px),

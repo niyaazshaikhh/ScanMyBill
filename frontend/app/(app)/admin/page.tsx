@@ -77,17 +77,14 @@ export default function AdminPage() {
 
   useEffect(() => {
     if (!isAdminUser) return;
-    void loadUsers();
-  }, [isAdminUser]);
-
-  const submitSearch = (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    void loadUsers(search);
-  };
+    const timeout = window.setTimeout(() => {
+      void loadUsers(search);
+    }, 300);
+    return () => window.clearTimeout(timeout);
+  }, [isAdminUser, search]);
 
   const resetSearch = () => {
     setSearch('');
-    void loadUsers('');
   };
 
   const updateUser = async (userId: string, payload: { role?: 'admin' | 'user'; is_active?: boolean }) => {
@@ -168,19 +165,16 @@ export default function AdminPage() {
       <Card className='bg-white/90'>
         <CardHeader className='space-y-3'>
           <CardTitle>User Management</CardTitle>
-          <form className='flex flex-col gap-2 sm:flex-row' onSubmit={submitSearch}>
+          <div className='flex flex-col gap-2 sm:flex-row'>
             <Input
               value={search}
               onChange={(event) => setSearch(event.target.value)}
               placeholder='Search by name or email'
             />
-            <Button type='submit' disabled={loading}>
-              Search
-            </Button>
-            <Button type='button' variant='outline' onClick={resetSearch} disabled={loading}>
+            <Button type='button' variant='outline' onClick={resetSearch} disabled={loading || !search.trim()}>
               Reset
             </Button>
-          </form>
+          </div>
         </CardHeader>
         <CardContent className='space-y-4'>
           {loading ? <p className='text-sm text-muted-foreground'>Loading users...</p> : null}

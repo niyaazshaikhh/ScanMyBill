@@ -54,18 +54,30 @@ def _create_notification_best_effort(
 def _build_plan_options(client: razorpay.Client | None = None) -> list[RazorpayPlanOption]:
     plan_options: list[RazorpayPlanOption] = []
     for plan_id in settings.allowed_razorpay_plan_ids:
-        option = RazorpayPlanOption(id=plan_id)
+        option = RazorpayPlanOption(
+            id=plan_id,
+            mapped_plan=_resolve_plan_hint(plan_id=plan_id),
+        )
         if client:
             try:
                 plan = client.plan.fetch(plan_id)
                 item = plan.get('item') if isinstance(plan.get('item'), dict) else {}
+                notes = plan.get('notes') if isinstance(plan.get('notes'), dict) else {}
+                item_name = item.get('name') if isinstance(item, dict) else None
+                item_description = item.get('description') if isinstance(item, dict) else None
                 option = RazorpayPlanOption(
                     id=plan.get('id', plan_id),
-                    item_name=item.get('name'),
+                    item_name=item_name,
                     interval=plan.get('interval'),
                     period=plan.get('period'),
                     amount=item.get('amount'),
                     currency=item.get('currency'),
+                    mapped_plan=_resolve_plan_hint(
+                        plan_id=str(plan.get('id', plan_id) or plan_id),
+                        item_name=item_name if isinstance(item_name, str) else None,
+                        item_description=item_description if isinstance(item_description, str) else None,
+                        notes=notes,
+                    ),
                 )
             except Exception:
                 # Fallback to plan ID only when metadata fetch fails.
@@ -84,14 +96,40 @@ def _plan_from_text(value: str | None) -> SubscriptionPlan | None:
     if not value:
         return None
     normalized = value.strip().lower()
-    if 'business' in normalized:
+    tokens = normalized.replace('-', ' ').replace('_', ' ')
+    if 'business' in tokens or 'enterprise' in tokens or 'premium' in tokens:
         return SubscriptionPlan.BUSINESS
-    if ' pro' in f' {normalized} ':
+    if ' pro ' in f' {tokens} ' or 'professional' in tokens:
         return SubscriptionPlan.PRO
-    if 'standard' in normalized:
+    if 'standard' in tokens or 'starter' in tokens or 'basic' in tokens:
         return SubscriptionPlan.STANDARD
-    if 'free' in normalized:
+    if 'free' in tokens or 'trial' in tokens:
         return SubscriptionPlan.FREE
+    return None
+
+
+def _resolve_plan_hint(
+    *,
+    plan_id: str | None = None,
+    item_name: str | None = None,
+    item_description: str | None = None,
+    notes: dict[str, Any] | None = None,
+) -> SubscriptionPlan | None:
+    if notes:
+        for key in ('plan', 'plan_name', 'tier', 'plan_tier'):
+            raw = notes.get(key)
+            if isinstance(raw, str):
+                mapped = _plan_from_text(raw)
+                if mapped and mapped != SubscriptionPlan.FREE:
+                    return mapped
+
+    for candidate in (item_name, item_description, plan_id):
+        if not isinstance(candidate, str):
+            continue
+        mapped = _plan_from_text(candidate)
+        if mapped and mapped != SubscriptionPlan.FREE:
+            return mapped
+
     return None
 
 

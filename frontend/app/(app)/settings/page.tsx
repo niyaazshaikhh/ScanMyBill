@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -41,6 +41,7 @@ type RazorpayPlanOption = {
   period?: string | null;
   amount?: number | null;
   currency?: string | null;
+  mapped_plan?: SubscriptionPlan | null;
 };
 
 type PaymentConfigResponse = {
@@ -63,11 +64,30 @@ const planRank: Record<SubscriptionPlan, number> = {
 };
 
 function inferPlanFromOption(plan: RazorpayPlanOption): SubscriptionPlan | null {
+  if (plan.mapped_plan) {
+    return plan.mapped_plan;
+  }
+
   const source = `${plan.item_name || ""} ${plan.id || ""}`.toLowerCase();
-  if (source.includes("business")) return "BUSINESS";
-  if (source.includes(" pro ")) return "PRO";
-  if (source.includes("pro")) return "PRO";
-  if (source.includes("standard")) return "STANDARD";
+  const normalized = source.replace(/[_-]+/g, " ");
+
+  if (
+    normalized.includes("business")
+    || normalized.includes("enterprise")
+    || normalized.includes("premium")
+  ) {
+    return "BUSINESS";
+  }
+  if (/\bpro\b/.test(normalized) || normalized.includes("professional")) {
+    return "PRO";
+  }
+  if (
+    normalized.includes("standard")
+    || normalized.includes("starter")
+    || normalized.includes("basic")
+  ) {
+    return "STANDARD";
+  }
   return null;
 }
 
@@ -456,9 +476,9 @@ export default function SettingsPage() {
             <span className="font-medium">Support Email:</span>{" "}
             <a
               className="text-primary hover:underline"
-              href="mailto:support@scanmybill.in?subject=ScanMyBill%20Support%20Request"
+              href="mailto:support@scanmybill.xyz?subject=ScanMyBill%20Support%20Request"
             >
-              support@scanmybill.in
+              support@scanmybill.xyz
             </a>
           </p>
           <button
@@ -502,8 +522,8 @@ export default function SettingsPage() {
               </p>
               <p>
                 <span className="font-medium">Support:</span>{" "}
-                <a className="text-primary hover:underline" href="mailto:support@scanmybill.in">
-                  support@scanmybill.in
+                <a className="text-primary hover:underline" href="mailto:support@scanmybill.xyz">
+                  support@scanmybill.xyz
                 </a>
               </p>
               <p className="text-muted-foreground">Quick FAQ:</p>
@@ -539,3 +559,4 @@ export default function SettingsPage() {
     </div>
   );
 }
+

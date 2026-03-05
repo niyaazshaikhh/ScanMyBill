@@ -1,4 +1,4 @@
-# ScanMyBill.in
+﻿# ScanMyBill
 
 Production-oriented full-stack SaaS starter for OCR-powered bill processing, GST analytics, and invoice automation.
 
