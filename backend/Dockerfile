@@ -1,7 +1,9 @@
-FROM python:3.11-slim
+FROM python:3.11-slim-bookworm
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1
 
 WORKDIR /app
 
@@ -15,15 +17,23 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libgdk-pixbuf-2.0-0 \
     libffi-dev \
     fonts-dejavu-core \
+    ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+RUN addgroup --system app && adduser --system --ingroup app app
 
-COPY app ./app
-COPY .env.example ./.env.example
-RUN mkdir -p /app/uploads
+COPY requirements.txt ./
+RUN python -m pip install --upgrade pip && pip install -r requirements.txt
+
+COPY --chown=app:app app ./app
+COPY --chown=app:app .env.example ./.env.example
+RUN mkdir -p /app/uploads && chown -R app:app /app/uploads
+
+USER app
 
 EXPOSE 8000
 
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
+  CMD python -c "import urllib.request; req=urllib.request.Request('http://127.0.0.1:8000/health/live', headers={'Host': 'localhost', 'X-Forwarded-Proto': 'https'}); urllib.request.urlopen(req, timeout=5)" || exit 1
+
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--proxy-headers"]

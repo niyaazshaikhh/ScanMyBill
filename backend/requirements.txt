@@ -1,14 +1,23 @@
+# Core API
 fastapi==0.116.1
 uvicorn[standard]==0.35.0
-sqlalchemy==2.0.44
-psycopg2-binary==2.9.11
+python-multipart==0.0.20
+
+# Configuration and validation
 python-dotenv==1.1.1
 pydantic-settings==2.11.0
+email-validator==2.3.0
+
+# Database
+sqlalchemy==2.0.44
+psycopg2-binary==2.9.11
+
+# Security and auth
 passlib[bcrypt]==1.7.4
 bcrypt==4.0.1
 python-jose[cryptography]==3.5.0
-email-validator==2.3.0
-python-multipart==0.0.20
+
+# Document and PDF processing (AI + OCR pipeline)
 pillow==11.3.0
 pytesseract==0.3.13
 pdf2image==1.17.0
@@ -16,9 +25,13 @@ pypdf==6.0.0
 reportlab==4.4.4
 jinja2==3.1.6
 weasyprint==62.3
+
+# AI and external integrations
+openai>=1.0.0,<2.0.0
 boto3==1.40.29
 razorpay==1.4.2
 google-auth==2.40.3
 requests==2.32.5
-openai>=1.0.0,<2.0.0
+
+# Runtime compatibility
 setuptools==69.5.1

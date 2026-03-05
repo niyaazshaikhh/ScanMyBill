@@ -4,7 +4,7 @@ export default function manifest(): MetadataRoute.Manifest {
   return {
     name: 'ScanMyBill',
     short_name: 'ScanMyBill',
-    description: 'OCR-powered bill management and GST workflow platform for Indian businesses.',
+    description: 'AI-powered bill management and GST workflow platform specially made for Indian MSMEs.',
     start_url: '/',
     scope: '/',
     display: 'standalone',

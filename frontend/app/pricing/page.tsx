@@ -32,7 +32,7 @@ export default function PricingPage() {
         </CardHeader>
         <CardContent className="space-y-4 text-sm">
           <p>
-            Start your ScanMyBill subscription with secure Razorpay checkout.
+            Start your ScanMyBill subscription with secure Razorpay checkout for AI-powered workflows built for Indian MSMEs.
           </p>
           <PricingPlanCards />
           <p>

@@ -1,94 +1,152 @@
 # API Documentation (v1)
 
-Base URL: `http://localhost:8000/api/v1`
-Interactive docs: `http://localhost:8000/docs`
+Base URL: `http://localhost:8000/api/v1`  
+Health endpoints: `http://localhost:8000/health/*`
 
 ## Authentication
 
-### `POST /auth/register`
-Register a user and return JWT.
+Auth routes are under `/auth`.
 
-Request body:
-```json
-{
-  "email": "user@example.com",
-  "password": "password123",
-  "full_name": "John Doe"
-}
-```
-
-### `POST /auth/login`
-Email/password login and return JWT.
-
-### `POST /auth/google`
-Google OAuth login via ID token.
-
-### `GET /auth/me`
-Get current authenticated user.
+- `POST /auth/create-account`
+- `POST /auth/register`
+- `POST /auth/login`
+- `POST /auth/admin/login`
+- `POST /auth/google`
+- `GET /auth/me`
+- `POST /auth/refresh`
+- `POST /auth/logout`
+- `POST /auth/forgot-password`
+- `POST /auth/reset-password`
 
 ## Dashboard
 
-### `GET /dashboard/summary?period=monthly|quarterly|semi-annually|annually`
-Returns:
-- Total Sales
-- Total Purchases
-- GST Collected
-- GST Paid
-- GST Payable
-- Trend data for charts
-- GST pie segments
+- `GET /dashboard/summary?period=monthly|quarterly|semi-annually|annually&year=...`
+- `GET /dashboard/admin-overview` (admin only)
 
-## Bills/OCR
+## Bills (AI Extraction Upload Flow)
 
-### `POST /bills/upload` (multipart/form-data)
-Fields:
-- `file` (image/pdf)
-- `invoice_type` (`sales` or `purchase`)
-
-Flow:
-- Secure upload validation
-- OCR extraction (Tesseract)
-- Structured data parsing
-- Invoice creation from extracted values
+- `POST /bills/upload` (multipart/form-data)
+  - fields: `file`, `invoice_type` (`sales` or `purchase`)
+  - flow: upload validation -> AI/OCR extraction -> parsed invoice persistence
 
 ## Invoices
 
-### `GET /invoices`
-Query params:
-- `period`
-- `invoice_type`
-- `bucket` (optional folder filter)
+- `GET /invoices`
+- `GET /invoices/latest-created`
+- `POST /invoices/create`
+- `POST /invoices/create/pdf`
+- `GET /invoices/export-folder`
+- `GET /invoices/{invoice_id}`
+- `GET /invoices/{invoice_id}/preview`
+- `GET /invoices/{invoice_id}/pdf`
+- `DELETE /invoices/{invoice_id}`
 
-### `POST /invoices/create`
-Create manual invoice with items.
+## Delivery Challans (Non-GST)
 
-### `GET /invoices/{invoice_id}`
-Get invoice details.
+Routes are under `/delivery-challans`.
 
-### `GET /invoices/{invoice_id}/pdf`
-Download single invoice PDF.
-
-### `GET /invoices/export-folder?period=...&bucket=...&invoice_type=...`
-Download combined folder PDF.
+- `GET /delivery-challans`
+- `GET /delivery-challans/latest-created`
+- `POST /delivery-challans/create`
+- `POST /delivery-challans/create/pdf`
+- `GET /delivery-challans/{challan_id}/preview`
+- `GET /delivery-challans/{challan_id}/pdf`
+- `DELETE /delivery-challans/{challan_id}`
 
 ## Clients
 
-### `GET /clients`
-List clients + total transactions + total revenue.
+- `GET /clients`
+- `POST /clients`
+- `PUT /clients/{client_id}`
+- `DELETE /clients/{client_id}`
+- `GET /clients/analytics`
 
-### `POST /clients`
-Create client.
+## HSN/SAC Master
 
-### `GET /clients/analytics`
-Overview metrics and top clients.
+Routes are under `/hsn-sac-master-list`.
 
-## Payments (Razorpay Demo)
+- `GET /hsn-sac-master-list`
+- `POST /hsn-sac-master-list`
+- `PUT /hsn-sac-master-list/{entry_id}`
+- `DELETE /hsn-sac-master-list/{entry_id}`
 
-### `GET /payments/config`
-Returns publishable key for frontend checkout.
+## Payments (Razorpay)
 
-### `POST /payments/subscriptions/demo`
-Creates demo subscription (or mock when keys are absent).
+Routes are under `/payments`.
 
-### `POST /payments/verify`
-Verifies Razorpay subscription payment signature.
+- `GET /payments/config`
+- `POST /payments/subscriptions`
+- `POST /payments/subscriptions/cancel`
+- `POST /payments/verify`
+- `POST /payments/webhook`
+
+## User Profile and Preferences
+
+Routes are under `/users`.
+
+- `GET /users/me`
+- `PUT /users/notification-preference`
+- `GET /users/personal-details`
+- `PUT /users/personal-details`
+
+## Notifications
+
+Routes are under `/notifications`.
+
+- `GET /notifications`
+- `POST /notifications/read-all`
+- `POST /notifications/{notification_id}/read`
+- `DELETE /notifications/clear-all`
+
+## Newsletter
+
+Routes are under `/newsletter`.
+
+- `POST /newsletter/subscribe`
+- `POST /newsletter/unsubscribe`
+- `GET /newsletter/unsubscribe`
+- `GET /newsletter/subscribers`
+- `POST /newsletter/send`
+
+## Admin
+
+Routes are under `/admin` and require admin access.
+
+- `GET /admin/users`
+- `PATCH /admin/users/{user_id}`
+- `POST /admin/users/{user_id}/reset-password`
+- `GET /admin/newsletter/subscribers`
+- `GET /admin/newsletter/users`
+- `DELETE /admin/newsletter/subscribers/{subscriber_id}`
+- `POST /admin/newsletter/send`
+
+## Debug
+
+Routes are under `/debug`.
+
+- `GET /debug/ai-config`
+
+## Health Endpoints (outside `/api/v1`)
+
+- `GET /health/live`
+- `GET /health/ready`
+- `GET /health`
+
+## Error Envelope
+
+Standard error response format:
+
+```json
+{
+  "success": false,
+  "error": {
+    "code": "ERROR_CODE",
+    "message": "Human-readable message"
+  }
+}
+```
+
+## OpenAPI UI
+
+- `GET /docs` (only when docs are enabled)
+- `GET /redoc` (only when docs are enabled)

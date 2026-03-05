@@ -411,7 +411,7 @@ export default function DashboardPage() {
         <CardHeader>
           <CardTitle>Bill Processing Flow</CardTitle>
           <CardDescription>
-            Upload JPEG/PNG/PDF bills, run OCR extraction, and auto-store
+            Upload JPEG/PNG/PDF bills, run AI extraction, and auto-store
             structured records.
           </CardDescription>
         </CardHeader>

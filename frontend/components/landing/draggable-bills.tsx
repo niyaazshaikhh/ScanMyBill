@@ -6,6 +6,8 @@ type BillCard = {
   id: number;
   title: string;
   amount: string;
+  insight: string;
+  aiScore: string;
   left: number;
   top: number;
   rotate: number;
@@ -13,9 +15,39 @@ type BillCard = {
 };
 
 const initialCards: BillCard[] = [
-  { id: 1, title: 'Bluebird Traders', amount: 'Rs 12,460', left: 12, top: 12, rotate: -8, color: 'bg-amber-100' },
-  { id: 2, title: 'City Medico', amount: 'Rs 5,140', left: 44, top: 30, rotate: 6, color: 'bg-lime-100' },
-  { id: 3, title: 'Apex Supplies', amount: 'Rs 8,920', left: 22, top: 56, rotate: -3, color: 'bg-sky-100' }
+  {
+    id: 1,
+    title: 'Shree Ganesh Tools',
+    amount: 'Rs 12,460',
+    insight: 'GST fields matched',
+    aiScore: 'AI 98%',
+    left: 12,
+    top: 12,
+    rotate: -8,
+    color: 'bg-gradient-to-br from-amber-50 to-amber-100'
+  },
+  {
+    id: 2,
+    title: 'City Medico',
+    amount: 'Rs 5,140',
+    insight: 'Vendor auto-detected',
+    aiScore: 'AI 96%',
+    left: 44,
+    top: 30,
+    rotate: 6,
+    color: 'bg-gradient-to-br from-lime-50 to-lime-100'
+  },
+  {
+    id: 3,
+    title: 'Apex Supplies',
+    amount: 'Rs 8,920',
+    insight: 'Tax split suggested',
+    aiScore: 'AI 97%',
+    left: 22,
+    top: 56,
+    rotate: -3,
+    color: 'bg-gradient-to-br from-sky-50 to-sky-100'
+  }
 ];
 
 export function DraggableBills() {
@@ -71,6 +103,19 @@ export function DraggableBills() {
       ref={containerRef}
       className='hero-grid relative h-[320px] w-full overflow-hidden rounded-3xl border border-amber-200 bg-white/70 p-4 shadow-lg backdrop-blur sm:h-[380px]'
     >
+      <div className='pointer-events-none absolute -right-10 -top-10 h-36 w-36 rounded-full bg-sky-200/40 blur-2xl' />
+      <div className='pointer-events-none absolute -bottom-14 -left-10 h-40 w-40 rounded-full bg-orange-200/45 blur-2xl' />
+
+      <div className='pointer-events-none absolute inset-x-4 top-4 z-10 flex items-center justify-between text-[11px] font-semibold'>
+        <span className='inline-flex items-center gap-1.5 rounded-full border border-emerald-300 bg-emerald-50 px-2.5 py-1 text-emerald-700'>
+          <span className='h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-600' />
+          AI Engine Live
+        </span>
+        <span className='rounded-full border border-orange-300 bg-orange-50 px-2.5 py-1 text-orange-700'>
+          Made for Indian MSMEs
+        </span>
+      </div>
+
       {cards.map((card) => (
         <div
           key={card.id}
@@ -111,10 +156,16 @@ export function DraggableBills() {
               activeId === card.id ? 'invoice-float-dragging' : ''
             }`}
           >
-            <p className='text-xs font-medium text-stone-600'>Invoice</p>
+            <p className='text-xs font-medium text-stone-600'>AI Processed Bill</p>
             <h4 className='mt-1 text-sm font-semibold text-stone-800'>{card.title}</h4>
             <p className='mt-2 text-lg font-bold text-stone-900'>{card.amount}</p>
-            <p className='mt-1 text-xs text-stone-500'>Drag to organize</p>
+            <div className='mt-2 flex items-center justify-between gap-2 text-[11px] text-stone-600'>
+              <span>{card.insight}</span>
+              <span className='rounded-full bg-emerald-100 px-2 py-0.5 font-semibold text-emerald-700'>
+                {card.aiScore}
+              </span>
+            </div>
+            <p className='mt-1 text-xs text-stone-500'>Drag to organize MSME workflow</p>
           </div>
         </div>
       ))}

@@ -21,7 +21,7 @@ import { Card, CardContent } from "@/components/ui/card";
 export const metadata: Metadata = {
   title: "Home",
   description:
-    "OCR-powered billing and GST workflow platform for Indian businesses. Create invoices, track analytics, and export PDFs quickly.",
+    "AI-powered billing and GST workflow platform specially made for Indian MSMEs. Create invoices, track analytics, and export PDFs faster.",
 };
 
 const features: Array<{
@@ -30,23 +30,23 @@ const features: Array<{
   icon: LucideIcon;
 }> = [
   {
-    title: "OCR-Powered Bill Capture",
-    body: "Upload image/PDF bills and auto-extract date, GSTIN, amount, and bill type.",
+    title: "AI-Powered Bill Intelligence",
+    body: "Upload image/PDF bills and let AI extract GSTIN, amount, tax values, and bill type automatically.",
     icon: FileSearch2,
   },
   {
-    title: "GST Dashboard Intelligence",
-    body: "Track GST collected, paid, and payable with period-wise analytics and visual trends.",
+    title: "MSME-Ready GST Analytics",
+    body: "Track GST collected, paid, and payable with period-wise analytics built for Indian MSME workflows.",
     icon: BarChart3,
   },
   {
-    title: "Folder-Based Invoices",
-    body: "Browse monthly/quarterly/semi-annual/yearly folders and export consolidated PDFs.",
+    title: "Smart Invoice Workspaces",
+    body: "Browse monthly/quarterly/semi-annual/yearly invoice folders and export consolidated PDFs quickly.",
     icon: FolderOpen,
   },
   {
-    title: "Client Revenue Insights",
-    body: "See top clients, transactions, and revenue instantly without manual reconciliation.",
+    title: "Client Growth Insights",
+    body: "See top clients, transactions, and revenue instantly with AI-assisted summaries.",
     icon: TrendingUp,
   },
 ];
@@ -70,7 +70,7 @@ const faqs = [
   {
     question: "Do I need technical setup to upload bills?",
     answer:
-      "No. You can upload PDFs or images directly, and OCR extraction will map key invoice fields for faster bookkeeping.",
+      "No. You can upload PDFs or images directly, and AI extraction maps key invoice fields for faster bookkeeping.",
   },
 ];
 
@@ -162,15 +162,27 @@ export default function LandingPage() {
         <section className="mx-auto grid w-full max-w-7xl gap-8 px-4 pb-16 pt-10 sm:px-6 lg:grid-cols-2 lg:px-8 lg:pt-16">
           <div className="fade-up space-y-6">
             <p className="inline-flex rounded-full bg-secondary px-3 py-1 text-xs font-semibold uppercase tracking-wide text-secondary-foreground">
-              SaaS for Smart GST Teams
+              AI Platform for Indian MSMEs
             </p>
             <h1 className="font-[var(--font-space)] text-4xl font-semibold leading-tight text-foreground sm:text-5xl">
               Stop Manual Entries. Start Smart Bill Management.
             </h1>
             <p className="max-w-xl text-lg text-muted-foreground">
-              ScanMyBill helps Indian businesses process bills faster with OCR,
-              track GST exposure, and export grouped invoices in one click.
+              ScanMyBill helps Indian MSMEs automate bill processing, improve
+              GST accuracy, and manage invoices at scale with AI-powered
+              workflows.
             </p>
+            <div className="flex flex-wrap gap-2 text-xs font-medium text-foreground/80">
+              <span className="rounded-full border border-orange-300 bg-white/85 px-3 py-1">
+                MSME-first workflows
+              </span>
+              <span className="rounded-full border border-sky-300 bg-white/85 px-3 py-1">
+                AI field extraction
+              </span>
+              <span className="rounded-full border border-emerald-300 bg-white/85 px-3 py-1">
+                GST-ready exports
+              </span>
+            </div>
             <Button asChild size="lg" className="w-full sm:max-w-md">
               <Link href="/signup">Sign up</Link>
             </Button>
@@ -229,7 +241,7 @@ export default function LandingPage() {
                   ScanMyBill plan.
                 </p>
                 <p className="mt-2 text-sm text-muted-foreground">
-                  Monthly plan with GST invoicing support, OCR processing,
+                  Monthly plan with GST invoicing support, AI processing,
                   dashboard analytics, and invoice exports.
                 </p>
               </div>
@@ -313,8 +325,8 @@ export default function LandingPage() {
                 Newsletter Signup
               </h3>
               <p className="text-sm text-muted-foreground">
-                Get product updates on OCR, GST compliance, and automation
-                workflows.
+                Get product updates on AI features, GST compliance, and MSME
+                automation workflows.
               </p>
               <NewsletterForm />
             </CardContent>

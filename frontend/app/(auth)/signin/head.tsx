@@ -4,7 +4,7 @@ export default function Head() {
       <title>Sign In</title>
       <meta
         name="description"
-        content="Sign in to your ScanMyBill account to manage invoices, clients, and GST workflow."
+        content="Sign in to your ScanMyBill account to manage AI-powered invoices, clients, and GST workflows for Indian MSMEs."
       />
     </>
   );

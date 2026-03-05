@@ -4,7 +4,7 @@ export default function Head() {
       <title>Create Account</title>
       <meta
         name="description"
-        content="Create your ScanMyBill account and start smart bill management with OCR and GST tools."
+        content="Create your ScanMyBill account and start AI-powered bill management with GST tools built for Indian MSMEs."
       />
     </>
   );

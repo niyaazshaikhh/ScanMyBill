@@ -31,24 +31,25 @@ export const metadata: Metadata = {
     apple: [{ url: '/icons/apple-touch-icon.png', sizes: '180x180', type: 'image/png' }]
   },
   title: {
-    default: 'ScanMyBill | Smart Bill Management for Indian SMBs',
+    default: 'ScanMyBill | AI Billing Platform for Indian MSMEs',
     template: '%s | ScanMyBill'
   },
   description:
-    'Stop manual entries. Start smart bill management with OCR-powered uploads, GST analytics, and invoice exports.',
+    'AI-powered billing platform specially made for Indian MSMEs with smart bill extraction, GST analytics, and invoice exports.',
   alternates: {
     canonical: '/'
   },
   keywords: [
     'bill management',
-    'invoice OCR',
+    'AI invoice automation',
     'GST dashboard',
+    'Indian MSME software',
     'SaaS billing software',
     'ScanMyBill'
   ],
   openGraph: {
     title: 'ScanMyBill',
-    description: 'Stop Manual Entries. Start Smart Bill Management.',
+    description: 'AI-powered billing and GST workflows specially made for Indian MSMEs.',
     url: '/',
     siteName: 'ScanMyBill',
     locale: 'en_IN',

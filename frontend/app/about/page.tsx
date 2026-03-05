@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 
 export const metadata: Metadata = {
   title: 'About Us',
-  description: 'Know the developer behind ScanMyBill and connect on social profiles.'
+  description: 'Know the developer behind ScanMyBill, the AI billing platform specially made for Indian MSMEs.'
 };
 
 const socialLinks = [
@@ -34,7 +34,7 @@ export default function AboutPage() {
         <div>
           <h1 className='font-[var(--font-space)] text-3xl font-semibold'>About Us</h1>
           <p className='mt-2 text-sm text-muted-foreground'>
-            ScanMyBill is built to simplify invoice management and GST workflows for Indian businesses.
+            ScanMyBill is built specially for Indian MSMEs to simplify invoice management and GST workflows.
           </p>
         </div>
         <Link href='/' className='text-sm font-medium text-primary'>
@@ -51,7 +51,7 @@ export default function AboutPage() {
             <span className='font-semibold'>Niyaz Shaikh</span>
           </p>
           <p className='text-sm text-muted-foreground'>
-            Building practical SaaS tools focused on OCR automation, billing operations, and compliance workflows.
+            Building practical SaaS tools focused on AI-powered automation, billing operations, and compliance workflows.
           </p>
 
           <div className='flex flex-wrap gap-3'>

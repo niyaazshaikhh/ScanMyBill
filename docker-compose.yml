@@ -1,58 +1,111 @@
 services:
   db:
     image: postgres:16-alpine
-    container_name: scanmybill_db
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change-me-strong-password}
       POSTGRES_DB: ${POSTGRES_DB:-scanmybill}
-    ports:
-      - '5432:5432'
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-postgres}']
+      test:
+        - CMD-SHELL
+        - pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-scanmybill}
       interval: 10s
       timeout: 5s
-      retries: 5
+      retries: 10
+      start_period: 10s
+    networks:
+      - scanmybill
 
   backend:
     build:
       context: ./backend
-    container_name: scanmybill_backend
+      dockerfile: Dockerfile
+    image: ${BACKEND_IMAGE:-scanmybill/backend:latest}
     restart: unless-stopped
+    init: true
     depends_on:
       db:
         condition: service_healthy
     env_file:
       - ./backend/.env
     environment:
+      ENVIRONMENT: ${ENVIRONMENT:-production}
+      DEBUG: ${DEBUG:-false}
+      ENABLE_DOCS: ${ENABLE_DOCS:-false}
       POSTGRES_SERVER: db
       POSTGRES_PORT: 5432
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change-me-strong-password}
       POSTGRES_DB: ${POSTGRES_DB:-scanmybill}
-      CORS_ORIGINS: http://localhost:3000
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000}
+      TRUSTED_HOSTS: ${TRUSTED_HOSTS:-localhost,127.0.0.1,backend}
+      COOKIE_SECURE: ${COOKIE_SECURE:-true}
+      ENFORCE_HTTPS: ${ENFORCE_HTTPS:-true}
+      SEED_DEFAULT_ADMIN: ${SEED_DEFAULT_ADMIN:-false}
+      EXPOSE_PASSWORD_RESET_TOKEN: ${EXPOSE_PASSWORD_RESET_TOKEN:-false}
+      UPLOADS_DIR: ${UPLOADS_DIR:-uploads}
     ports:
-      - '8000:8000'
+      - '${BACKEND_PORT:-8000}:8000'
     volumes:
-      - ./backend/uploads:/app/uploads
+      - backend_uploads:/app/uploads
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; req=urllib.request.Request('http://127.0.0.1:8000/health/live', headers={'Host': 'localhost', 'X-Forwarded-Proto': 'https'}); urllib.request.urlopen(req, timeout=5)"
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 40s
+    networks:
+      - scanmybill
 
   frontend:
     build:
       context: ./frontend
-    container_name: scanmybill_frontend
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000/api/v1}
+        NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:-http://localhost:3000}
+        NEXT_PUBLIC_SESSION_IDLE_TIMEOUT_MINUTES: ${NEXT_PUBLIC_SESSION_IDLE_TIMEOUT_MINUTES:-30}
+        NEXT_PUBLIC_GOOGLE_CLIENT_ID: ${NEXT_PUBLIC_GOOGLE_CLIENT_ID:-}
+        NEXT_PUBLIC_RAZORPAY_KEY_ID: ${NEXT_PUBLIC_RAZORPAY_KEY_ID:-}
+    image: ${FRONTEND_IMAGE:-scanmybill/frontend:latest}
     restart: unless-stopped
+    init: true
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
     env_file:
       - ./frontend/.env
     environment:
-      NEXT_PUBLIC_API_URL: http://localhost:8000/api/v1
-      NEXT_PUBLIC_APP_URL: http://localhost:3000
+      NODE_ENV: production
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000/api/v1}
+      NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:-http://localhost:3000}
+      NEXT_PUBLIC_SESSION_IDLE_TIMEOUT_MINUTES: ${NEXT_PUBLIC_SESSION_IDLE_TIMEOUT_MINUTES:-30}
+      NEXT_PUBLIC_GOOGLE_CLIENT_ID: ${NEXT_PUBLIC_GOOGLE_CLIENT_ID:-}
+      NEXT_PUBLIC_RAZORPAY_KEY_ID: ${NEXT_PUBLIC_RAZORPAY_KEY_ID:-}
     ports:
-      - '3000:3000'
+      - '${FRONTEND_PORT:-3000}:3000'
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - wget -q --spider http://127.0.0.1:3000/ || exit 1
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 45s
+    networks:
+      - scanmybill
 
 volumes:
   postgres_data:
+  backend_uploads:
+
+networks:
+  scanmybill:
+    driver: bridge
