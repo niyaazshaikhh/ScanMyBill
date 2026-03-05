@@ -100,6 +100,14 @@ function extractApiErrorMessage(payload: unknown, fallback: string): string {
     return detail.trim();
   }
 
+  const nestedError = payload.error;
+  if (isRecord(nestedError)) {
+    const nestedMessage = nestedError.message;
+    if (typeof nestedMessage === 'string' && nestedMessage.trim()) {
+      return nestedMessage.trim();
+    }
+  }
+
   const validationMessage = formatValidationErrors(detail);
   if (validationMessage) {
     return validationMessage;

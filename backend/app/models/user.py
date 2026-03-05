@@ -2,7 +2,7 @@ from enum import Enum
 from datetime import datetime
 from uuid import uuid4
 
-from sqlalchemy import Boolean, DateTime, Enum as SqlEnum, String
+from sqlalchemy import Boolean, DateTime, Enum as SqlEnum, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
 
@@ -37,6 +37,9 @@ class User(Base):
     role: Mapped[UserRole] = mapped_column(SqlEnum(UserRole), default=UserRole.USER)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     notifications_enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    failed_login_attempts: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    account_locked_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_failed_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     subscription_plan: Mapped[SubscriptionPlan] = mapped_column(
         SqlEnum(SubscriptionPlan, name='subscription_plan_enum'),
         default=SubscriptionPlan.FREE,

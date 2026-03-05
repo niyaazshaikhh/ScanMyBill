@@ -1,14 +1,18 @@
+import logging
+
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.core.security import get_password_hash, verify_password
+from app.core.validators import ensure_password_strength
 from app.models.user import SubscriptionPlan, SubscriptionStatus, User, UserRole
 
 LEGACY_DEFAULT_ADMIN_EMAILS = {
     'niyaz7@scanmybill.xyz',
     'admin_niyaz7@scanmybill.xyz',
 }
+logger = logging.getLogger(__name__)
 
 
 def default_admin_identity() -> tuple[str, str]:
@@ -24,6 +28,11 @@ def ensure_default_admin_user(db: Session) -> User | None:
     _, admin_email = default_admin_identity()
     default_password = settings.default_admin_password
     default_full_name = settings.default_admin_full_name.strip() or 'Admin User'
+    try:
+        ensure_password_strength(default_password)
+    except ValueError:
+        logger.warning('Skipping default admin seeding because DEFAULT_ADMIN_PASSWORD is not strong enough.')
+        return None
 
     user = db.scalar(select(User).where(func.lower(User.email) == admin_email))
     updated = False

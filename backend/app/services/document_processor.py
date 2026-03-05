@@ -17,6 +17,33 @@ from app.services.ai_document_processor import extract_document_data
 from app.services.ocr import extract_text_from_file
 from app.utils.gstin import normalize_gstin
 
+GST_INVOICE_KEYWORDS = (
+    'invoice',
+    'tax invoice',
+    'gst invoice',
+    'invoice no',
+    'bill no',
+    'cgst',
+    'sgst',
+    'igst',
+)
+DELIVERY_CHALLAN_KEYWORDS = (
+    'delivery challan',
+    'delivery note',
+    'challan',
+    'challan no',
+    'dc no',
+)
+LEGAL_ENTITY_SUFFIXES = {'pvt', 'private', 'ltd', 'limited', 'llp', 'inc', 'co', 'company'}
+INVALID_DOCUMENT_MESSAGE = (
+    'Uploaded file is not a valid invoice or delivery challan. '
+    'Please upload a clear GST invoice or delivery challan document.'
+)
+COMPANY_MISMATCH_MESSAGE = (
+    'This document does not match your company profile. '
+    'Please upload a bill where your company is listed as buyer/seller/consignee.'
+)
+
 
 def normalize_party(data: dict[str, Any]) -> dict[str, Any]:
     normalized = dict(data)
@@ -226,8 +253,6 @@ async def process_uploaded_document(
     company_name: str | None,
     company_gstin: str | None,
 ) -> dict[str, Any]:
-    del company_gstin
-
     ocr_text = ''
     try:
         ocr_text = extract_text_from_file(file_path, mime_type)
@@ -238,17 +263,19 @@ async def process_uploaded_document(
     if not isinstance(raw, dict):
         raise ValueError('AI extraction failed')
     if raw.get('error'):
-        details = _as_optional_str(raw.get('details'))
-        if details:
-            raise ValueError(f"{raw['error']}: {details}")
-        raise ValueError(str(raw['error']))
+        raise ValueError(
+            _map_extraction_error_to_user_message(
+                error=raw.get('error'),
+                details=raw.get('details'),
+            )
+        )
 
     raw = normalize_ai_payload(raw)
     raw = normalize_party(raw)
 
     document_type = _normalize_document_type(raw.get('document_type'))
     if document_type == 'unknown':
-        raise ValueError('Model returned unknown document type')
+        raise ValueError(INVALID_DOCUMENT_MESSAGE)
     if document_type == 'gst_invoice':
         raw = validate_invoice_math(raw)
 
@@ -259,6 +286,24 @@ async def process_uploaded_document(
         _debug_print('Normalized AI payload before schema validation', raw)
         print(f'Pydantic payload validation error: {exc}')
         raise ValueError(f'Schema validation error: {exc}') from exc
+
+    if not _has_required_document_signals(
+        document_type=document_type,
+        raw=raw,
+        ocr_text=ocr_text,
+        gst_payload=gst_payload,
+        challan_payload=challan_payload,
+    ):
+        raise ValueError(INVALID_DOCUMENT_MESSAGE)
+    if not _is_document_meant_for_company(
+        document_type=document_type,
+        raw=raw,
+        ocr_text=ocr_text,
+        company_name=company_name,
+        company_gstin=company_gstin,
+        challan_payload=challan_payload,
+    ):
+        raise ValueError(COMPANY_MISMATCH_MESSAGE)
 
     bill_type = _determine_bill_type(
         document_type=document_type,
@@ -315,6 +360,217 @@ async def process_uploaded_document(
         'to_party': challan_payload.to_party,
         'structured_data': structured,
     }
+
+
+def _map_extraction_error_to_user_message(error: Any, details: Any) -> str:
+    error_message = _as_optional_str(error) or 'Failed to process uploaded bill'
+    details_message = _as_optional_str(details)
+    normalized = error_message.lower()
+    invalid_document_markers = (
+        'unknown document type',
+        'invalid json',
+        'empty response',
+        'file cannot be processed',
+        'unsupported file type',
+    )
+    if any(marker in normalized for marker in invalid_document_markers):
+        return INVALID_DOCUMENT_MESSAGE
+    if details_message:
+        return f'{error_message}: {details_message}'
+    return error_message
+
+
+def _has_required_document_signals(
+    *,
+    document_type: str,
+    raw: dict[str, Any],
+    ocr_text: str,
+    gst_payload: GSTInvoiceExtractedPayload,
+    challan_payload: DeliveryChallanExtractedPayload,
+) -> bool:
+    if document_type == 'gst_invoice':
+        return _has_invoice_signals(raw=raw, ocr_text=ocr_text, payload=gst_payload)
+    if document_type == 'delivery_challan':
+        return _has_delivery_challan_signals(raw=raw, ocr_text=ocr_text, payload=challan_payload)
+    return False
+
+
+def _has_invoice_signals(
+    *,
+    raw: dict[str, Any],
+    ocr_text: str,
+    payload: GSTInvoiceExtractedPayload,
+) -> bool:
+    invoice_number = _as_optional_str(payload.invoice_number) or _as_optional_str(raw.get('invoice_number'))
+    invoice_date = payload.invoice_date or _as_optional_date(raw.get('invoice_date'))
+    seller_name = _extract_party_name(_first_non_empty_value(raw.get('seller'), raw.get('seller_name')))
+    buyer_name = _extract_party_name(_first_non_empty_value(raw.get('buyer'), raw.get('buyer_name')))
+
+    has_identity = bool(invoice_number or invoice_date)
+    has_party = bool(seller_name or buyer_name)
+    has_amount = payload.total_amount > 0 or payload.subtotal > 0 or _as_amount(raw.get('total_amount')) > 0
+    has_items = len(payload.items) > 0
+    has_keyword = _text_contains_keywords(ocr_text, GST_INVOICE_KEYWORDS)
+
+    strong_structure = has_identity and has_party and (has_amount or has_items)
+    keyword_structure = has_keyword and has_party and (has_identity or has_amount or has_items)
+    return strong_structure or keyword_structure
+
+
+def _has_delivery_challan_signals(
+    *,
+    raw: dict[str, Any],
+    ocr_text: str,
+    payload: DeliveryChallanExtractedPayload,
+) -> bool:
+    challan_number = payload.challan_number or _as_optional_int(raw.get('challan_number'))
+    order_number = _as_optional_str(payload.order_number) or _as_optional_str(raw.get('order_number'))
+    challan_date = payload.challan_date or _as_optional_date(raw.get('challan_date'))
+    from_party = _as_optional_str(payload.from_party) or _extract_party_name(raw.get('from_party'))
+    to_party = _as_optional_str(payload.to_party) or _extract_party_name(raw.get('to_party'))
+
+    has_identity = bool(challan_number or order_number or challan_date)
+    has_party = bool(from_party or to_party)
+    has_amount = payload.subtotal > 0 or _as_amount(raw.get('subtotal')) > 0 or _as_amount(raw.get('total_amount')) > 0
+    has_items = len(payload.items) > 0
+    has_keyword = _text_contains_keywords(ocr_text, DELIVERY_CHALLAN_KEYWORDS)
+
+    strong_structure = has_identity and has_party and (has_amount or has_items)
+    keyword_structure = has_keyword and has_party and (has_identity or has_amount or has_items)
+    return strong_structure or keyword_structure
+
+
+def _is_document_meant_for_company(
+    *,
+    document_type: str,
+    raw: dict[str, Any],
+    ocr_text: str,
+    company_name: str | None,
+    company_gstin: str | None,
+    challan_payload: DeliveryChallanExtractedPayload,
+) -> bool:
+    normalized_company = _normalize_name(company_name)
+    normalized_company_gstin = normalize_gstin(company_gstin)
+    if not normalized_company and not normalized_company_gstin:
+        return True
+
+    party_names = _collect_document_party_names(
+        document_type=document_type,
+        raw=raw,
+        challan_payload=challan_payload,
+    )
+    if normalized_company and any(_name_matches_company(normalized_company, name) for name in party_names):
+        return True
+    if normalized_company and _ocr_mentions_company(normalized_company, ocr_text):
+        return True
+
+    if normalized_company_gstin:
+        if _value_contains_gstin(raw, normalized_company_gstin):
+            return True
+        if normalized_company_gstin in str(ocr_text or '').upper():
+            return True
+
+    return False
+
+
+def _collect_document_party_names(
+    *,
+    document_type: str,
+    raw: dict[str, Any],
+    challan_payload: DeliveryChallanExtractedPayload,
+) -> list[str]:
+    candidates: list[str] = []
+    if document_type == 'delivery_challan':
+        _append_party_name(candidates, challan_payload.from_party)
+        _append_party_name(candidates, challan_payload.to_party)
+        _append_party_name(candidates, raw.get('from_party'))
+        _append_party_name(candidates, raw.get('to_party'))
+    else:
+        _append_party_name(candidates, raw.get('seller'))
+        _append_party_name(candidates, raw.get('seller_name'))
+        _append_party_name(candidates, raw.get('buyer'))
+        _append_party_name(candidates, raw.get('buyer_name'))
+        _append_party_name(candidates, raw.get('from_party'))
+        _append_party_name(candidates, raw.get('to_party'))
+    return candidates
+
+
+def _append_party_name(target: list[str], value: Any) -> None:
+    candidate = _extract_party_name(value) or _as_optional_str(value)
+    if not candidate:
+        return
+    cleaned = candidate.strip()
+    if cleaned and cleaned not in target:
+        target.append(cleaned)
+
+
+def _name_matches_company(normalized_company: str, candidate: str | None) -> bool:
+    normalized_candidate = _normalize_name(candidate)
+    if not normalized_candidate:
+        return False
+
+    if normalized_candidate == normalized_company:
+        return True
+    if len(normalized_company) >= 5 and normalized_company in normalized_candidate:
+        return True
+    if len(normalized_candidate) >= 5 and normalized_candidate in normalized_company:
+        return True
+
+    company_tokens = _name_tokens(normalized_company)
+    candidate_tokens = _name_tokens(normalized_candidate)
+    if not company_tokens or not candidate_tokens:
+        return False
+
+    overlap = company_tokens.intersection(candidate_tokens)
+    if not overlap:
+        return False
+    return len(overlap) / len(company_tokens) >= 0.6
+
+
+def _ocr_mentions_company(normalized_company: str, ocr_text: str) -> bool:
+    normalized_text = _normalize_name(ocr_text)
+    if not normalized_text:
+        return False
+
+    if len(normalized_company) >= 5 and normalized_company in normalized_text:
+        return True
+
+    company_tokens = _name_tokens(normalized_company)
+    text_tokens = _name_tokens(normalized_text)
+    if not company_tokens or not text_tokens:
+        return False
+
+    overlap = company_tokens.intersection(text_tokens)
+    return bool(overlap) and len(overlap) / len(company_tokens) >= 0.6
+
+
+def _name_tokens(normalized_name: str) -> set[str]:
+    tokens = [
+        token
+        for token in normalized_name.split()
+        if token and token not in LEGAL_ENTITY_SUFFIXES and len(token) >= 2
+    ]
+    if tokens:
+        return set(tokens)
+    return {token for token in normalized_name.split() if token}
+
+
+def _text_contains_keywords(text: str, keywords: tuple[str, ...]) -> bool:
+    if not text:
+        return False
+    normalized_text = text.lower()
+    return any(keyword in normalized_text for keyword in keywords)
+
+
+def _value_contains_gstin(value: Any, target_gstin: str) -> bool:
+    if isinstance(value, str):
+        normalized = normalize_gstin(value)
+        return normalized == target_gstin
+    if isinstance(value, dict):
+        return any(_value_contains_gstin(item, target_gstin) for item in value.values())
+    if isinstance(value, list):
+        return any(_value_contains_gstin(item, target_gstin) for item in value)
+    return False
 
 
 def _select_gst_for_bill_type(

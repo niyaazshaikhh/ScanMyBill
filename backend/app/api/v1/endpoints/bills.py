@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import date, datetime
+import io
 import logging
 from pathlib import Path
 import re
@@ -8,6 +9,8 @@ import tempfile
 from typing import Any, Final
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
+from PIL import Image, UnidentifiedImageError
+from pypdf import PdfReader
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
@@ -39,19 +42,13 @@ ALLOWED_MIME_TYPES = {
     'image/png',
     'image/jpeg',
     'image/jpg',
-    'image/webp',
-    'application/vnd.ms-excel',
-    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
 }
-ALLOWED_EXTENSIONS = {'.pdf', '.png', '.jpg', '.jpeg', '.webp', '.xls', '.xlsx'}
+ALLOWED_EXTENSIONS = {'.pdf', '.png', '.jpg', '.jpeg'}
 MIME_BY_EXTENSION: Final[dict[str, str]] = {
     '.pdf': 'application/pdf',
     '.png': 'image/png',
     '.jpg': 'image/jpeg',
     '.jpeg': 'image/jpeg',
-    '.webp': 'image/webp',
-    '.xls': 'application/vnd.ms-excel',
-    '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
 }
 ALLOWED_INVOICE_TYPES: Final[set[str]] = {InvoiceType.SALES.value, InvoiceType.PURCHASE.value}
 
@@ -63,13 +60,33 @@ def _detect_mime(payload: bytes) -> str | None:
         return 'image/png'
     if payload.startswith(b'\xff\xd8\xff'):
         return 'image/jpeg'
-    if len(payload) >= 12 and payload[:4] == b'RIFF' and payload[8:12] == b'WEBP':
-        return 'image/webp'
-    if payload.startswith(b'\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1'):
-        return 'application/vnd.ms-excel'
-    if payload.startswith(b'PK') and b'[Content_Types].xml' in payload and b'xl/' in payload:
-        return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
     return None
+
+
+def _scan_upload_metadata(payload: bytes, detected_mime: str) -> None:
+    if detected_mime == 'application/pdf':
+        try:
+            reader = PdfReader(io.BytesIO(payload))
+            if len(reader.pages) <= 0:
+                raise ValueError('PDF has no readable pages')
+        except Exception as exc:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail='Uploaded PDF appears corrupted or unreadable.',
+            ) from exc
+        return
+
+    if detected_mime not in {'image/png', 'image/jpeg'}:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Unsupported file type')
+
+    try:
+        with Image.open(io.BytesIO(payload)) as image:
+            image.verify()
+    except (UnidentifiedImageError, OSError) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail='Uploaded image appears corrupted or unreadable.',
+        ) from exc
 
 
 def _sanitize_display_filename(original_name: str | None, extension: str) -> str:
@@ -408,6 +425,7 @@ async def upload_bill(
         mime_type = 'image/jpeg'
     if mime_type and mime_type != detected_mime:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='File MIME type does not match file content')
+    _scan_upload_metadata(payload, detected_mime)
 
     safe_original_name = _sanitize_display_filename(file.filename, extension)
     fallback_type = InvoiceType(normalized_invoice_type)

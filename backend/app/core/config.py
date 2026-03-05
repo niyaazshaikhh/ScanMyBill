@@ -21,19 +21,23 @@ class Settings(BaseSettings):
     postgres_server: str = 'localhost'
     postgres_port: int = 5432
     postgres_user: str = 'postgres'
-    postgres_password: str = 'postgres'
+    postgres_password: str = ''
     postgres_db: str = 'scanmybill'
     database_url_override: str | None = None
     db_pool_size: int = 5
     db_max_overflow: int = 10
     db_pool_timeout_seconds: int = 30
     db_pool_recycle_seconds: int = 1800
+    db_connect_timeout_seconds: int = 10
+    db_statement_timeout_ms: int = 15000
 
     secret_key: str = 'change-this-in-production'
     access_token_expire_minutes: int = 15
     refresh_token_expire_days: int = 7
     session_inactivity_timeout_minutes: int = 30
     access_token_refresh_threshold_minutes: int = 3
+    auth_max_failed_attempts: int = 5
+    auth_lockout_minutes: int = 15
     jwt_algorithm: str = 'HS256'
     cookie_secure: bool = False
     cookie_samesite: str = 'lax'
@@ -54,8 +58,9 @@ class Settings(BaseSettings):
     hsts_max_age_seconds: int = 31536000
     request_max_mb: int = 25
     enable_rate_limiting: bool = True
-    rate_limit_default_per_minute: int = 240
-    rate_limit_auth_per_minute: int = 20
+    rate_limit_default_per_minute: int = 100
+    rate_limit_auth_per_minute: int = 10
+    rate_limit_login_per_minute: int = 5
     rate_limit_invoice_pdf_per_minute: int = 60
 
     storage_backend: str = 'local'
@@ -75,6 +80,7 @@ class Settings(BaseSettings):
     azure_openai_endpoint: str | None = None
     azure_openai_api_version: str = '2024-12-01-preview'
     azure_openai_deployment: str | None = None
+    azure_key_vault_uri: str | None = None
 
     google_client_id: str | None = None
     google_client_ids: list[str] | str | None = None
@@ -85,11 +91,11 @@ class Settings(BaseSettings):
     razorpay_plan_id: str | None = None
     razorpay_plan_ids: list[str] | str | None = None
     razorpay_webhook_secret: str | None = None
-    expose_password_reset_token: bool = True
-    seed_default_admin: bool = True
+    expose_password_reset_token: bool = False
+    seed_default_admin: bool = False
     default_admin_user_id: str = 'admin_niyaz7'
     default_admin_email: str = 'admin@scanmybill.xyz'
-    default_admin_password: str = '#AdminNiyaz7'
+    default_admin_password: str = ''
     default_admin_full_name: str = 'Admin User'
     smtp_host: str | None = None
     smtp_port: int = 587
@@ -98,6 +104,7 @@ class Settings(BaseSettings):
     smtp_sender_email: str | None = None
     smtp_sender_name: str = 'ScanMyBill'
     smtp_use_tls: bool = True
+    healthcheck_db_timeout_seconds: int = 3
 
     @property
     def database_url(self) -> str:
@@ -157,6 +164,32 @@ class Settings(BaseSettings):
         if normalized in {'CRITICAL', 'ERROR', 'WARNING', 'INFO', 'DEBUG'}:
             return normalized
         return 'INFO'
+
+    @field_validator(
+        'debug',
+        'enable_docs',
+        'trust_proxy_headers',
+        'enforce_https',
+        'cookie_secure',
+        'enable_rate_limiting',
+        'expose_password_reset_token',
+        'seed_default_admin',
+        'smtp_use_tls',
+        mode='before',
+    )
+    @classmethod
+    def parse_boolean_flags(cls, value: Any) -> bool:
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, (int, float)):
+            return bool(value)
+        if isinstance(value, str):
+            normalized = value.strip().lower()
+            if normalized in {'1', 'true', 'yes', 'on', 'enabled'}:
+                return True
+            if normalized in {'0', 'false', 'no', 'off', 'disabled', 'release'}:
+                return False
+        return False
 
     @field_validator('cookie_samesite', mode='before')
     @classmethod

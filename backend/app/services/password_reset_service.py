@@ -8,6 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.security import get_password_hash, hash_token, utc_now
+from app.core.validators import ensure_password_strength
 from app.models.user import User
 
 PASSWORD_RESET_TOKEN_EXPIRY_MINUTES = 30
@@ -56,7 +57,9 @@ def verify_reset_token(db: Session, token: str) -> User | None:
 
 
 def reset_user_password(db: Session, token: str, new_password: str) -> bool:
-    if len(new_password) < 8:
+    try:
+        ensure_password_strength(new_password)
+    except ValueError:
         return False
 
     user = verify_reset_token(db, token)

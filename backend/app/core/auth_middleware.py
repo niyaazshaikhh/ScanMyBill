@@ -16,6 +16,14 @@ from app.models.token_blacklist import TokenBlacklist
 class AuthSessionMiddleware(BaseHTTPMiddleware):
     """Validate bearer session tokens and normalize auth errors."""
 
+    @staticmethod
+    def _error_headers(request: Request) -> dict[str, str]:
+        headers: dict[str, str] = {'WWW-Authenticate': 'Bearer'}
+        request_id = getattr(request.state, 'request_id', None)
+        if request_id:
+            headers['X-Request-ID'] = request_id
+        return headers
+
     async def dispatch(
         self,
         request: Request,
@@ -30,7 +38,7 @@ class AuthSessionMiddleware(BaseHTTPMiddleware):
                 return auth_error_response(
                     message='Invalid authorization header',
                     status_code=status.HTTP_401_UNAUTHORIZED,
-                    headers={'WWW-Authenticate': 'Bearer'},
+                    headers=self._error_headers(request),
                 )
 
             token = auth_header.split(' ', 1)[1].strip()
@@ -38,7 +46,7 @@ class AuthSessionMiddleware(BaseHTTPMiddleware):
                 return auth_error_response(
                     message='Authorization token is missing',
                     status_code=status.HTTP_401_UNAUTHORIZED,
-                    headers={'WWW-Authenticate': 'Bearer'},
+                    headers=self._error_headers(request),
                 )
 
             try:
@@ -47,13 +55,13 @@ class AuthSessionMiddleware(BaseHTTPMiddleware):
                 return auth_error_response(
                     message='Access token has expired',
                     status_code=status.HTTP_401_UNAUTHORIZED,
-                    headers={'WWW-Authenticate': 'Bearer'},
+                    headers=self._error_headers(request),
                 )
             except JWTError:
                 return auth_error_response(
                     message='Invalid token',
                     status_code=status.HTTP_401_UNAUTHORIZED,
-                    headers={'WWW-Authenticate': 'Bearer'},
+                    headers=self._error_headers(request),
                 )
 
             token_type = payload.get('type')
@@ -61,7 +69,7 @@ class AuthSessionMiddleware(BaseHTTPMiddleware):
                 return auth_error_response(
                     message='Invalid token type',
                     status_code=status.HTTP_401_UNAUTHORIZED,
-                    headers={'WWW-Authenticate': 'Bearer'},
+                    headers=self._error_headers(request),
                 )
 
             jti = payload.get('jti')
@@ -69,7 +77,7 @@ class AuthSessionMiddleware(BaseHTTPMiddleware):
                 return auth_error_response(
                     message='Invalid token',
                     status_code=status.HTTP_401_UNAUTHORIZED,
-                    headers={'WWW-Authenticate': 'Bearer'},
+                    headers=self._error_headers(request),
                 )
 
             token_hash = hash_token(token)
@@ -87,8 +95,12 @@ class AuthSessionMiddleware(BaseHTTPMiddleware):
                 return auth_error_response(
                     message='Token has been revoked',
                     status_code=status.HTTP_401_UNAUTHORIZED,
-                    headers={'WWW-Authenticate': 'Bearer'},
+                    headers=self._error_headers(request),
                 )
+
+            subject = payload.get('sub')
+            if isinstance(subject, str) and subject:
+                request.state.auth_user_id = subject
 
         try:
             return await call_next(request)

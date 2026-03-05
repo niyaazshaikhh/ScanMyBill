@@ -3,6 +3,8 @@ from typing import Any
 from fastapi import status
 from fastapi.responses import JSONResponse
 
+from app.core.errors import error_payload, error_response
+
 
 class AuthException(Exception):
     """Custom auth exception with structured error payload."""
@@ -22,11 +24,7 @@ class AuthException(Exception):
 
 
 def auth_error_payload(message: str, error_code: str = 'AUTH_ERROR') -> dict[str, Any]:
-    return {
-        'success': False,
-        'message': message,
-        'error_code': error_code,
-    }
+    return error_payload(code=error_code, message=message)
 
 
 def auth_error_response(
@@ -35,8 +33,9 @@ def auth_error_response(
     error_code: str = 'AUTH_ERROR',
     headers: dict[str, str] | None = None,
 ) -> JSONResponse:
-    return JSONResponse(
+    return error_response(
         status_code=status_code,
-        content=auth_error_payload(message=message, error_code=error_code),
+        message=message,
+        code=error_code,
         headers=headers or {},
     )

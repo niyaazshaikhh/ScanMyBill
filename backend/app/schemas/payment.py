@@ -42,6 +42,11 @@ class CreateSubscriptionRequest(_StrictRequestModel):
 
 
 class PaymentVerifyRequest(_StrictRequestModel):
-    razorpay_signature: str = Field(min_length=16, max_length=255)
-    razorpay_payment_id: str | None = Field(default=None, min_length=1, max_length=255)
-    razorpay_subscription_id: str | None = Field(default=None, min_length=1, max_length=255)
+    razorpay_signature: str = Field(min_length=32, max_length=128, pattern=r'^[a-fA-F0-9]+$')
+    razorpay_payment_id: str | None = Field(default=None, min_length=1, max_length=255, pattern=r'^pay_[A-Za-z0-9]+$')
+    razorpay_subscription_id: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=255,
+        pattern=r'^sub_[A-Za-z0-9]+$',
+    )

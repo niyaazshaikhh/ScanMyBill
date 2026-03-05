@@ -1,18 +1,22 @@
 from __future__ import annotations
 
+import logging
 import time
 from collections import deque
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from threading import Lock
 from uuid import uuid4
 
 from fastapi import status
-from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import Response
 
 from app.core.config import settings
+from app.core.errors import error_response
+
+logger = logging.getLogger('scanmybill.request')
 
 
 def _client_ip(request: Request) -> str:
@@ -44,6 +48,36 @@ class RequestContextMiddleware(BaseHTTPMiddleware):
         return response
 
 
+class RequestLoggingMiddleware(BaseHTTPMiddleware):
+    async def dispatch(
+        self,
+        request: Request,
+        call_next,
+    ) -> Response:
+        started_at = time.perf_counter()
+        response: Response | None = None
+        status_code = status.HTTP_500_INTERNAL_SERVER_ERROR
+
+        try:
+            response = await call_next(request)
+            status_code = response.status_code
+            return response
+        finally:
+            elapsed_ms = (time.perf_counter() - started_at) * 1000
+            request_id = getattr(request.state, 'request_id', 'n/a')
+            user_id = getattr(request.state, 'auth_user_id', None)
+            logger.info(
+                'request_completed timestamp=%s request_id=%s user_id=%s endpoint=%s method=%s status_code=%s execution_time_ms=%.2f',
+                datetime.now(timezone.utc).isoformat(),
+                request_id,
+                user_id or '-',
+                request.url.path,
+                request.method,
+                status_code,
+                elapsed_ms,
+            )
+
+
 class RequestSizeLimitMiddleware(BaseHTTPMiddleware):
     async def dispatch(
         self,
@@ -55,15 +89,19 @@ class RequestSizeLimitMiddleware(BaseHTTPMiddleware):
             try:
                 payload_size = int(content_length)
             except ValueError:
-                return JSONResponse(
+                return error_response(
                     status_code=status.HTTP_400_BAD_REQUEST,
-                    content={'detail': 'Invalid Content-Length header'},
+                    code='INVALID_CONTENT_LENGTH',
+                    message='Invalid Content-Length header.',
+                    request_id=getattr(request.state, 'request_id', None),
                 )
 
             if payload_size > settings.max_request_bytes:
-                return JSONResponse(
+                return error_response(
                     status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-                    content={'detail': f'Request body exceeds {settings.request_max_mb}MB limit'},
+                    code='REQUEST_BODY_TOO_LARGE',
+                    message=f'Request body exceeds {settings.request_max_mb}MB limit.',
+                    request_id=getattr(request.state, 'request_id', None),
                 )
 
         return await call_next(request)
@@ -78,6 +116,7 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         response = await call_next(request)
         response.headers.setdefault('X-Content-Type-Options', 'nosniff')
         response.headers.setdefault('X-Frame-Options', 'DENY')
+        response.headers.setdefault('X-XSS-Protection', '1; mode=block')
         response.headers.setdefault('Referrer-Policy', 'same-origin')
         response.headers.setdefault('Permissions-Policy', 'geolocation=(), microphone=(), camera=()')
         response.headers.setdefault('Content-Security-Policy', settings.security_csp)
@@ -145,7 +184,10 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
     def _policy_for_request(self, request: Request) -> _RateLimitPolicy:
         path = request.url.path
 
-        if path.endswith('/auth/login') or path.endswith('/auth/refresh'):
+        if path.endswith('/auth/login') or path.endswith('/auth/admin/login'):
+            return _RateLimitPolicy('login', max(1, settings.rate_limit_login_per_minute))
+
+        if '/auth/' in path:
             return _RateLimitPolicy('auth', max(1, settings.rate_limit_auth_per_minute))
 
         if (
@@ -162,18 +204,25 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         request: Request,
         call_next,
     ) -> Response:
-        if not settings.enable_rate_limiting or request.method == 'OPTIONS' or request.url.path == '/health':
+        if not settings.enable_rate_limiting or request.method == 'OPTIONS' or request.url.path in {
+            '/health',
+            '/health/live',
+            '/health/ready',
+        }:
             return await call_next(request)
 
         policy = self._policy_for_request(request)
-        identifier = _client_ip(request)
+        auth_user_id = getattr(request.state, 'auth_user_id', None)
+        identifier = f'user:{auth_user_id}' if isinstance(auth_user_id, str) and auth_user_id else f'ip:{_client_ip(request)}'
         key = f'{policy.name}:{identifier}'
 
         allowed, retry_after = self._limiter.allow(key, limit=policy.limit_per_minute)
         if not allowed:
-            return JSONResponse(
+            return error_response(
                 status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-                content={'detail': 'Rate limit exceeded. Please retry shortly.'},
+                code='RATE_LIMIT_EXCEEDED',
+                message='Rate limit exceeded. Please retry shortly.',
+                request_id=getattr(request.state, 'request_id', None),
                 headers={
                     'Retry-After': str(retry_after),
                     'X-RateLimit-Policy': policy.name,

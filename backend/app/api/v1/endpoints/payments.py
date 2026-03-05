@@ -1,6 +1,7 @@
 import hashlib
 import hmac
 import json
+import logging
 from datetime import datetime, timezone
 from typing import Any
 
@@ -25,6 +26,7 @@ from app.schemas.payment import (
 from app.services.notifications import create_notification
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 
 def _create_notification_best_effort(
@@ -506,9 +508,51 @@ def verify_payment(
                 }
             )
         else:
-            return {'verified': False, 'error': 'Incomplete payload'}
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Incomplete payment verification payload')
     except Exception:
+        logger.warning(
+            'razorpay_verify_failed user_id=%s reason=invalid_signature payment_id=%s subscription_id=%s',
+            current_user.id,
+            payload.razorpay_payment_id,
+            payload.razorpay_subscription_id,
+        )
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail='Invalid Razorpay signature')
+
+    payment_data: dict[str, Any] = {}
+    if payload.razorpay_payment_id:
+        try:
+            fetched_payment = client.payment.fetch(payload.razorpay_payment_id)
+            if isinstance(fetched_payment, dict):
+                payment_data = fetched_payment
+        except Exception as exc:
+            logger.exception(
+                'razorpay_verify_failed user_id=%s reason=payment_fetch_failed payment_id=%s',
+                current_user.id,
+                payload.razorpay_payment_id,
+            )
+            raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail='Failed to verify payment status') from exc
+
+    payment_status = str(payment_data.get('status') or '').lower() if payment_data else ''
+    if payment_data and payment_status not in {'authorized', 'captured'}:
+        logger.warning(
+            'razorpay_verify_failed user_id=%s reason=unexpected_payment_status payment_id=%s status=%s',
+            current_user.id,
+            payload.razorpay_payment_id,
+            payment_status,
+        )
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Payment status is not valid')
+
+    if payment_data and payload.razorpay_subscription_id:
+        payment_subscription_id = payment_data.get('subscription_id')
+        if isinstance(payment_subscription_id, str) and payment_subscription_id != payload.razorpay_subscription_id:
+            logger.warning(
+                'razorpay_verify_failed user_id=%s reason=subscription_mismatch payment_id=%s expected_subscription=%s actual_subscription=%s',
+                current_user.id,
+                payload.razorpay_payment_id,
+                payload.razorpay_subscription_id,
+                payment_subscription_id,
+            )
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Payment does not match subscription')
 
     subscription_data: dict[str, Any] = {}
     if payload.razorpay_subscription_id:
@@ -536,6 +580,7 @@ def verify_payment(
 
     event_payload = {
         'verify_payload': payload.model_dump(),
+        'payment': payment_data or None,
         'subscription': subscription_data or None,
     }
     event = PaymentEvent(
@@ -568,6 +613,12 @@ def verify_payment(
         dedupe_key=dedupe_key,
     )
 
+    logger.info(
+        'razorpay_verify_success user_id=%s payment_id=%s subscription_id=%s',
+        current_user.id,
+        payload.razorpay_payment_id,
+        payload.razorpay_subscription_id,
+    )
     return {'verified': True}
 
 
@@ -584,10 +635,12 @@ async def razorpay_webhook(
 
     signature = request.headers.get('X-Razorpay-Signature')
     if not signature:
+        logger.warning('razorpay_webhook_rejected reason=missing_signature')
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail='Missing Razorpay webhook signature')
 
     payload_bytes = await request.body()
     if not _verify_webhook_signature(payload_bytes, signature):
+        logger.warning('razorpay_webhook_rejected reason=invalid_signature')
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail='Invalid Razorpay webhook signature')
 
     try:
@@ -610,6 +663,7 @@ async def razorpay_webhook(
 
     user = _resolve_user_for_subscription(db, subscription_data)
     if not user:
+        logger.info('razorpay_webhook_ignored reason=user_not_found event=%s', event_name)
         return {'received': True}
 
     previous_plan = user.subscription_plan
@@ -681,4 +735,11 @@ async def razorpay_webhook(
         dedupe_key=dedupe_key,
     )
 
+    logger.info(
+        'razorpay_webhook_processed user_id=%s event=%s subscription_id=%s payment_id=%s',
+        user.id,
+        event_name,
+        subscription_id,
+        payment_id,
+    )
     return {'received': True}

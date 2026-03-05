@@ -13,6 +13,7 @@ from app.core.auth_exceptions import AuthException
 from app.core.config import settings
 from app.core.database import get_db
 from app.core.deps import get_current_user
+from app.core.login_protection import is_account_locked, next_failed_login_state
 from app.core.security import (
     REFRESH_TOKEN_EXPIRE_DAYS,
     REFRESH_COOKIE_NAME,
@@ -74,6 +75,48 @@ def _normalize_email(email: str) -> str:
 
 def _normalize_admin_id(admin_id: str) -> str:
     return admin_id.strip().lower()
+
+
+def _masked_email(email: str | None) -> str:
+    candidate = (email or '').strip().lower()
+    if '@' not in candidate:
+        return 'unknown'
+    local, _, domain = candidate.partition('@')
+    if len(local) <= 2:
+        redacted_local = local[:1] + '*'
+    else:
+        redacted_local = local[:2] + '*' * (len(local) - 2)
+    return f'{redacted_local}@{domain}'
+
+
+def _record_failed_login_attempt(db: Session, user: User) -> None:
+    now = utc_now()
+    attempts, locked_until = next_failed_login_state(
+        failed_attempts=user.failed_login_attempts or 0,
+        now=now,
+        max_failed_attempts=settings.auth_max_failed_attempts,
+        lockout_minutes=settings.auth_lockout_minutes,
+    )
+    user.failed_login_attempts = attempts
+    user.last_failed_login_at = now
+    if locked_until is not None:
+        user.account_locked_until = locked_until
+    db.commit()
+
+
+def _reset_login_attempts(user: User) -> None:
+    user.failed_login_attempts = 0
+    user.account_locked_until = None
+    user.last_failed_login_at = None
+
+
+def _is_user_temporarily_locked(user: User) -> bool:
+    now = utc_now()
+    if is_account_locked(locked_until=user.account_locked_until, now=now):
+        return True
+    if user.account_locked_until and user.account_locked_until <= now:
+        _reset_login_attempts(user)
+    return False
 
 
 def _create_local_account(email: str, password: str, full_name: str, db: Session) -> User:
@@ -251,37 +294,85 @@ def register(
 @router.post('/login', response_model=TokenResponse)
 def login(
     payload: UserLogin,
+    request: Request,
     response: Response,
     db: Session = Depends(get_db),
 ) -> TokenResponse:
     user = db.scalar(select(User).where(User.email == _normalize_email(str(payload.email))))
+    request_id = getattr(request.state, 'request_id', 'n/a')
+    masked_email = _masked_email(str(payload.email))
+
+    if user and _is_user_temporarily_locked(user):
+        db.commit()
+        logger.warning(
+            'auth_login_failed request_id=%s email=%s reason=account_locked',
+            request_id,
+            masked_email,
+        )
+        raise _auth_error(
+            'Invalid credentials',
+            status.HTTP_401_UNAUTHORIZED,
+            headers={'WWW-Authenticate': 'Bearer'},
+        )
+
     if not user or not user.hashed_password:
+        logger.warning(
+            'auth_login_failed request_id=%s email=%s reason=invalid_credentials',
+            request_id,
+            masked_email,
+        )
         raise _auth_error(
             'Invalid credentials',
             status.HTTP_401_UNAUTHORIZED,
             headers={'WWW-Authenticate': 'Bearer'},
         )
     if not verify_password(payload.password, user.hashed_password):
+        _record_failed_login_attempt(db, user)
+        logger.warning(
+            'auth_login_failed request_id=%s email=%s reason=invalid_credentials',
+            request_id,
+            masked_email,
+        )
         raise _auth_error(
             'Invalid credentials',
             status.HTTP_401_UNAUTHORIZED,
             headers={'WWW-Authenticate': 'Bearer'},
         )
     if not user.is_active:
+        logger.warning(
+            'auth_login_failed request_id=%s email=%s reason=inactive_account',
+            request_id,
+            masked_email,
+        )
         raise _auth_error('User account is inactive', status.HTTP_401_UNAUTHORIZED)
 
+    _reset_login_attempts(user)
+    logger.info(
+        'auth_login_success request_id=%s user_id=%s email=%s',
+        request_id,
+        user.id,
+        masked_email,
+    )
     return _create_session_response(user, response, db)
 
 
 @router.post('/admin/login', response_model=TokenResponse)
 def admin_login(
     payload: AdminLoginRequest,
+    request: Request,
     response: Response,
     db: Session = Depends(get_db),
 ) -> TokenResponse:
     configured_admin_id, configured_admin_email = default_admin_identity()
     provided_admin_id = _normalize_admin_id(payload.admin_id)
+    request_id = getattr(request.state, 'request_id', 'n/a')
+    masked_email = _masked_email(configured_admin_email)
     if provided_admin_id != _normalize_admin_id(configured_admin_id):
+        logger.warning(
+            'admin_login_failed request_id=%s admin_id=%s reason=invalid_admin_id',
+            request_id,
+            provided_admin_id,
+        )
         raise _auth_error(
             'Invalid credentials',
             status.HTTP_401_UNAUTHORIZED,
@@ -292,6 +383,19 @@ def admin_login(
     if admin_user is None:
         admin_user = db.scalar(select(User).where(User.email == configured_admin_email))
 
+    if admin_user and _is_user_temporarily_locked(admin_user):
+        db.commit()
+        logger.warning(
+            'admin_login_failed request_id=%s email=%s reason=account_locked',
+            request_id,
+            masked_email,
+        )
+        raise _auth_error(
+            'Invalid credentials',
+            status.HTTP_401_UNAUTHORIZED,
+            headers={'WWW-Authenticate': 'Bearer'},
+        )
+
     if (
         not admin_user
         or _normalize_email(admin_user.email) != _normalize_email(configured_admin_email)
@@ -299,6 +403,13 @@ def admin_login(
         or not admin_user.hashed_password
         or not verify_password(payload.password, admin_user.hashed_password)
     ):
+        if admin_user and admin_user.hashed_password:
+            _record_failed_login_attempt(db, admin_user)
+        logger.warning(
+            'admin_login_failed request_id=%s email=%s reason=invalid_credentials',
+            request_id,
+            masked_email,
+        )
         raise _auth_error(
             'Invalid credentials',
             status.HTTP_401_UNAUTHORIZED,
@@ -306,17 +417,33 @@ def admin_login(
         )
 
     if not admin_user.is_active:
+        logger.warning(
+            'admin_login_failed request_id=%s email=%s reason=inactive_account',
+            request_id,
+            masked_email,
+        )
         raise _auth_error('User account is inactive', status.HTTP_401_UNAUTHORIZED)
 
+    _reset_login_attempts(admin_user)
+    logger.info(
+        'admin_login_success request_id=%s user_id=%s email=%s',
+        request_id,
+        admin_user.id,
+        masked_email,
+    )
     return _create_session_response(admin_user, response, db)
 
 
 @router.post('/forgot-password', response_model=MessageResponse)
 def forgot_password(
     payload: ForgotPasswordRequest,
+    request: Request,
     db: Session = Depends(get_db),
 ) -> MessageResponse:
-    user = db.scalar(select(User).where(User.email == _normalize_email(str(payload.email))))
+    request_id = getattr(request.state, 'request_id', 'n/a')
+    normalized_email = _normalize_email(str(payload.email))
+    masked_email = _masked_email(normalized_email)
+    user = db.scalar(select(User).where(User.email == normalized_email))
     if user:
         raw_token = create_reset_token(db, user)
         reset_link = build_password_reset_link(raw_token)
@@ -324,15 +451,38 @@ def forgot_password(
             send_password_reset_email(user.email, reset_link)
         except EmailDeliveryError:
             logger.exception('Failed to send password reset email', extra={'user_id': user.id})
+        else:
+            logger.info(
+                'password_reset_email_sent request_id=%s user_id=%s email=%s',
+                request_id,
+                user.id,
+                masked_email,
+            )
+    else:
+        logger.info(
+            'password_reset_requested_nonexistent request_id=%s email=%s',
+            request_id,
+            masked_email,
+        )
 
     return MessageResponse(message=PASSWORD_RESET_GENERIC_MESSAGE)
 
 
 @router.post('/reset-password', response_model=MessageResponse)
-def reset_password(payload: ResetPasswordRequest, db: Session = Depends(get_db)) -> MessageResponse:
+def reset_password(
+    payload: ResetPasswordRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+) -> MessageResponse:
+    request_id = getattr(request.state, 'request_id', 'n/a')
     if not reset_user_password(db, payload.token, payload.new_password):
+        logger.warning(
+            'password_reset_failed request_id=%s reason=invalid_or_expired_token',
+            request_id,
+        )
         raise _auth_error('Invalid or expired reset token', status.HTTP_400_BAD_REQUEST)
 
+    logger.info('password_reset_success request_id=%s', request_id)
     return MessageResponse(message='Password reset successful')
 
 

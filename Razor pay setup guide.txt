@@ -1,0 +1,29 @@
+From your side, with current code, do this checklist:
+
+Activate Razorpay Live account (KYC/business verification complete).
+In Razorpay dashboard, generate Live keys (must start with rzp_live_).
+Create Live subscription plans (test plans won’t work in live mode).
+Add plan metadata (recommended for your setup):
+tier=STANDARD
+tier=PRO
+tier=BUSINESS
+Set backend env vars in your server .env (same names as in backend/.env.example):
+RAZORPAY_KEY_ID
+RAZORPAY_KEY_SECRET
+RAZORPAY_PLAN_ID or RAZORPAY_PLAN_IDS (live plan IDs)
+RAZORPAY_WEBHOOK_SECRET
+Set frontend env vars (see frontend/.env.example):
+NEXT_PUBLIC_API_URL = your live backend URL
+NEXT_PUBLIC_RAZORPAY_KEY_ID (optional but recommended, live key)
+Configure Razorpay webhook:
+URL: https://<your-api-domain>/api/v1/payments/webhook
+Use the same secret as RAZORPAY_WEBHOOK_SECRET
+Enable subscription events (activated/authenticated/charged/pending/cancelled/halted/completed).
+Ensure backend URL is public over HTTPS and reachable from Razorpay servers.
+Restart/redeploy backend + frontend after env updates.
+Run one real low-value payment and verify:
+checkout opens
+/payments/verify succeeds
+user subscription updates in app
+webhook delivery shows success in Razorpay logs.
+If you want, I can give you a one-page go-live test script you can run step-by-step.

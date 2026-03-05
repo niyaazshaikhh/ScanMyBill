@@ -1,7 +1,8 @@
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 
+from app.core.validators import ensure_password_strength, ensure_safe_person_name
 from app.models.user import SubscriptionPlan, SubscriptionStatus, UserRole
 
 
@@ -39,11 +40,23 @@ class AdminUserUpdateRequest(BaseModel):
     is_active: bool | None = None
     full_name: str | None = Field(default=None, min_length=2, max_length=255)
 
+    @field_validator('full_name')
+    @classmethod
+    def validate_full_name(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        return ensure_safe_person_name(value, 'Full name')
+
 
 class AdminPasswordResetRequest(BaseModel):
     model_config = ConfigDict(extra='forbid', str_strip_whitespace=True)
 
     new_password: str = Field(min_length=8, max_length=128)
+
+    @field_validator('new_password')
+    @classmethod
+    def validate_new_password(cls, value: str) -> str:
+        return ensure_password_strength(value)
 
 
 class AdminActionResponse(BaseModel):

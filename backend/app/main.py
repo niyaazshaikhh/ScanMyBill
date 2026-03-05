@@ -3,23 +3,26 @@ from pathlib import Path
 
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
-from fastapi.exception_handlers import request_validation_exception_handler
 from fastapi.exceptions import HTTPException as FastAPIHTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
+from requests import exceptions as request_exceptions
 from sqlalchemy import inspect, text
+from sqlalchemy.exc import SQLAlchemyError
 from starlette.middleware.httpsredirect import HTTPSRedirectMiddleware
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from app.api.v1.api import api_router
-from app.core.auth_exceptions import AuthException, auth_error_payload
+from app.core.auth_exceptions import AuthException
 from app.core.auth_middleware import AuthSessionMiddleware
 from app.core.config import settings
 from app.core.database import Base, SessionLocal, engine
+from app.core.errors import error_response
 from app.core.middleware import (
     RateLimitMiddleware,
     RequestContextMiddleware,
+    RequestLoggingMiddleware,
     RequestSizeLimitMiddleware,
     SecurityHeadersMiddleware,
 )
@@ -59,12 +62,22 @@ def _validate_security_configuration() -> None:
     if settings.is_production:
         if settings.secret_key == 'change-this-in-production' or len(settings.secret_key) < 32:
             issues.append('SECRET_KEY must be at least 32 chars and non-default.')
+        if settings.debug:
+            issues.append('DEBUG must be false in production.')
+        if settings.enable_docs:
+            issues.append('ENABLE_DOCS must be false in production.')
         if not settings.cookie_secure:
             issues.append('COOKIE_SECURE must be true in production.')
         if settings.expose_password_reset_token:
             issues.append('EXPOSE_PASSWORD_RESET_TOKEN must be false in production.')
         if '*' in settings.cors_origins:
             issues.append("CORS_ORIGINS cannot include '*' in production.")
+        if settings.seed_default_admin:
+            issues.append('SEED_DEFAULT_ADMIN must be false in production.')
+        if settings.postgres_password.strip().lower() in {'', 'postgres'}:
+            issues.append('POSTGRES_PASSWORD must be configured with a strong value in production.')
+        if not settings.enforce_https:
+            issues.append('ENFORCE_HTTPS must be true in production.')
 
     if issues:
         raise RuntimeError('Security configuration error(s): ' + ' '.join(issues))
@@ -87,6 +100,7 @@ if settings.enforce_https:
     app.add_middleware(HTTPSRedirectMiddleware)
 
 app.add_middleware(RequestContextMiddleware)
+app.add_middleware(RequestLoggingMiddleware)
 app.add_middleware(RequestSizeLimitMiddleware)
 app.add_middleware(RateLimitMiddleware)
 app.add_middleware(SecurityHeadersMiddleware)
@@ -95,7 +109,7 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins,
     allow_credentials='*' not in settings.cors_origins,
-    allow_methods=['*'],
+    allow_methods=['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allow_headers=['*'],
     expose_headers=['X-Access-Token', 'X-Token-Refreshed'],
 )
@@ -104,10 +118,12 @@ app.include_router(api_router, prefix=settings.api_v1_prefix)
 
 
 @app.exception_handler(AuthException)
-async def auth_exception_handler(_: Request, exc: AuthException) -> JSONResponse:
-    return JSONResponse(
+async def auth_exception_handler(request: Request, exc: AuthException) -> JSONResponse:
+    return error_response(
         status_code=exc.status_code,
-        content=auth_error_payload(message=exc.message, error_code=exc.error_code),
+        message=exc.message,
+        code=exc.error_code,
+        request_id=getattr(request.state, 'request_id', None),
         headers=exc.headers,
     )
 
@@ -115,16 +131,36 @@ async def auth_exception_handler(_: Request, exc: AuthException) -> JSONResponse
 @app.exception_handler(FastAPIHTTPException)
 async def http_exception_handler(request: Request, exc: FastAPIHTTPException) -> JSONResponse:
     request_id = getattr(request.state, 'request_id', None)
-    headers = dict(exc.headers or {})
-    if request_id:
-        headers['X-Request-ID'] = request_id
-
     detail = exc.detail
+    error_code = None
+    message: str | None = None
+
     if isinstance(detail, dict):
-        payload = detail
-    else:
-        payload = {'detail': detail}
-    return JSONResponse(status_code=exc.status_code, content=payload, headers=headers)
+        nested_error = detail.get('error')
+        if isinstance(nested_error, dict):
+            nested_code = nested_error.get('code')
+            nested_message = nested_error.get('message')
+            if isinstance(nested_code, str) and nested_code:
+                error_code = nested_code
+            if isinstance(nested_message, str) and nested_message:
+                message = nested_message
+        if message is None:
+            if isinstance(detail.get('message'), str):
+                message = detail.get('message')
+            elif isinstance(detail.get('detail'), str):
+                message = detail.get('detail')
+        if error_code is None and isinstance(detail.get('error_code'), str):
+            error_code = detail.get('error_code')
+    elif isinstance(detail, str):
+        message = detail
+
+    return error_response(
+        status_code=exc.status_code,
+        message=message,
+        code=error_code,
+        request_id=request_id,
+        headers=exc.headers,
+    )
 
 
 @app.exception_handler(RequestValidationError)
@@ -136,10 +172,80 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
         request.url.path,
         exc.errors(),
     )
-    response = await request_validation_exception_handler(request, exc)
-    if request_id:
-        response.headers['X-Request-ID'] = request_id
-    return response
+    return error_response(
+        status_code=422,
+        code='VALIDATION_ERROR',
+        message='Invalid request payload.',
+        request_id=request_id if request_id != 'n/a' else None,
+    )
+
+
+@app.exception_handler(SQLAlchemyError)
+async def sqlalchemy_exception_handler(request: Request, exc: SQLAlchemyError) -> JSONResponse:
+    request_id = getattr(request.state, 'request_id', 'n/a')
+    logger.exception(
+        'Database exception request_id=%s method=%s path=%s',
+        request_id,
+        request.method,
+        request.url.path,
+    )
+    return error_response(
+        status_code=500,
+        code='DATABASE_ERROR',
+        message='A database error occurred. Please try again.',
+        request_id=request_id if request_id != 'n/a' else None,
+    )
+
+
+@app.exception_handler(request_exceptions.Timeout)
+async def upstream_timeout_handler(request: Request, exc: request_exceptions.Timeout) -> JSONResponse:
+    request_id = getattr(request.state, 'request_id', 'n/a')
+    logger.exception(
+        'Upstream timeout request_id=%s method=%s path=%s',
+        request_id,
+        request.method,
+        request.url.path,
+    )
+    return error_response(
+        status_code=504,
+        code='UPSTREAM_TIMEOUT',
+        message='Upstream service timed out. Please try again.',
+        request_id=request_id if request_id != 'n/a' else None,
+    )
+
+
+@app.exception_handler(request_exceptions.ConnectionError)
+async def upstream_network_handler(request: Request, exc: request_exceptions.ConnectionError) -> JSONResponse:
+    request_id = getattr(request.state, 'request_id', 'n/a')
+    logger.exception(
+        'Upstream network failure request_id=%s method=%s path=%s',
+        request_id,
+        request.method,
+        request.url.path,
+    )
+    return error_response(
+        status_code=502,
+        code='UPSTREAM_NETWORK_ERROR',
+        message='Could not reach upstream service.',
+        request_id=request_id if request_id != 'n/a' else None,
+    )
+
+
+@app.exception_handler(TimeoutError)
+async def timeout_exception_handler(request: Request, exc: TimeoutError) -> JSONResponse:
+    request_id = getattr(request.state, 'request_id', 'n/a')
+    logger.exception(
+        'Internal timeout request_id=%s method=%s path=%s',
+        request_id,
+        request.method,
+        request.url.path,
+    )
+    return error_response(
+        status_code=504,
+        code='TIMEOUT',
+        message='Request timed out.',
+        request_id=request_id if request_id != 'n/a' else None,
+    )
 
 
 @app.exception_handler(Exception)
@@ -151,10 +257,11 @@ async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONR
         request.method,
         request.url.path,
     )
-    return JSONResponse(
+    return error_response(
         status_code=500,
-        content={'detail': 'Internal server error'},
-        headers={'X-Request-ID': request_id} if request_id != 'n/a' else None,
+        code='INTERNAL_SERVER_ERROR',
+        message='Internal server error.',
+        request_id=request_id if request_id != 'n/a' else None,
     )
 
 
@@ -448,13 +555,18 @@ def _ensure_non_gst_challan_sequence_numbers() -> None:
 
 
 def _ensure_user_columns() -> None:
-    expected_columns: dict[str, str] = {
-        'notifications_enabled': 'BOOLEAN NOT NULL DEFAULT TRUE',
-    }
-
     inspector = inspect(engine)
     if 'users' not in inspector.get_table_names():
         return
+
+    dialect = engine.dialect.name
+    timestamp_type = 'TIMESTAMP WITH TIME ZONE' if dialect == 'postgresql' else 'DATETIME'
+    expected_columns: dict[str, str] = {
+        'notifications_enabled': 'BOOLEAN NOT NULL DEFAULT TRUE',
+        'failed_login_attempts': 'INTEGER NOT NULL DEFAULT 0',
+        'account_locked_until': timestamp_type,
+        'last_failed_login_at': timestamp_type,
+    }
 
     existing_columns = {column['name'] for column in inspector.get_columns('users')}
     missing_columns = [column for column in expected_columns if column not in existing_columns]
@@ -565,8 +677,36 @@ def on_startup() -> None:
     _ensure_default_admin()
 
 
+def _database_ready() -> bool:
+    session = SessionLocal()
+    try:
+        session.execute(text('SELECT 1'))
+        return True
+    except Exception:
+        logger.exception('Database readiness probe failed')
+        return False
+    finally:
+        session.close()
+
+
+@app.get('/health/live')
+def health_live() -> dict[str, str]:
+    return {'status': 'ok'}
+
+
+@app.get('/health/ready')
+def health_ready() -> JSONResponse:
+    db_ready = _database_ready()
+    if not db_ready:
+        return JSONResponse(
+            status_code=503,
+            content={'status': 'degraded', 'database': 'unavailable'},
+        )
+    return JSONResponse(status_code=200, content={'status': 'ok', 'database': 'ready'})
+
+
 @app.get('/health')
-def health() -> dict:
+def health() -> dict[str, str]:
     return {'status': 'ok'}
 
 
