@@ -11,51 +11,59 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout Repository
+      - name: Checkout repo
         uses: actions/checkout@v4
 
-      # ----------------------
-      # Setup Python Backend
-      # ----------------------
+      # ---------------------
+      # Backend (FastAPI)
+      # ---------------------
 
       - name: Setup Python
         uses: actions/setup-python@v4
         with:
-          python-version: "3.10"
+          python-version: "3.11"
 
-      - name: Install Backend Dependencies
+      - name: Install backend dependencies
         run: |
           cd backend
           pip install -r requirements.txt
 
-      - name: Lint Backend
+      - name: Backend lint
         run: |
           cd backend
           pip install flake8
           flake8 . || true
 
-      # ----------------------
-      # Setup Frontend
-      # ----------------------
+      # ---------------------
+      # Frontend (Next.js)
+      # ---------------------
 
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
           node-version: "20"
 
-      - name: Install Frontend Dependencies
+      - name: Install frontend dependencies
         run: |
           cd frontend
           npm install
 
-      - name: Build Frontend
+      - name: Build frontend
         run: |
           cd frontend
-          npm run build || echo "No build step"
+          npm run build
 
-      # ----------------------
-      # CI Success
-      # ----------------------
+      # ---------------------
+      # Docker validation
+      # ---------------------
 
-      - name: CI Completed
-        run: echo "Build successful 🚀"
+      - name: Build backend Docker image
+        run: |
+          docker build -t scanmybill-backend ./backend
+
+      - name: Build frontend Docker image
+        run: |
+          docker build -t scanmybill-frontend ./frontend
+
+      - name: CI Finished
+        run: echo "CI build successful 🚀"
