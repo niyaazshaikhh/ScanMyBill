@@ -1,0 +1,35 @@
+name: Deploy ScanMyBill
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Login to Azure Container Registry
+        run: |
+          echo "${{ secrets.AZURE_REGISTRY_PASSWORD }}" | docker login ${{ secrets.AZURE_REGISTRY_NAME }}.azurecr.io \
+          -u ${{ secrets.AZURE_REGISTRY_USERNAME }} --password-stdin
+
+      - name: Build Backend Docker Image
+        run: |
+          docker build -t ${{ secrets.AZURE_REGISTRY_NAME }}.azurecr.io/backend:latest ./backend
+
+      - name: Build Frontend Docker Image
+        run: |
+          docker build -t ${{ secrets.AZURE_REGISTRY_NAME }}.azurecr.io/frontend:latest ./frontend
+
+      - name: Push Backend Image
+        run: |
+          docker push ${{ secrets.AZURE_REGISTRY_NAME }}.azurecr.io/backend:latest
+
+      - name: Push Frontend Image
+        run: |
+          docker push ${{ secrets.AZURE_REGISTRY_NAME }}.azurecr.io/frontend:latest
