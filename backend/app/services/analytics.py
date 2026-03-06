@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.models.invoice import Invoice, InvoiceType
 from app.schemas.dashboard import DashboardSummary, GSTRingPoint, TrendPoint
+from app.utils.period import financial_half_label, financial_quarter_label
 
 VALID_PERIODS = {'monthly', 'quarterly', 'semi-annually', 'annually'}
 
@@ -88,13 +89,13 @@ def _build_trend(invoices: list[Invoice], period: str) -> list[TrendPoint]:
         labels = ['Q1', 'Q2', 'Q3', 'Q4']
 
         def label_for(invoice: Invoice) -> str:
-            return labels[(invoice.invoice_date.month - 1) // 3]
+            return financial_quarter_label(invoice.invoice_date)
 
     elif period == 'semi-annually':
         labels = ['H1', 'H2']
 
         def label_for(invoice: Invoice) -> str:
-            return 'H1' if invoice.invoice_date.month <= 6 else 'H2'
+            return financial_half_label(invoice.invoice_date)
 
     else:
         years = sorted({invoice.invoice_date.year for invoice in invoices})

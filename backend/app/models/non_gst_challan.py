@@ -11,7 +11,12 @@ class NonGSTChallan(Base):
     __tablename__ = 'non_gst_challans'
     __table_args__ = (
         UniqueConstraint('owner_id', 'client_id', 'challan_number', name='uq_non_gst_challans_owner_client_number'),
-        UniqueConstraint('owner_id', 'sequence_number', name='uq_non_gst_challans_owner_sequence_number'),
+        UniqueConstraint(
+            'owner_id',
+            'financial_year_start',
+            'sequence_number',
+            name='uq_non_gst_challans_owner_financial_year_sequence_number',
+        ),
     )
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
@@ -23,6 +28,7 @@ class NonGSTChallan(Base):
         index=True,
     )
     challan_number: Mapped[str] = mapped_column(String(5), index=True)
+    financial_year_start: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
     sequence_number: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
     challan_date: Mapped[Date] = mapped_column(Date, index=True)
     subtotal: Mapped[float] = mapped_column(Float, default=0.0)

@@ -105,6 +105,7 @@ export default function CreateDeliveryChallanPage() {
 
   const [clients, setClients] = useState<Client[]>([]);
   const [clientId, setClientId] = useState("");
+  const [defaultClientId, setDefaultClientId] = useState("");
   const [challanNumber, setChallanNumber] = useState("1");
   const [orderNumber, setOrderNumber] = useState("1");
   const [challanDate, setChallanDate] = useState(initialChallanDateIso);
@@ -117,6 +118,7 @@ export default function CreateDeliveryChallanPage() {
   const [exporting, setExporting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const orderNumberManuallyEditedRef = useRef(false);
+  const [challanCounterRefreshNonce, setChallanCounterRefreshNonce] = useState(0);
   const challanDatePickerRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
@@ -127,10 +129,19 @@ export default function CreateDeliveryChallanPage() {
           requestedClientId
           && data.some((client) => client.id === requestedClientId)
         ) {
+          setDefaultClientId(requestedClientId);
           setClientId(requestedClientId);
+        } else if (requestedClientId) {
+          setDefaultClientId("");
+          setClientId("");
+        } else {
+          setDefaultClientId("");
         }
       })
-      .catch(() => setClients([]));
+      .catch(() => {
+        setDefaultClientId("");
+        setClients([]);
+      });
   }, [requestedClientId]);
 
   useEffect(() => {
@@ -142,9 +153,12 @@ export default function CreateDeliveryChallanPage() {
     }
 
     let active = true;
-    const endpoint = clientId
-      ? `/delivery-challans/latest-created?client_id=${encodeURIComponent(clientId)}`
-      : "/delivery-challans/latest-created";
+    const queryParams = new URLSearchParams();
+    queryParams.set("challan_date", challanDate);
+    if (clientId) {
+      queryParams.set("client_id", clientId);
+    }
+    const endpoint = `/delivery-challans/latest-created?${queryParams.toString()}`;
 
     apiRequest<LatestCreatedDeliveryChallanResponse>(endpoint)
       .then((data) => {
@@ -169,7 +183,21 @@ export default function CreateDeliveryChallanPage() {
     return () => {
       active = false;
     };
-  }, [clientId]);
+  }, [challanDate, challanCounterRefreshNonce, clientId]);
+
+  const resetFormToDefaults = () => {
+    const nextChallanDate = todayIsoDate();
+    orderNumberManuallyEditedRef.current = false;
+    setFormError(null);
+    setClientId(defaultClientId);
+    setChallanNumber("1");
+    setOrderNumber("1");
+    setChallanDate(nextChallanDate);
+    setChallanDateDisplay(formatIsoDateToDisplay(nextChallanDate));
+    setNotes("");
+    setItems([{ ...INITIAL_ITEM }]);
+    setChallanCounterRefreshNonce((previous) => previous + 1);
+  };
 
   const updateItem = (index: number, key: keyof LineItemInput, value: string) => {
     setItems((prev) =>
@@ -272,6 +300,7 @@ export default function CreateDeliveryChallanPage() {
       });
       link.click();
       URL.revokeObjectURL(url);
+      resetFormToDefaults();
     } catch (err) {
       setFormError(err instanceof Error ? err.message : "PDF export failed");
     } finally {
@@ -298,13 +327,7 @@ export default function CreateDeliveryChallanPage() {
         message: "Delivery challan uploaded successfully",
         tone: "success",
       });
-      const endpoint = clientId
-        ? `/delivery-challans/latest-created?client_id=${encodeURIComponent(clientId)}`
-        : "/delivery-challans/latest-created";
-      const latest = await apiRequest<LatestCreatedDeliveryChallanResponse>(endpoint);
-      setChallanNumber(String((latest.challan_number ?? 0) + 1));
-      orderNumberManuallyEditedRef.current = false;
-      setOrderNumber(buildIncrementedChallanNumber(latest.order_number));
+      resetFormToDefaults();
     } catch (err) {
       const message = err instanceof Error ? err.message : "Upload failed";
       setFormError(message);

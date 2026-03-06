@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.models.invoice import Invoice, InvoiceType
 from app.models.notification import Notification, NotificationCategory
+from app.utils.period import financial_quarter_bounds, financial_quarter_number, financial_year_start
 
 
 def create_notification(
@@ -138,14 +139,9 @@ def ensure_monthly_gst_payable_notification(db: Session, *, user_id: str) -> Not
 
 def ensure_quarterly_gst_payable_notification(db: Session, *, user_id: str) -> Notification | None:
     today = date.today()
-    quarter_index = (today.month - 1) // 3
-    quarter_number = quarter_index + 1
-    period_start_month = quarter_index * 3 + 1
-    period_start = date(today.year, period_start_month, 1)
-    if period_start_month == 10:
-        period_end = date(today.year + 1, 1, 1)
-    else:
-        period_end = date(today.year, period_start_month + 3, 1)
+    quarter_number = financial_quarter_number(today)
+    period_start, period_end = financial_quarter_bounds(today)
+    fy_start = financial_year_start(today)
 
     gst_payable = _gst_payable_for_period(
         db,
@@ -155,7 +151,7 @@ def ensure_quarterly_gst_payable_notification(db: Session, *, user_id: str) -> N
     )
     dedupe_key = f'gst-payable-quarterly-reminder-{today:%Y-%m-%d}'
     title = 'Quarterly GST Payable'
-    message = f'GST payable for Q{quarter_number} {today.year} is Rs {gst_payable:.2f}.'
+    message = f'GST payable for Q{quarter_number} FY {fy_start}-{fy_start + 1} is Rs {gst_payable:.2f}.'
 
     return _upsert_reminder_notification(
         db,

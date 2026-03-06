@@ -1,4 +1,5 @@
 import logging
+from datetime import date
 from pathlib import Path
 
 from fastapi import FastAPI, Request
@@ -498,48 +499,103 @@ def _ensure_non_gst_challan_sequence_numbers() -> None:
         return
 
     existing_columns = {column['name'] for column in inspector.get_columns('non_gst_challans')}
-    existing_indexes = {index['name'] for index in inspector.get_indexes('non_gst_challans')}
+
+    def _financial_year_start_from_value(value: object) -> int | None:
+        if isinstance(value, date):
+            return value.year if value.month >= 4 else value.year - 1
+        if isinstance(value, str):
+            normalized = value.strip()
+            if len(normalized) >= 10:
+                normalized = normalized[:10]
+            try:
+                parsed_date = date.fromisoformat(normalized)
+            except ValueError:
+                return None
+            return parsed_date.year if parsed_date.month >= 4 else parsed_date.year - 1
+        return None
 
     with engine.begin() as connection:
         if 'sequence_number' not in existing_columns:
             connection.execute(text('ALTER TABLE non_gst_challans ADD COLUMN sequence_number INTEGER'))
+        if 'financial_year_start' not in existing_columns:
+            connection.execute(text('ALTER TABLE non_gst_challans ADD COLUMN financial_year_start INTEGER'))
 
         ordered_rows = connection.execute(
             text(
-                'SELECT id, owner_id, sequence_number '
+                'SELECT id, owner_id, challan_date, financial_year_start, sequence_number '
                 'FROM non_gst_challans '
-                'ORDER BY owner_id ASC, created_at ASC, challan_date ASC, id ASC'
+                'ORDER BY owner_id ASC, challan_date ASC, created_at ASC, id ASC'
             )
         ).fetchall()
 
-        counters: dict[str, int] = {}
-        for row_id, owner_id, sequence_number in ordered_rows:
-            if owner_id not in counters:
-                counters[owner_id] = 0
+        counters: dict[tuple[str, int], int] = {}
+        for row_id, owner_id, challan_date, financial_year_start, sequence_number in ordered_rows:
+            resolved_financial_year_start: int | None
+            if financial_year_start is not None:
+                try:
+                    resolved_financial_year_start = int(financial_year_start)
+                except (TypeError, ValueError):
+                    resolved_financial_year_start = _financial_year_start_from_value(challan_date)
+            else:
+                resolved_financial_year_start = _financial_year_start_from_value(challan_date)
+            if resolved_financial_year_start is None:
+                continue
 
-            counters[owner_id] += 1
-            expected_sequence = counters[owner_id]
-            if sequence_number == expected_sequence:
+            key = (owner_id, resolved_financial_year_start)
+            counters[key] = counters.get(key, 0) + 1
+            expected_sequence = counters[key]
+            if (
+                sequence_number == expected_sequence
+                and financial_year_start == resolved_financial_year_start
+            ):
                 continue
 
             connection.execute(
                 text(
                     'UPDATE non_gst_challans '
-                    'SET sequence_number = :sequence_number '
+                    'SET financial_year_start = :financial_year_start, sequence_number = :sequence_number '
                     'WHERE id = :row_id'
                 ),
-                {'sequence_number': expected_sequence, 'row_id': row_id},
+                {
+                    'financial_year_start': resolved_financial_year_start,
+                    'sequence_number': expected_sequence,
+                    'row_id': row_id,
+                },
             )
 
-        if 'uq_non_gst_challans_owner_sequence_number' in existing_indexes:
-            return
-
         dialect = engine.dialect.name
-        if dialect in {'postgresql', 'sqlite'}:
+        if dialect == 'postgresql':
             connection.execute(
                 text(
-                    'CREATE UNIQUE INDEX IF NOT EXISTS uq_non_gst_challans_owner_sequence_number '
-                    'ON non_gst_challans (owner_id, sequence_number)'
+                    'ALTER TABLE non_gst_challans DROP CONSTRAINT IF EXISTS '
+                    'uq_non_gst_challans_owner_sequence_number'
+                )
+            )
+            connection.execute(
+                text(
+                    'ALTER TABLE non_gst_challans DROP CONSTRAINT IF EXISTS '
+                    'uq_non_gst_challans_owner_financial_year_sequence_number'
+                )
+            )
+            connection.execute(text('DROP INDEX IF EXISTS uq_non_gst_challans_owner_sequence_number'))
+            connection.execute(text('DROP INDEX IF EXISTS uq_non_gst_challans_owner_financial_year_sequence_number'))
+            connection.execute(
+                text(
+                    'CREATE UNIQUE INDEX IF NOT EXISTS '
+                    'uq_non_gst_challans_owner_financial_year_sequence_number '
+                    'ON non_gst_challans (owner_id, financial_year_start, sequence_number)'
+                )
+            )
+            return
+
+        if dialect == 'sqlite':
+            connection.execute(text('DROP INDEX IF EXISTS uq_non_gst_challans_owner_sequence_number'))
+            connection.execute(text('DROP INDEX IF EXISTS uq_non_gst_challans_owner_financial_year_sequence_number'))
+            connection.execute(
+                text(
+                    'CREATE UNIQUE INDEX IF NOT EXISTS '
+                    'uq_non_gst_challans_owner_financial_year_sequence_number '
+                    'ON non_gst_challans (owner_id, financial_year_start, sequence_number)'
                 )
             )
             return
@@ -547,8 +603,34 @@ def _ensure_non_gst_challan_sequence_numbers() -> None:
         try:
             connection.execute(
                 text(
-                    'CREATE UNIQUE INDEX uq_non_gst_challans_owner_sequence_number '
-                    'ON non_gst_challans (owner_id, sequence_number)'
+                    'ALTER TABLE non_gst_challans DROP CONSTRAINT '
+                    'uq_non_gst_challans_owner_sequence_number'
+                )
+            )
+        except Exception:
+            pass
+        try:
+            connection.execute(
+                text(
+                    'ALTER TABLE non_gst_challans DROP CONSTRAINT '
+                    'uq_non_gst_challans_owner_financial_year_sequence_number'
+                )
+            )
+        except Exception:
+            pass
+        try:
+            connection.execute(text('DROP INDEX uq_non_gst_challans_owner_sequence_number ON non_gst_challans'))
+        except Exception:
+            pass
+        try:
+            connection.execute(text('DROP INDEX uq_non_gst_challans_owner_financial_year_sequence_number ON non_gst_challans'))
+        except Exception:
+            pass
+        try:
+            connection.execute(
+                text(
+                    'CREATE UNIQUE INDEX uq_non_gst_challans_owner_financial_year_sequence_number '
+                    'ON non_gst_challans (owner_id, financial_year_start, sequence_number)'
                 )
             )
         except Exception:

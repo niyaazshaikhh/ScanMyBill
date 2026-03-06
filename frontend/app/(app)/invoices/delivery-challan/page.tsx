@@ -44,9 +44,10 @@ const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', '
 function toBucket(dateString: string, period: string) {
   const monthIndex = isoMonthIndex(dateString);
   const year = isoYear(dateString);
+  const financialMonthIndex = (monthIndex + 9) % 12;
   if (period === 'monthly') return months[monthIndex];
-  if (period === 'quarterly') return `Q${Math.floor(monthIndex / 3) + 1}`;
-  if (period === 'semi-annually') return monthIndex < 6 ? 'H1' : 'H2';
+  if (period === 'quarterly') return `Q${Math.floor(financialMonthIndex / 3) + 1}`;
+  if (period === 'semi-annually') return financialMonthIndex < 6 ? 'H1' : 'H2';
   return String(year);
 }
 

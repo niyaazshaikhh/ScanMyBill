@@ -106,6 +106,64 @@ def _coerce_amount(value: Any) -> float:
         return 0.0
 
 
+def _coerce_document_date(value: Any) -> date | None:
+    if isinstance(value, datetime):
+        return value.date()
+    if isinstance(value, date):
+        return value
+    if not isinstance(value, str):
+        return None
+
+    cleaned = re.sub(r'\s+', ' ', value.replace(',', ' ')).strip()
+    if not cleaned:
+        return None
+    if cleaned.endswith('Z'):
+        cleaned = cleaned[:-1]
+
+    try:
+        return datetime.fromisoformat(cleaned).date()
+    except ValueError:
+        pass
+
+    patterns = (
+        '%Y-%m-%d',
+        '%d/%m/%Y',
+        '%d-%m-%Y',
+        '%d.%m.%Y',
+        '%d/%m/%y',
+        '%d-%m-%y',
+        '%d/%b/%Y',
+        '%d-%b-%Y',
+        '%d.%b.%Y',
+        '%d %b %Y',
+        '%d/%B/%Y',
+        '%d-%B-%Y',
+        '%d.%B.%Y',
+        '%d %B %Y',
+        '%d/%b/%y',
+        '%d-%b-%y',
+        '%d/%B/%y',
+        '%d-%B-%y',
+    )
+    for pattern in patterns:
+        try:
+            parsed = datetime.strptime(cleaned, pattern)
+            if parsed.year < 2000:
+                parsed = parsed.replace(year=parsed.year + 2000)
+            return parsed.date()
+        except ValueError:
+            continue
+    return None
+
+
+def _resolve_document_date(*candidates: Any) -> date:
+    for candidate in candidates:
+        parsed = _coerce_document_date(candidate)
+        if parsed is not None:
+            return parsed
+    return date.today()
+
+
 def _safe_invoice_number(candidate: Any) -> str:
     if isinstance(candidate, str):
         cleaned = re.sub(r'[^A-Za-z0-9./#_-]', '', candidate.strip().upper())
@@ -122,19 +180,29 @@ def _safe_order_number(candidate: Any, *, fallback_sequence: int) -> str:
     return str(fallback_sequence).zfill(5)[-5:]
 
 
-def _next_challan_sequence_number(db: Session, owner_id: str) -> int:
+def _challan_financial_year_start(challan_date: date) -> int:
+    return challan_date.year if challan_date.month >= 4 else challan_date.year - 1
+
+
+def _next_challan_sequence_number(db: Session, owner_id: str, challan_date: date) -> int:
+    financial_year_start = _challan_financial_year_start(challan_date)
     latest = db.scalar(
-        select(func.max(NonGSTChallan.sequence_number)).where(NonGSTChallan.owner_id == owner_id)
+        select(func.max(NonGSTChallan.sequence_number)).where(
+            NonGSTChallan.owner_id == owner_id,
+            NonGSTChallan.financial_year_start == financial_year_start,
+        )
     )
     return int(latest or 0) + 1
 
 
-def _challan_sequence_exists(db: Session, owner_id: str, sequence_number: int) -> bool:
+def _challan_sequence_exists(db: Session, owner_id: str, sequence_number: int, challan_date: date) -> bool:
     if sequence_number <= 0:
         return False
+    financial_year_start = _challan_financial_year_start(challan_date)
     existing_id = db.scalar(
         select(NonGSTChallan.id).where(
             NonGSTChallan.owner_id == owner_id,
+            NonGSTChallan.financial_year_start == financial_year_start,
             NonGSTChallan.sequence_number == sequence_number,
         )
     )
@@ -144,9 +212,11 @@ def _challan_sequence_exists(db: Session, owner_id: str, sequence_number: int) -
 def _build_invoice_from_extraction(owner_id: str, extracted: dict[str, Any]) -> Invoice:
     gst_payload = extracted.get('gst_invoice') if isinstance(extracted.get('gst_invoice'), dict) else {}
 
-    bill_date = gst_payload.get('invoice_date') or extracted.get('bill_date') or date.today()
-    if not isinstance(bill_date, date):
-        bill_date = date.today()
+    bill_date = _resolve_document_date(
+        gst_payload.get('invoice_date'),
+        extracted.get('bill_date'),
+        extracted.get('invoice_date'),
+    )
     subtotal = _coerce_amount(gst_payload.get('subtotal'))
     gst_amount = _coerce_amount(gst_payload.get('gst_amount'))
     total_amount = _coerce_amount(gst_payload.get('total_amount'))
@@ -246,17 +316,26 @@ def _build_delivery_challan_from_extraction(
         extracted.get('delivery_challan') if isinstance(extracted.get('delivery_challan'), dict) else {}
     )
 
+    challan_date = _resolve_document_date(
+        challan_payload.get('challan_date'),
+        extracted.get('bill_date'),
+        extracted.get('challan_date'),
+    )
+    financial_year_start = _challan_financial_year_start(challan_date)
+
     try:
         requested_challan_number = int(challan_payload.get('challan_number') or 0)
     except (TypeError, ValueError):
         requested_challan_number = 0
-    if requested_challan_number > 0 and not _challan_sequence_exists(db, owner_id, requested_challan_number):
+    if requested_challan_number > 0 and not _challan_sequence_exists(
+        db,
+        owner_id,
+        requested_challan_number,
+        challan_date,
+    ):
         sequence_number = requested_challan_number
     else:
-        sequence_number = _next_challan_sequence_number(db, owner_id)
-    challan_date = challan_payload.get('challan_date') or extracted.get('bill_date') or date.today()
-    if not isinstance(challan_date, date):
-        challan_date = date.today()
+        sequence_number = _next_challan_sequence_number(db, owner_id, challan_date)
     subtotal = _coerce_amount(challan_payload.get('subtotal'))
     if subtotal <= 0:
         subtotal = _coerce_amount(extracted.get('total_amount'))
@@ -268,6 +347,7 @@ def _build_delivery_challan_from_extraction(
             challan_payload.get('order_number'),
             fallback_sequence=sequence_number,
         ),
+        financial_year_start=financial_year_start,
         sequence_number=sequence_number,
         challan_date=challan_date,
         subtotal=0.0,
@@ -482,6 +562,12 @@ async def upload_bill(
             'gst_number': processed.get('gst_number'),
             'total_amount': processed.get('total_amount'),
             'inferred_type': processed.get('bill_type'),
+            'seller_name': processed.get('seller_name'),
+            'seller_gstin': processed.get('seller_gstin'),
+            'buyer_name': processed.get('buyer_name'),
+            'buyer_gstin': processed.get('buyer_gstin'),
+            'client_name': processed.get('client_name'),
+            'client_gstin': processed.get('client_gstin'),
             'gst_invoice': (
                 gst_payload_model.model_dump(mode='python')
                 if isinstance(gst_payload_model, GSTInvoiceExtractedPayload)
@@ -502,15 +588,21 @@ async def upload_bill(
                 else {}
             )
             transaction_type = extracted.get('inferred_type')
-            client_name_source = (
-                challan_payload.get('to_party')
-                if transaction_type == InvoiceType.SALES
-                else challan_payload.get('from_party')
-            )
+            client_name_source = extracted.get('client_name')
+            if not (isinstance(client_name_source, str) and client_name_source.strip()):
+                client_name_source = (
+                    challan_payload.get('to_party')
+                    if transaction_type == InvoiceType.SALES
+                    else challan_payload.get('from_party')
+                )
             client_name = (
                 client_name_source.strip()
                 if isinstance(client_name_source, str)
                 else ''
+            )
+            client_gstin = (
+                normalize_gstin(extracted.get('client_gstin'))
+                or normalize_gstin(extracted.get('gst_number'))
             )
             if not client_name:
                 raise HTTPException(
@@ -522,6 +614,7 @@ async def upload_bill(
                     db,
                     client_name=client_name,
                     owner_id=current_user.id,
+                    gst_number=client_gstin,
                 )
             except ValueError as exc:
                 raise HTTPException(
@@ -542,6 +635,33 @@ async def upload_bill(
                 owner_id=current_user.id,
                 extracted=extracted,
             )
+            invoice_client_name = extracted.get('client_name')
+            normalized_client_name = (
+                invoice_client_name.strip()
+                if isinstance(invoice_client_name, str)
+                else ''
+            )
+            invoice_client_gstin = (
+                normalize_gstin(extracted.get('client_gstin'))
+                or created_invoice.gst_number
+                or normalize_gstin(extracted.get('gst_number'))
+            )
+            if normalized_client_name:
+                try:
+                    created_invoice.client_id = resolve_client(
+                        db,
+                        client_name=normalized_client_name,
+                        owner_id=current_user.id,
+                        gst_number=invoice_client_gstin,
+                    )
+                except ValueError:
+                    logger.warning(
+                        'Could not resolve client identity for uploaded GST invoice',
+                        extra={
+                            'owner_id': str(current_user.id),
+                            'invoice_number': created_invoice.invoice_number,
+                        },
+                    )
             created_invoice.original_file_path = stored_original_path
             invoice_number = created_invoice.invoice_number.strip()
             created_invoice.invoice_number = invoice_number

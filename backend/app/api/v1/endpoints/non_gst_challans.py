@@ -1,5 +1,6 @@
 ﻿from __future__ import annotations
 
+from datetime import date
 import mimetypes
 from pathlib import Path
 import re
@@ -37,6 +38,10 @@ from app.services.notifications import create_notification
 from app.utils.pdf_filename import build_bill_pdf_filename
 
 router = APIRouter()
+
+
+def _financial_year_start(challan_date: date) -> int:
+    return challan_date.year if challan_date.month >= 4 else challan_date.year - 1
 
 
 def _challan_to_response(challan: NonGSTChallan) -> NonGSTChallanResponse:
@@ -276,11 +281,17 @@ def list_non_gst_challans(
 @router.get('/latest-created', response_model=LatestCreatedNonGSTChallanResponse)
 def latest_created_non_gst_challan(
     client_id: str | None = Query(None),
+    challan_date: date | None = Query(None),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> LatestCreatedNonGSTChallanResponse:
+    target_date = challan_date or date.today()
+    target_financial_year_start = _financial_year_start(target_date)
     latest_challan_number = db.scalar(
-        select(func.max(NonGSTChallan.sequence_number)).where(NonGSTChallan.owner_id == current_user.id)
+        select(func.max(NonGSTChallan.sequence_number)).where(
+            NonGSTChallan.owner_id == current_user.id,
+            NonGSTChallan.financial_year_start == target_financial_year_start,
+        )
     )
     if not client_id:
         return LatestCreatedNonGSTChallanResponse(
@@ -300,7 +311,7 @@ def latest_created_non_gst_challan(
             NonGSTChallan.owner_id == current_user.id,
             NonGSTChallan.client_id == client_id,
         )
-        .order_by(NonGSTChallan.created_at.desc(), NonGSTChallan.challan_date.desc())
+        .order_by(NonGSTChallan.challan_date.desc(), NonGSTChallan.created_at.desc())
         .limit(1)
     )
     if not latest:
@@ -320,6 +331,8 @@ def create_non_gst_challan(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> NonGSTChallanResponse:
+    financial_year_start = _financial_year_start(payload.challan_date)
+
     client = db.scalar(
         select(Client).where(Client.id == payload.client_id, Client.owner_id == current_user.id)
     )
@@ -342,16 +355,18 @@ def create_non_gst_challan(
     duplicate_sequence = db.scalar(
         select(NonGSTChallan.id).where(
             NonGSTChallan.owner_id == current_user.id,
+            NonGSTChallan.financial_year_start == financial_year_start,
             NonGSTChallan.sequence_number == payload.challan_number,
         )
     )
     if duplicate_sequence:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail='Challan Number already exists. Please use a different number.',
+            detail='Challan Number already exists for this financial year. Please use a different number.',
         )
 
     challan = _build_challan_from_payload(payload, owner_id=current_user.id)
+    challan.financial_year_start = financial_year_start
     challan.sequence_number = payload.challan_number
     db.add(challan)
     try:
@@ -361,8 +376,12 @@ def create_non_gst_challan(
         error_message = str(exc.orig).lower() if getattr(exc, 'orig', None) else str(exc).lower()
         if 'owner_id, client_id, challan_number' in error_message or 'uq_non_gst_challans_owner_client_number' in error_message:
             detail = 'Order Number already exists for this client.'
-        elif 'owner_id, sequence_number' in error_message or 'uq_non_gst_challans_owner_sequence_number' in error_message:
-            detail = 'Challan Number already exists. Please use a different number.'
+        elif (
+            'owner_id, financial_year_start, sequence_number' in error_message
+            or 'uq_non_gst_challans_owner_financial_year_sequence_number' in error_message
+            or 'uq_non_gst_challans_owner_sequence_number' in error_message
+        ):
+            detail = 'Challan Number already exists for this financial year. Please use a different number.'
         else:
             detail = 'Duplicate value detected while creating delivery challan.'
         raise HTTPException(
@@ -405,6 +424,7 @@ def create_non_gst_challan_pdf(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Selected client is invalid')
 
     challan = _build_challan_from_payload(payload, owner_id=current_user.id)
+    challan.financial_year_start = _financial_year_start(payload.challan_date)
     challan.sequence_number = payload.challan_number
     company_details = db.scalar(select(PersonalDetails).where(PersonalDetails.owner_id == current_user.id))
     generated_path = _generate_delivery_challan_pdf_path(

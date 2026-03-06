@@ -10,6 +10,7 @@ import { Select } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { useAuthGuard } from '@/hooks/useAuthGuard';
 import { apiRequest } from '@/lib/api';
+import { isoMonthIndex, isoYear } from '@/lib/date-format';
 import { formatAccountingAmount, formatAccountingInteger } from '@/lib/number-format';
 
 type ClientMaster = {
@@ -46,16 +47,19 @@ type ClientAnalyticsRow = {
 const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
 function toBucket(dateString: string, period: string) {
-  const date = new Date(dateString);
-  if (period === 'monthly') return months[date.getMonth()];
-  if (period === 'quarterly') return `Q${Math.floor(date.getMonth() / 3) + 1}`;
-  if (period === 'semi-annually') return date.getMonth() < 6 ? 'H1' : 'H2';
-  return String(date.getFullYear());
+  const monthIndex = isoMonthIndex(dateString);
+  const year = isoYear(dateString);
+  const financialMonthIndex = (monthIndex + 9) % 12;
+  if (period === 'monthly') return months[monthIndex];
+  if (period === 'quarterly') return `Q${Math.floor(financialMonthIndex / 3) + 1}`;
+  if (period === 'semi-annually') return financialMonthIndex < 6 ? 'H1' : 'H2';
+  return String(year);
 }
 
 function getFinancialYearStart(dateString: string) {
-  const date = new Date(dateString);
-  return date.getMonth() >= 3 ? date.getFullYear() : date.getFullYear() - 1;
+  const monthIndex = isoMonthIndex(dateString);
+  const year = isoYear(dateString);
+  return monthIndex >= 3 ? year : year - 1;
 }
 
 function toFinancialYearLabel(startYear: number) {
@@ -142,7 +146,7 @@ export default function ClientAnalyticsPage() {
     if (period === 'quarterly') return ['Q1', 'Q2', 'Q3', 'Q4'];
     if (period === 'semi-annually') return ['H1', 'H2'];
 
-    const years = Array.from(new Set(yearFilteredInvoices.map((invoice) => new Date(invoice.invoice_date).getFullYear())))
+    const years = Array.from(new Set(yearFilteredInvoices.map((invoice) => isoYear(invoice.invoice_date))))
       .sort((a, b) => a - b)
       .map(String);
     return years.length ? years : [];

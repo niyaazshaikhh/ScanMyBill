@@ -29,6 +29,18 @@ DATE_PATTERNS = [
     '%Y-%m-%d',
     '%d/%m/%y',
     '%d-%m-%y',
+    '%d/%b/%Y',
+    '%d-%b-%Y',
+    '%d.%b.%Y',
+    '%d %b %Y',
+    '%d/%B/%Y',
+    '%d-%B-%Y',
+    '%d.%B.%Y',
+    '%d %B %Y',
+    '%d/%b/%y',
+    '%d-%b-%y',
+    '%d/%B/%y',
+    '%d-%B-%y',
 ]
 CHALLAN_KEYWORDS = ('delivery challan', 'delivery note', 'challan no', 'dc no')
 GST_INVOICE_KEYWORDS = (
@@ -747,8 +759,12 @@ def _infer_document_type(text: str) -> str:
 
 
 def _extract_date(text: str) -> date | None:
-    matches = re.findall(r'\b(\d{1,4}[./-]\d{1,2}[./-]\d{2,4})\b', text)
-    for match in matches:
+    numeric_matches = re.findall(r'\b(\d{1,4}[./-]\d{1,2}[./-]\d{2,4})\b', text)
+    named_month_matches = re.findall(
+        r'\b(\d{1,2}(?:[./-]|\s)[A-Za-z]{3,9}(?:[./-]|\s)\d{2,4})\b',
+        text,
+    )
+    for match in [*numeric_matches, *named_month_matches]:
         candidate = match.strip()
         for pattern in DATE_PATTERNS:
             try:

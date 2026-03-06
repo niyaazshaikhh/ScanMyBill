@@ -22,6 +22,7 @@ import { Select } from "@/components/ui/select";
 import { useAuthGuard } from "@/hooks/useAuthGuard";
 import { apiRequest } from "@/lib/api";
 import { notifyApp } from "@/lib/app-notification";
+import { isoMonthIndex, isoYear } from "@/lib/date-format";
 import {
   appendDashboardDebugRecord,
   clearDashboardDebugResponses,
@@ -61,8 +62,9 @@ type PersonalDetailsPeriodResponse = {
 const periodOptions = ["monthly", "quarterly", "semi-annually", "annually"];
 
 function getFinancialYearStart(dateString: string) {
-  const date = new Date(dateString);
-  return date.getMonth() >= 3 ? date.getFullYear() : date.getFullYear() - 1;
+  const monthIndex = isoMonthIndex(dateString);
+  const year = isoYear(dateString);
+  return monthIndex >= 3 ? year : year - 1;
 }
 
 function toFinancialYearLabel(startYear: number) {

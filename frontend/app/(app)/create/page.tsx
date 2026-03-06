@@ -148,6 +148,7 @@ export default function CreateInvoicePage() {
   const [clients, setClients] = useState<Client[]>([]);
   const [hsnSacMasters, setHsnSacMasters] = useState<HsnSacMasterEntry[]>([]);
   const [clientId, setClientId] = useState("");
+  const [defaultClientId, setDefaultClientId] = useState("");
   const [invoiceDate, setInvoiceDate] = useState(initialInvoiceDateIso);
   const [invoiceDateDisplay, setInvoiceDateDisplay] = useState(
     formatIsoDateToDisplay(initialInvoiceDateIso),
@@ -166,6 +167,9 @@ export default function CreateInvoicePage() {
   const [formError, setFormError] = useState<string | null>(null);
   const invoiceNumberManuallyEditedRef = useRef(false);
   const placeOfSupplyManuallyEditedRef = useRef(false);
+  const [defaultPlaceOfSupply, setDefaultPlaceOfSupply] = useState(DEFAULT_PLACE_OF_SUPPLY);
+  const [defaultPlaceOfSupplyCode, setDefaultPlaceOfSupplyCode] = useState(DEFAULT_PLACE_OF_SUPPLY_CODE);
+  const [invoiceNumberRefreshNonce, setInvoiceNumberRefreshNonce] = useState(0);
   const invoiceDatePickerRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
@@ -182,8 +186,10 @@ export default function CreateInvoicePage() {
           requestedClientId &&
           gstEnabledClients.some((client) => client.id === requestedClientId)
         ) {
+          setDefaultClientId(requestedClientId);
           setClientId(requestedClientId);
         } else if (requestedClientId) {
+          setDefaultClientId("");
           setClientId("");
         }
       })
@@ -216,6 +222,8 @@ export default function CreateInvoicePage() {
         if (!configuredState) return;
         const configuredStateCode = getStateCodeByName(configuredState);
         if (!configuredStateCode) return;
+        setDefaultPlaceOfSupply(configuredState);
+        setDefaultPlaceOfSupplyCode(configuredStateCode);
         setPlaceOfSupply(configuredState);
         setPlaceOfSupplyCode(configuredStateCode);
       })
@@ -246,7 +254,23 @@ export default function CreateInvoicePage() {
     return () => {
       active = false;
     };
-  }, [invoiceDate]);
+  }, [invoiceDate, invoiceNumberRefreshNonce]);
+
+  const resetFormToDefaults = () => {
+    const nextInvoiceDate = todayIsoDate();
+    invoiceNumberManuallyEditedRef.current = false;
+    placeOfSupplyManuallyEditedRef.current = false;
+    setFormError(null);
+    setClientId(defaultClientId);
+    setInvoiceDate(nextInvoiceDate);
+    setInvoiceDateDisplay(formatIsoDateToDisplay(nextInvoiceDate));
+    setInvoiceNumber(buildDefaultInvoiceNumber(nextInvoiceDate));
+    setPlaceOfSupply(defaultPlaceOfSupply);
+    setPlaceOfSupplyCode(defaultPlaceOfSupplyCode);
+    setNotes("");
+    setItems([{ ...INITIAL_ITEM }]);
+    setInvoiceNumberRefreshNonce((previous) => previous + 1);
+  };
 
   const computedLines = useMemo(
     () => items.map((item) => computeLine(item)),
@@ -408,6 +432,7 @@ export default function CreateInvoicePage() {
       });
       link.click();
       URL.revokeObjectURL(url);
+      resetFormToDefaults();
     } catch (err) {
       setFormError(err instanceof Error ? err.message : "PDF export failed");
     } finally {
@@ -434,6 +459,7 @@ export default function CreateInvoicePage() {
         message: "Invoice uploaded successfully",
         tone: "success",
       });
+      resetFormToDefaults();
     } catch (err) {
       const message = err instanceof Error ? err.message : "Upload failed";
       setFormError(message);

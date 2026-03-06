@@ -448,33 +448,32 @@ def latest_created_invoice(
     if invoice_date:
         financial_year_start, financial_year_end = _financial_year_bounds(invoice_date)
         prefix = _financial_year_prefix(invoice_date)
-        serial_pattern = re.compile(rf'^{re.escape(prefix)}/(\d{{3}})$')
+        serial_pattern = re.compile(rf'^{re.escape(prefix)}/(\d{{1,3}})$')
 
-        invoice_numbers = list(
+        invoices = list(
             db.scalars(
-                select(Invoice.invoice_number).where(
+                select(Invoice).where(
                     Invoice.owner_id == current_user.id,
-                    Invoice.source == InvoiceSource.CREATED,
+                    Invoice.type == InvoiceType.SALES,
                     Invoice.invoice_date >= financial_year_start,
                     Invoice.invoice_date < financial_year_end,
                 )
+                .order_by(Invoice.invoice_date.desc(), Invoice.created_at.desc())
             ).all()
         )
 
-        max_serial = 0
-        for number in invoice_numbers:
-            match = serial_pattern.match((number or '').strip().upper())
+        # Follow the same "most recent bill first" ordering as /invoices and
+        # increment from the newest valid FY-style invoice number.
+        for invoice in invoices:
+            match = serial_pattern.match((invoice.invoice_number or '').strip().upper())
             if not match:
                 continue
             serial_value = int(match.group(1))
-            if serial_value > max_serial:
-                max_serial = serial_value
+            if serial_value <= 0 or serial_value > 999:
+                continue
+            return LatestCreatedInvoiceResponse(invoice_number=f'{prefix}/{serial_value:03d}')
 
-        if max_serial <= 0:
-            return LatestCreatedInvoiceResponse(invoice_number=None)
-        return LatestCreatedInvoiceResponse(
-            invoice_number=f'{prefix}/{max_serial:03d}'
-        )
+        return LatestCreatedInvoiceResponse(invoice_number=None)
 
     latest = db.scalar(
         select(Invoice)

@@ -321,6 +321,22 @@ async def process_uploaded_document(
     )
     if document_type == 'gst_invoice':
         gst_payload.gst_number = _select_gst_for_bill_type(raw, bill_type, gst_payload.gst_number)
+    fallback_client_gstin = (
+        gst_payload.gst_number
+        if document_type == 'gst_invoice'
+        else normalize_gstin(raw.get('gst_number'))
+    )
+    seller_name, buyer_name, seller_gstin, buyer_gstin = _extract_invoice_party_identity(raw)
+    client_name, client_gstin = _resolve_client_identity(
+        document_type=document_type,
+        bill_type=bill_type,
+        challan_payload=challan_payload,
+        seller_name=seller_name,
+        buyer_name=buyer_name,
+        seller_gstin=seller_gstin,
+        buyer_gstin=buyer_gstin,
+        fallback_gstin=fallback_client_gstin,
+    )
 
     warnings = [value for value in raw.get('warnings', []) if isinstance(value, str)]
 
@@ -356,6 +372,12 @@ async def process_uploaded_document(
         'total_amount': total_amount,
         'gst_invoice': gst_payload,
         'delivery_challan': challan_payload,
+        'seller_name': seller_name,
+        'seller_gstin': seller_gstin,
+        'buyer_name': buyer_name,
+        'buyer_gstin': buyer_gstin,
+        'client_name': client_name,
+        'client_gstin': client_gstin,
         'from_party': challan_payload.from_party,
         'to_party': challan_payload.to_party,
         'structured_data': structured,
@@ -608,6 +630,55 @@ def _select_gst_for_bill_type(
     return fallback_gstin
 
 
+def _extract_invoice_party_identity(
+    raw: dict[str, Any],
+) -> tuple[str | None, str | None, str | None, str | None]:
+    seller_sources = [
+        raw.get('seller'),
+        raw.get('seller_name'),
+        raw.get('seller_gstin'),
+        raw.get('supplier'),
+        raw.get('vendor'),
+        raw.get('issuer'),
+        raw.get('from_party'),
+    ]
+    buyer_sources = [
+        raw.get('buyer'),
+        raw.get('buyer_name'),
+        raw.get('buyer_gstin'),
+        raw.get('bill_to'),
+        raw.get('consignee'),
+        raw.get('recipient'),
+        raw.get('to_party'),
+    ]
+    seller_name = _extract_party_name(_first_non_empty_value(*seller_sources))
+    buyer_name = _extract_party_name(_first_non_empty_value(*buyer_sources))
+    seller_gstin = _first_valid_gstin(seller_sources)
+    buyer_gstin = _first_valid_gstin(buyer_sources)
+    return seller_name, buyer_name, seller_gstin, buyer_gstin
+
+
+def _resolve_client_identity(
+    *,
+    document_type: str,
+    bill_type: InvoiceType,
+    challan_payload: DeliveryChallanExtractedPayload,
+    seller_name: str | None,
+    buyer_name: str | None,
+    seller_gstin: str | None,
+    buyer_gstin: str | None,
+    fallback_gstin: str | None = None,
+) -> tuple[str | None, str | None]:
+    if document_type == 'delivery_challan':
+        if bill_type == InvoiceType.SALES:
+            return _as_optional_str(challan_payload.to_party) or buyer_name, buyer_gstin or fallback_gstin
+        return _as_optional_str(challan_payload.from_party) or seller_name, seller_gstin or fallback_gstin
+
+    if bill_type == InvoiceType.SALES:
+        return buyer_name, buyer_gstin or fallback_gstin
+    return seller_name, seller_gstin or fallback_gstin
+
+
 def _flatten_document_payload(raw: dict[str, Any]) -> dict[str, Any]:
     flattened = dict(raw)
     document_type = _normalize_document_type(flattened.get('document_type'))
@@ -802,7 +873,7 @@ def _normalize_name(value: str | None) -> str:
 def _as_optional_str(value: Any) -> str | None:
     if not isinstance(value, str):
         return None
-    cleaned = value.strip()
+    cleaned = re.sub(r'\s+', ' ', value.replace(',', ' ')).strip()
     return cleaned if cleaned else None
 
 
@@ -831,6 +902,18 @@ def _as_optional_date(value: Any) -> date | None:
         '%Y-%m-%d',
         '%d/%m/%y',
         '%d-%m-%y',
+        '%d/%b/%Y',
+        '%d-%b-%Y',
+        '%d.%b.%Y',
+        '%d %b %Y',
+        '%d/%B/%Y',
+        '%d-%B-%Y',
+        '%d.%B.%Y',
+        '%d %B %Y',
+        '%d/%b/%y',
+        '%d-%b-%y',
+        '%d/%B/%y',
+        '%d-%B-%y',
     )
     for pattern in patterns:
         try:
