@@ -78,7 +78,7 @@ class ForgotPasswordResponse(BaseModel):
 
 
 class ResetPasswordRequest(_StrictRequestModel):
-    token: str = Field(min_length=16, max_length=255, pattern=r'^[A-Za-z0-9_\-]+$')
+    token: str = Field(min_length=16, max_length=255)
     new_password: str = Field(min_length=8, max_length=128)
 
     @field_validator('new_password')

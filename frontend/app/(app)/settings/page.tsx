@@ -211,7 +211,7 @@ export default function SettingsPage() {
   );
 
   const canRenew = currentPlan !== "FREE" && Boolean(currentPlanId);
-  const canCancel = Boolean(user?.razorpay_subscription_id) && user?.subscription_status === "ACTIVE";
+  const canCancel = user?.subscription_status === "ACTIVE" && user?.subscription_plan !== "FREE";
 
   const handleCheckoutSuccess = useCallback(async () => {
     setActionError(null);

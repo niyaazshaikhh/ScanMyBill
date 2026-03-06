@@ -99,6 +99,19 @@ def create_client(
     if existing:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Client already exists')
 
+    if payload.gst_number:
+        existing_gst = db.scalar(
+            select(Client).where(
+                Client.owner_id == current_user.id,
+                func.upper(Client.gst_number) == payload.gst_number,
+            )
+        )
+        if existing_gst:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail='Client with this GST Number already exists',
+            )
+
     client = Client(
         owner_id=current_user.id,
         name=payload.name,
@@ -187,6 +200,20 @@ def update_client(
     )
     if duplicate:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Client already exists')
+
+    if payload.gst_number:
+        duplicate_gst = db.scalar(
+            select(Client).where(
+                Client.owner_id == current_user.id,
+                func.upper(Client.gst_number) == payload.gst_number,
+                Client.id != client_id,
+            )
+        )
+        if duplicate_gst:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail='Client with this GST Number already exists',
+            )
 
     client.name = payload.name
     client.address = payload.address

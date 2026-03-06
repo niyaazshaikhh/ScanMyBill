@@ -576,11 +576,15 @@ def cancel_subscription(
     current_user: User = Depends(get_current_user),
 ) -> SubscriptionCancelResponse:
     subscription_id = current_user.razorpay_subscription_id
-    if not subscription_id:
+    has_active_paid_plan = (
+        current_user.subscription_status == SubscriptionStatus.ACTIVE
+        and current_user.subscription_plan != SubscriptionPlan.FREE
+    )
+    if not subscription_id and not has_active_paid_plan:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='No active subscription found.')
 
     cancel_payload: dict[str, Any] = {}
-    if settings.razorpay_key_id and settings.razorpay_key_secret:
+    if subscription_id and settings.razorpay_key_id and settings.razorpay_key_secret:
         client = razorpay.Client(auth=(settings.razorpay_key_id, settings.razorpay_key_secret))
         try:
             try:
@@ -602,15 +606,26 @@ def cancel_subscription(
     expires_at = _to_utc_datetime(
         cancel_payload.get('current_end') or cancel_payload.get('ended_at') or cancel_payload.get('charge_at')
     )
+    if not subscription_id and expires_at is None:
+        expires_at = datetime.now(timezone.utc)
     _cancel_subscription(current_user, expires_at=expires_at)
+
+    provider_payment_id = subscription_id
+    if not provider_payment_id:
+        provider_payment_id = f'local-cancel-{current_user.id[:8]}-{int(datetime.now(tz=timezone.utc).timestamp())}'
 
     db.add(
         PaymentEvent(
             owner_id=current_user.id,
             provider='razorpay',
-            provider_payment_id=subscription_id,
+            provider_payment_id=provider_payment_id,
             status='subscription.cancelled',
-            payload=json.dumps({'subscription': cancel_payload or None}),
+            payload=json.dumps(
+                {
+                    'subscription': cancel_payload or None,
+                    'cancelled_without_subscription_id': subscription_id is None,
+                }
+            ),
         )
     )
     db.commit()
@@ -619,7 +634,7 @@ def cancel_subscription(
         user_id=current_user.id,
         title='Plan Cancelled',
         message='Your active subscription plan has been cancelled.',
-        dedupe_key=f'subscription-cancel-{subscription_id}',
+        dedupe_key=(f'subscription-cancel-{subscription_id}' if subscription_id else None),
     )
 
     return SubscriptionCancelResponse(

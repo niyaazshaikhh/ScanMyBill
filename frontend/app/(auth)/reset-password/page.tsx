@@ -14,6 +14,10 @@ type MessageResponse = {
   message: string;
 };
 
+const PASSWORD_POLICY_REGEX = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).{8,128}$/;
+const PASSWORD_POLICY_MESSAGE =
+  'Password must be 8-128 characters and include uppercase, lowercase, number, and special character.';
+
 export default function ResetPasswordPage() {
   const router = useRouter();
   const [token, setToken] = useState('');
@@ -36,7 +40,9 @@ export default function ResetPasswordPage() {
     setError(null);
     setSuccess(null);
 
-    if (!token) {
+    const normalizedToken = token.trim();
+
+    if (!normalizedToken) {
       setError('Reset link is invalid or expired. Please request a new reset email.');
       return;
     }
@@ -46,13 +52,18 @@ export default function ResetPasswordPage() {
       return;
     }
 
+    if (!PASSWORD_POLICY_REGEX.test(newPassword)) {
+      setError(PASSWORD_POLICY_MESSAGE);
+      return;
+    }
+
     setLoading(true);
     try {
       const data = await apiRequest<MessageResponse>('/auth/reset-password', {
         method: 'POST',
         auth: false,
         body: {
-          token,
+          token: normalizedToken,
           new_password: newPassword
         }
       });
@@ -87,6 +98,9 @@ export default function ResetPasswordPage() {
               minLength={8}
               required
             />
+            <p className='text-xs text-muted-foreground'>
+              Use 8+ chars with uppercase, lowercase, number, and special character.
+            </p>
           </div>
           <div className='space-y-2'>
             <Label htmlFor='confirm-password'>Confirm Password</Label>
