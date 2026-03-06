@@ -2,6 +2,9 @@
 
 This guide applies to free or paid providers that run Docker containers.
 
+For a complete Azure + GoDaddy + GitHub Actions rollout, see:
+- `docs/AZURE_PRODUCTION_SETUP.md`
+
 ## Supported Deployment Patterns
 
 ## 1) Split Services (Recommended)

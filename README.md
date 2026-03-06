@@ -133,6 +133,15 @@ Required:
 - `CORS_ORIGINS`
 - `TRUSTED_HOSTS`
 
+## CI/CD
+
+GitHub Actions workflows are included:
+- `ci.yml`: backend tests + frontend lint/build + Docker build validation on PR/push.
+- `deploy.yml`: OIDC-based deployment to Azure Container Apps on `main` (and manual dispatch).
+
+Production pipeline configuration details:
+- `docs/AZURE_PRODUCTION_SETUP.md`
+
 ## Production Checklist
 
 Set strong values before deploying:
@@ -162,6 +171,7 @@ The checkout implementation follows this flow:
 - Database schema: `docs/DATABASE_SCHEMA.md`
 - ERD description: `docs/ERD.md`
 - Cloud deployment guide: `docs/CLOUD_DEPLOYMENT.md`
+- Azure production + GoDaddy + CI/CD: `docs/AZURE_PRODUCTION_SETUP.md`
 
 ## Important Notes
 - API docs (`/docs`) are disabled when `ENVIRONMENT=production` and `ENABLE_DOCS=false`.
