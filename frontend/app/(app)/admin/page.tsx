@@ -169,7 +169,7 @@ export default function AdminPage() {
             <Input
               value={search}
               onChange={(event) => setSearch(event.target.value)}
-              placeholder='Search by name or email'
+              placeholder='Global search users by name or email'
             />
             <Button type='button' variant='outline' onClick={resetSearch} disabled={loading || !search.trim()}>
               Reset

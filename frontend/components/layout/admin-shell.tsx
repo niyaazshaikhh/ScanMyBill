@@ -1000,7 +1000,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
                       goToSearchTarget(searchSuggestions[0].href);
                     }
                   }}
-                  placeholder="Search invoices, clients, GST numbers..."
+                  placeholder="Global search: invoices, clients, challans, GSTIN..."
                 />
                 {searchOpen ? (
                   <div className="absolute left-0 right-0 top-[calc(100%+6px)] z-50 max-h-80 overflow-y-auto rounded-md border border-border bg-background shadow-lg">

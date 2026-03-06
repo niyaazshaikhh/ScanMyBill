@@ -2,16 +2,21 @@ from __future__ import annotations
 
 import logging
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Response, status
 from pydantic import EmailStr
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.core.database import SessionLocal, get_db
 from app.core.deps import require_roles
 from app.models.newsletter import NewsletterSubscriber
 from app.models.user import User, UserRole
-from app.schemas.newsletter import NewsletterResponse, NewsletterSend, NewsletterSubscribeRequest
+from app.schemas.newsletter import (
+    NewsletterResponse,
+    NewsletterSend,
+    NewsletterSubscribeRequest,
+    NewsletterSubscribeResponse,
+)
 from app.services.email_service import EmailDeliveryError, validate_email_configuration
 from app.services.newsletter_service import (
     get_all_active_subscribers,
@@ -28,14 +33,29 @@ def _admin_guard(current_user: User = Depends(require_roles([UserRole.ADMIN]))) 
     return current_user
 
 
-@router.post(
-    '/subscribe',
-    response_model=NewsletterResponse,
-    status_code=status.HTTP_201_CREATED,
-)
-def subscribe(payload: NewsletterSubscribeRequest, db: Session = Depends(get_db)) -> NewsletterResponse:
-    subscriber = subscribe_email(db, str(payload.email))
-    return NewsletterResponse.model_validate(subscriber, from_attributes=True)
+@router.post('/subscribe', response_model=NewsletterSubscribeResponse)
+def subscribe(
+    payload: NewsletterSubscribeRequest,
+    response: Response,
+    db: Session = Depends(get_db),
+) -> NewsletterSubscribeResponse:
+    normalized_email = str(payload.email).strip().lower()
+    existing_subscriber = db.scalar(
+        select(NewsletterSubscriber).where(func.lower(NewsletterSubscriber.email) == normalized_email)
+    )
+
+    if existing_subscriber and existing_subscriber.is_active:
+        response.status_code = status.HTTP_200_OK
+        return NewsletterSubscribeResponse(success=False, message='Already subscribed')
+
+    _ = subscribe_email(db, str(payload.email))
+
+    if existing_subscriber and not existing_subscriber.is_active:
+        response.status_code = status.HTTP_200_OK
+        return NewsletterSubscribeResponse(success=True, message='Subscription reactivated')
+
+    response.status_code = status.HTTP_201_CREATED
+    return NewsletterSubscribeResponse(success=True, message='Subscribed successfully')
 
 
 @router.post('/unsubscribe', response_model=NewsletterResponse)

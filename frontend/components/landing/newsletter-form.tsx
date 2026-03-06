@@ -7,8 +7,9 @@ import { Input } from '@/components/ui/input';
 import { getApiBaseUrl } from '@/lib/api';
 
 type NewsletterSubscribeResponse = {
-  success: boolean;
-  message: string;
+  success?: boolean;
+  message?: string;
+  detail?: string;
 };
 
 export function NewsletterForm() {
@@ -32,13 +33,19 @@ export function NewsletterForm() {
         body: JSON.stringify({ email })
       });
       const data = (await res.json()) as NewsletterSubscribeResponse;
+      const message = data.message || (typeof data.detail === 'string' ? data.detail : undefined);
 
       if (!res.ok) {
-        setErrorMessage(data.message || `API Error (${res.status})`);
+        setErrorMessage(message || `API Error (${res.status})`);
         return;
       }
 
-      setSuccessMessage(data.message || 'Subscribed successfully');
+      if (data.success === false) {
+        setErrorMessage(message || 'Already subscribed');
+        return;
+      }
+
+      setSuccessMessage(message || 'Subscribed successfully');
       setEmail('');
     } catch {
       setErrorMessage('Unable to subscribe right now');
