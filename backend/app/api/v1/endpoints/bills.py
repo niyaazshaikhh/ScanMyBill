@@ -562,6 +562,7 @@ async def upload_bill(
             'gst_number': processed.get('gst_number'),
             'total_amount': processed.get('total_amount'),
             'inferred_type': processed.get('bill_type'),
+            'ai_debug': processed.get('ai_debug'),
             'seller_name': processed.get('seller_name'),
             'seller_gstin': processed.get('seller_gstin'),
             'buyer_name': processed.get('buyer_name'),
@@ -732,6 +733,7 @@ async def upload_bill(
             total_amount=round(created_invoice.total_amount, 2),
             type=created_invoice.type,
             structured_data=structured_data,
+            debug_trace=processed.get('ai_debug') if isinstance(processed.get('ai_debug'), dict) else None,
             extracted_text_preview=preview,
             created_at=created_invoice.created_at or datetime.now(),
         )
@@ -770,6 +772,7 @@ async def upload_bill(
         total_amount=round(created_challan.subtotal, 2),
         type=bill_type,
         structured_data=structured_data,
+        debug_trace=processed.get('ai_debug') if isinstance(processed.get('ai_debug'), dict) else None,
         extracted_text_preview=preview,
         created_at=created_challan.created_at or datetime.now(),
     )

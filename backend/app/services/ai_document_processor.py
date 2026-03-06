@@ -24,6 +24,7 @@ _SUPPORTED_MIME = {
 }
 _MAX_PDF_PAGES = 3
 _MAX_TOKENS = 3000
+_DEBUG_RESPONSE_TEXT_LIMIT = 12_000
 
 
 def _detect_mime(payload: bytes, file_path: Path) -> str | None:
@@ -216,6 +217,62 @@ def _format_model_error(exc: Exception) -> str:
     return message[:300]
 
 
+def _clip_debug_text(value: str, limit: int = _DEBUG_RESPONSE_TEXT_LIMIT) -> str:
+    cleaned = (value or '').strip()
+    if len(cleaned) <= limit:
+        return cleaned
+    omitted = len(cleaned) - limit
+    return f'{cleaned[:limit]}... [truncated {omitted} chars]'
+
+
+def _new_debug_trace(
+    *,
+    endpoint: str | None,
+    deployment: str | None,
+) -> dict[str, Any]:
+    return {
+        'provider': 'azure_openai',
+        'configured_model': settings.openai_model,
+        'endpoint': endpoint,
+        'deployment': deployment,
+        'api_version': settings.azure_openai_api_version,
+        'attempts': [],
+    }
+
+
+def _append_debug_attempt(
+    trace: dict[str, Any],
+    *,
+    mode: str,
+    status: str,
+    response_text: str | None = None,
+    error: str | None = None,
+    image_blocks_count: int | None = None,
+) -> None:
+    attempts = trace.setdefault('attempts', [])
+    if not isinstance(attempts, list):
+        attempts = []
+        trace['attempts'] = attempts
+
+    payload: dict[str, Any] = {
+        'mode': mode,
+        'status': status,
+    }
+    if image_blocks_count is not None:
+        payload['image_blocks_count'] = image_blocks_count
+    if response_text:
+        payload['response_text'] = _clip_debug_text(response_text)
+    if error:
+        payload['error'] = error
+    attempts.append(payload)
+
+
+def _with_debug(payload: dict[str, Any], trace: dict[str, Any]) -> dict[str, Any]:
+    result = dict(payload)
+    result['__ai_debug'] = trace
+    return result
+
+
 def _request_completion(
     client: Any,
     deployment: str,
@@ -249,14 +306,23 @@ def _sync_completion(
     try:
         from openai import AzureOpenAI
     except Exception:
-        return {'error': 'OpenAI SDK is not installed on server'}
+        debug_trace = _new_debug_trace(
+            endpoint=settings.azure_openai_endpoint,
+            deployment=settings.azure_openai_deployment,
+        )
+        debug_trace['result'] = 'error'
+        debug_trace['error'] = 'OpenAI SDK is not installed on server'
+        return _with_debug({'error': 'OpenAI SDK is not installed on server'}, debug_trace)
 
     endpoint = settings.azure_openai_endpoint
     deployment = settings.azure_openai_deployment
     api_key = settings.openai_api_key or settings.azure_openai_api_key
+    debug_trace = _new_debug_trace(endpoint=endpoint, deployment=deployment)
 
     if not endpoint or not deployment or not api_key:
-        return {'error': 'Azure OpenAI configuration missing'}
+        debug_trace['result'] = 'error'
+        debug_trace['error'] = 'Azure OpenAI configuration missing'
+        return _with_debug({'error': 'Azure OpenAI configuration missing'}, debug_trace)
 
     client = AzureOpenAI(
         api_version=settings.azure_openai_api_version,
@@ -272,8 +338,23 @@ def _sync_completion(
             ocr_text=ocr_text,
             image_blocks=image_blocks,
         )
+        content = _extract_content_text(completion)
+        _append_debug_attempt(
+            debug_trace,
+            mode='vision+ocr',
+            status='ok',
+            response_text=content,
+            image_blocks_count=len(image_blocks),
+        )
     except Exception as exc:
         logger.exception('AI completion with image payload failed')
+        _append_debug_attempt(
+            debug_trace,
+            mode='vision+ocr',
+            status='error',
+            error=_format_model_error(exc),
+            image_blocks_count=len(image_blocks),
+        )
         if ocr_text:
             try:
                 completion = _request_completion(
@@ -283,28 +364,59 @@ def _sync_completion(
                     ocr_text=ocr_text,
                     image_blocks=[],
                 )
+                content = _extract_content_text(completion)
+                _append_debug_attempt(
+                    debug_trace,
+                    mode='ocr-only',
+                    status='ok',
+                    response_text=content,
+                    image_blocks_count=0,
+                )
             except Exception as fallback_exc:
-                return {
+                _append_debug_attempt(
+                    debug_trace,
+                    mode='ocr-only',
+                    status='error',
+                    error=_format_model_error(fallback_exc),
+                    image_blocks_count=0,
+                )
+                debug_trace['result'] = 'error'
+                debug_trace['error'] = 'Failed to extract data from AI model'
+                return _with_debug({
                     'error': 'Failed to extract data from AI model',
                     'details': _format_model_error(fallback_exc),
-                }
+                }, debug_trace)
         else:
-            return {
+            debug_trace['result'] = 'error'
+            debug_trace['error'] = 'Failed to extract data from AI model'
+            return _with_debug({
                 'error': 'Failed to extract data from AI model',
                 'details': _format_model_error(exc),
-            }
+            }, debug_trace)
 
     content = _extract_content_text(completion)
     if not content:
-        return {'error': 'AI model returned empty response'}
+        debug_trace['result'] = 'error'
+        debug_trace['error'] = 'AI model returned empty response'
+        return _with_debug({'error': 'AI model returned empty response'}, debug_trace)
     logger.info('AI raw response: %s', content)
     print(f'AI raw response: {content}')
 
     parsed = safe_json_parse(content)
     if parsed is None:
-        return {'error': 'Model returned invalid JSON'}
+        debug_trace['result'] = 'error'
+        debug_trace['error'] = 'Model returned invalid JSON'
+        return _with_debug({'error': 'Model returned invalid JSON'}, debug_trace)
 
-    return _validate_document_type(parsed)
+    validated = _validate_document_type(parsed)
+    debug_trace['parsed_response'] = parsed
+    if validated.get('error'):
+        debug_trace['result'] = 'error'
+        debug_trace['error'] = validated.get('error')
+    else:
+        debug_trace['result'] = 'success'
+        debug_trace['document_type'] = validated.get('document_type')
+    return _with_debug(validated, debug_trace)
 
 
 async def extract_document_data(

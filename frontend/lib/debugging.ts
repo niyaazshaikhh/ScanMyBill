@@ -1,6 +1,7 @@
 export const DEBUG_MODE_STORAGE_KEY = 'scanmybill_debug_mode_enabled';
 export const DASHBOARD_DEBUG_RESPONSES_STORAGE_KEY = 'scanmybill_dashboard_debug_upload_responses';
 export const DEBUG_MODE_CHANGED_EVENT = 'scanmybill:debug-mode-changed';
+export const DASHBOARD_DEBUG_UPDATED_EVENT = 'scanmybill:dashboard-debug-updated';
 
 export type DashboardDebugConsoleLevel = 'info' | 'success' | 'warning' | 'error';
 
@@ -108,15 +109,26 @@ export function readDashboardDebugResponses(): DashboardDebugConsoleRecord[] {
 
 export function writeDashboardDebugResponses(records: DashboardDebugConsoleRecord[]) {
   if (typeof window === 'undefined') return;
+  const next = records.slice(0, MAX_DEBUG_RECORDS);
   window.localStorage.setItem(
     DASHBOARD_DEBUG_RESPONSES_STORAGE_KEY,
-    JSON.stringify(records.slice(0, MAX_DEBUG_RECORDS)),
+    JSON.stringify(next),
+  );
+  window.dispatchEvent(
+    new CustomEvent<DashboardDebugConsoleRecord[]>(DASHBOARD_DEBUG_UPDATED_EVENT, {
+      detail: next,
+    }),
   );
 }
 
 export function clearDashboardDebugResponses() {
   if (typeof window === 'undefined') return;
   window.localStorage.removeItem(DASHBOARD_DEBUG_RESPONSES_STORAGE_KEY);
+  window.dispatchEvent(
+    new CustomEvent<DashboardDebugConsoleRecord[]>(DASHBOARD_DEBUG_UPDATED_EVENT, {
+      detail: [],
+    }),
+  );
 }
 
 export function appendDashboardDebugRecord(input: DashboardDebugConsoleInput): DashboardDebugConsoleRecord[] {

@@ -1,9 +1,11 @@
 import type { AuthUser } from '@/lib/auth';
 import { getAuthToken, getAuthUser, isAuthTokenExpired, setAuthSession } from '@/lib/auth';
 import { showAppErrorPopup } from '@/lib/app-popup';
+import { appendDashboardDebugRecord, getDebugModeEnabled } from '@/lib/debugging';
 import { emitSessionTimeout } from '@/lib/session-timeout';
 
 const DEFAULT_LOCAL_API_BASE = 'http://localhost:8000/api/v1';
+const API_DEBUG_MAX_PAYLOAD_CHARS = 12_000;
 
 function isLocalhost(hostname: string): boolean {
   return hostname === 'localhost' || hostname === '127.0.0.1';
@@ -132,6 +134,61 @@ function extractApiErrorMessage(payload: unknown, fallback: string): string {
   return fallback;
 }
 
+function shouldCaptureApiDebug(): boolean {
+  if (typeof window === 'undefined') return false;
+  return getDebugModeEnabled();
+}
+
+function toDebugPayload(value: unknown): unknown {
+  if (value === undefined) {
+    return null;
+  }
+
+  try {
+    const serialized = JSON.stringify(value);
+    if (serialized.length <= API_DEBUG_MAX_PAYLOAD_CHARS) {
+      return value;
+    }
+    return {
+      truncated: true,
+      preview: `${serialized.slice(0, API_DEBUG_MAX_PAYLOAD_CHARS)}...`,
+      original_chars: serialized.length,
+    };
+  } catch {
+    return String(value);
+  }
+}
+
+function toDebugHeaders(response: Response): Record<string, string> {
+  const headers: Record<string, string> = {};
+  response.headers.forEach((value, key) => {
+    headers[key] = value;
+  });
+  return headers;
+}
+
+function appendApiDebugRecord(input: {
+  level: 'info' | 'success' | 'warning' | 'error';
+  method: string;
+  path: string;
+  message: string;
+  status?: number;
+  details?: unknown;
+}) {
+  if (!shouldCaptureApiDebug()) {
+    return;
+  }
+
+  const statusLabel = typeof input.status === 'number' ? ` (${input.status})` : '';
+  appendDashboardDebugRecord({
+    level: input.level,
+    source: 'api',
+    title: `API ${input.method} ${input.path}${statusLabel}`,
+    message: input.message,
+    details: input.details,
+  });
+}
+
 async function refreshAccessToken(): Promise<boolean> {
   try {
     const apiBase = resolveApiBase();
@@ -174,6 +231,8 @@ export async function apiRequest<T = unknown>(
     responseType = 'json'
   } = options;
 
+  const requestLabel = `${method} ${path}`;
+
   const executeRequest = async (tokenOverride?: string | null) => {
     const apiBase = resolveApiBase();
     const headers: HeadersInit = {};
@@ -185,6 +244,13 @@ export async function apiRequest<T = unknown>(
       const token = tokenOverride ?? getAuthToken();
       if (!token) {
         emitSessionTimeout(sessionTimeoutMessage);
+        appendApiDebugRecord({
+          level: 'error',
+          method,
+          path,
+          message: 'Missing auth token',
+          details: { session_timeout: true },
+        });
         throw new Error(sessionTimeoutMessage);
       }
       headers.Authorization = `Bearer ${token}`;
@@ -207,6 +273,13 @@ export async function apiRequest<T = unknown>(
       const activeToken = tokenOverride ?? getAuthToken();
       if (auth && isAuthTokenExpired(activeToken)) {
         emitSessionTimeout(sessionTimeoutMessage);
+        appendApiDebugRecord({
+          level: 'error',
+          method,
+          path,
+          message: sessionTimeoutMessage,
+          details: { session_timeout: true, reason: 'token_expired' },
+        });
         throw new Error(sessionTimeoutMessage);
       }
       const mixedContentHint =
@@ -217,6 +290,16 @@ export async function apiRequest<T = unknown>(
           : '';
       const reason = error instanceof Error ? error.message : 'Failed to fetch';
       const message = `Network error: Unable to reach API at ${url}. ${reason}.${mixedContentHint}`;
+      appendApiDebugRecord({
+        level: 'error',
+        method,
+        path,
+        message,
+        details: {
+          url,
+          reason,
+        },
+      });
       showAppErrorPopup(message, 'Network Error');
       throw new Error(message);
     }
@@ -233,6 +316,14 @@ export async function apiRequest<T = unknown>(
         applyRotatedAccessToken(res);
       } else {
         emitSessionTimeout(sessionTimeoutMessage);
+        appendApiDebugRecord({
+          level: 'error',
+          method,
+          path,
+          status: 401,
+          message: sessionTimeoutMessage,
+          details: { request: requestLabel, refresh_failed: true },
+        });
         throw new Error(sessionTimeoutMessage);
       }
     }
@@ -242,12 +333,16 @@ export async function apiRequest<T = unknown>(
 
     let message = `API Error (${res.status})`;
     const contentType = (res.headers.get('content-type') || '').toLowerCase();
+    let errorPayload: unknown = null;
+    let errorText: string | null = null;
     try {
       if (contentType.includes('application/json')) {
         const json = await res.json();
+        errorPayload = json;
         message = extractApiErrorMessage(json, message);
       } else {
         const text = await res.text();
+        errorText = text;
         if (text.trim()) {
           message = text.trim();
         }
@@ -255,19 +350,76 @@ export async function apiRequest<T = unknown>(
     } catch {
       // Ignore JSON parsing errors for non-JSON responses.
     }
+    appendApiDebugRecord({
+      level: 'error',
+      method,
+      path,
+      status: res.status,
+      message,
+      details: {
+        url: res.url,
+        status: res.status,
+        headers: toDebugHeaders(res),
+        response: toDebugPayload(errorPayload ?? errorText),
+      },
+    });
     showAppErrorPopup(message, 'Request Failed');
     throw new Error(message);
   }
 
   if (responseType === 'blob') {
-    return (await res.blob()) as T;
+    const blob = await res.blob();
+    appendApiDebugRecord({
+      level: 'success',
+      method,
+      path,
+      status: res.status,
+      message: 'Binary response received',
+      details: {
+        url: res.url,
+        status: res.status,
+        headers: toDebugHeaders(res),
+        response: {
+          type: 'blob',
+          mime_type: blob.type || res.headers.get('content-type') || null,
+          size_bytes: blob.size,
+        },
+      },
+    });
+    return blob as T;
   }
 
   if (res.status === 204) {
+    appendApiDebugRecord({
+      level: 'success',
+      method,
+      path,
+      status: res.status,
+      message: 'No content response received',
+      details: {
+        url: res.url,
+        status: res.status,
+        headers: toDebugHeaders(res),
+      },
+    });
     return {} as T;
   }
 
-  return (await res.json()) as T;
+  const json = (await res.json()) as T;
+  appendApiDebugRecord({
+    level: 'success',
+    method,
+    path,
+    status: res.status,
+    message: 'JSON response received',
+    details: {
+      url: res.url,
+      status: res.status,
+      headers: toDebugHeaders(res),
+      response: toDebugPayload(json),
+    },
+  });
+  return json;
 }
 
 export function getApiBaseUrl() {

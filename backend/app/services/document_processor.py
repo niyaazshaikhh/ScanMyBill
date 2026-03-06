@@ -262,6 +262,9 @@ async def process_uploaded_document(
     raw = await extract_document_data(file_path, company_name=company_name, ocr_text=ocr_text)
     if not isinstance(raw, dict):
         raise ValueError('AI extraction failed')
+    ai_debug = raw.get('__ai_debug') if isinstance(raw.get('__ai_debug'), dict) else None
+    if '__ai_debug' in raw:
+        raw = {key: value for key, value in raw.items() if key != '__ai_debug'}
     if raw.get('error'):
         raise ValueError(
             _map_extraction_error_to_user_message(
@@ -380,6 +383,7 @@ async def process_uploaded_document(
         'client_gstin': client_gstin,
         'from_party': challan_payload.from_party,
         'to_party': challan_payload.to_party,
+        'ai_debug': ai_debug,
         'structured_data': structured,
     }
 

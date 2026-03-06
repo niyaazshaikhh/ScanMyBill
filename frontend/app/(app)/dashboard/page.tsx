@@ -27,6 +27,7 @@ import {
   appendDashboardDebugRecord,
   clearDashboardDebugResponses,
   DASHBOARD_DEBUG_RESPONSES_STORAGE_KEY,
+  DASHBOARD_DEBUG_UPDATED_EVENT,
   DEBUG_MODE_STORAGE_KEY,
   DEBUG_MODE_CHANGED_EVENT,
   getDebugModeEnabled,
@@ -228,11 +229,22 @@ export default function DashboardPage() {
       }
     };
 
+    const onDebugEntriesUpdated = (event: Event) => {
+      const customEvent = event as CustomEvent<DashboardDebugConsoleRecord[]>;
+      if (Array.isArray(customEvent.detail)) {
+        setDebugConsoleEntries(customEvent.detail);
+        return;
+      }
+      setDebugConsoleEntries(readDashboardDebugResponses());
+    };
+
     window.addEventListener(DEBUG_MODE_CHANGED_EVENT, onDebugModeChange as EventListener);
     window.addEventListener("storage", onStorage);
+    window.addEventListener(DASHBOARD_DEBUG_UPDATED_EVENT, onDebugEntriesUpdated as EventListener);
     return () => {
       window.removeEventListener(DEBUG_MODE_CHANGED_EVENT, onDebugModeChange as EventListener);
       window.removeEventListener("storage", onStorage);
+      window.removeEventListener(DASHBOARD_DEBUG_UPDATED_EVENT, onDebugEntriesUpdated as EventListener);
     };
   }, []);
 

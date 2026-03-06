@@ -1,5 +1,5 @@
 from datetime import date, datetime
-from typing import Literal, Optional
+from typing import Any, Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -75,6 +75,7 @@ class BillUploadResponse(BaseModel):
     total_amount: float
     type: InvoiceType
     structured_data: BillStructuredData
+    debug_trace: dict[str, Any] | None = None
     extracted_text_preview: str | None
     created_at: datetime
 
