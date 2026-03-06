@@ -7,10 +7,29 @@ const NUMBER_WITH_TWO_DECIMALS_PATTERN = /^\d+(\.\d{1,2})?$/;
 export const MAX_QUANTITY = 5_000_000;
 export const MAX_RATE = 10_000;
 
-export function formatFinancialYearInvoicePrefix(dateValue: string): string {
+function resolveInvoiceDateParts(dateValue: string): { year: number; monthIndex: number } | null {
+  const isoMatch = /^(\d{4})-(\d{2})-(\d{2})$/.exec((dateValue || '').trim());
+  if (isoMatch) {
+    const year = Number(isoMatch[1]);
+    const monthIndex = Number(isoMatch[2]) - 1;
+    if (Number.isInteger(year) && monthIndex >= 0 && monthIndex <= 11) {
+      return { year, monthIndex };
+    }
+  }
+
   const parsedDate = new Date(dateValue);
-  const year = Number.isNaN(parsedDate.getTime()) ? new Date() : parsedDate;
-  const financialYearStart = year.getMonth() >= 3 ? year.getFullYear() : year.getFullYear() - 1;
+  if (Number.isNaN(parsedDate.getTime())) {
+    return null;
+  }
+  return { year: parsedDate.getFullYear(), monthIndex: parsedDate.getMonth() };
+}
+
+export function formatFinancialYearInvoicePrefix(dateValue: string): string {
+  const dateParts = resolveInvoiceDateParts(dateValue);
+  const currentDate = new Date();
+  const monthIndex = dateParts ? dateParts.monthIndex : currentDate.getMonth();
+  const year = dateParts ? dateParts.year : currentDate.getFullYear();
+  const financialYearStart = monthIndex >= 3 ? year : year - 1;
   const financialYearEndShort = String((financialYearStart + 1) % 100).padStart(2, '0');
   return `${financialYearStart}-${financialYearEndShort}`;
 }
@@ -29,7 +48,12 @@ export function buildIncrementedInvoiceNumber(
     return `${prefix}/001`;
   }
 
-  const previousSerial = Number(candidate.slice(8));
+  const [candidatePrefix, candidateSerial] = candidate.split('/');
+  if (candidatePrefix !== prefix) {
+    return `${prefix}/001`;
+  }
+
+  const previousSerial = Number(candidateSerial);
   if (!Number.isFinite(previousSerial) || previousSerial <= 0 || previousSerial > 999) {
     return `${prefix}/001`;
   }

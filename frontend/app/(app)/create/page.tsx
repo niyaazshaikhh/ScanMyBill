@@ -27,7 +27,6 @@ import {
 import {
   buildDefaultInvoiceNumber,
   buildIncrementedInvoiceNumber,
-  formatFinancialYearInvoicePrefix,
   sanitizeDecimalInput,
   sanitizeInvoiceNumberInput,
   sanitizeItemDescriptionInput,
@@ -167,12 +166,7 @@ export default function CreateInvoicePage() {
   const [formError, setFormError] = useState<string | null>(null);
   const invoiceNumberManuallyEditedRef = useRef(false);
   const placeOfSupplyManuallyEditedRef = useRef(false);
-  const invoiceDateRef = useRef(invoiceDate);
   const invoiceDatePickerRef = useRef<HTMLInputElement | null>(null);
-
-  useEffect(() => {
-    invoiceDateRef.current = invoiceDate;
-  }, [invoiceDate]);
 
   useEffect(() => {
     apiRequest<Client[]>("/clients")
@@ -237,25 +231,22 @@ export default function CreateInvoicePage() {
   useEffect(() => {
     let active = true;
 
-    apiRequest<LatestCreatedInvoiceResponse>("/invoices/latest-created")
+    apiRequest<LatestCreatedInvoiceResponse>(
+      `/invoices/latest-created?invoice_date=${encodeURIComponent(invoiceDate)}`,
+    )
       .then((data) => {
         if (!active || invoiceNumberManuallyEditedRef.current) return;
-        setInvoiceNumber(
-          buildIncrementedInvoiceNumber(
-            invoiceDateRef.current,
-            data.invoice_number,
-          ),
-        );
+        setInvoiceNumber(buildIncrementedInvoiceNumber(invoiceDate, data.invoice_number));
       })
       .catch(() => {
         if (!active || invoiceNumberManuallyEditedRef.current) return;
-        setInvoiceNumber(buildDefaultInvoiceNumber(invoiceDateRef.current));
+        setInvoiceNumber(buildDefaultInvoiceNumber(invoiceDate));
       });
 
     return () => {
       active = false;
     };
-  }, []);
+  }, [invoiceDate]);
 
   const computedLines = useMemo(
     () => items.map((item) => computeLine(item)),
@@ -329,14 +320,9 @@ export default function CreateInvoicePage() {
   const applyInvoiceDate = (nextDate: string) => {
     setInvoiceDate(nextDate);
     setInvoiceDateDisplay(formatIsoDateToDisplay(nextDate));
-    setInvoiceNumber((previous) => {
-      if (!previous) return buildDefaultInvoiceNumber(nextDate);
-      const prefix = formatFinancialYearInvoicePrefix(nextDate);
-      if (/^\d{4}-\d{2}\/\d{3}$/.test(previous)) {
-        return `${prefix}/${previous.slice(8)}`;
-      }
-      return previous;
-    });
+    if (!invoiceNumberManuallyEditedRef.current) {
+      setInvoiceNumber(buildDefaultInvoiceNumber(nextDate));
+    }
   };
 
   const validateLine = (item: LineItemInput, index: number): string | null => {

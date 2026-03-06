@@ -99,6 +99,16 @@ def _parse_invoice_type(invoice_type: str | None) -> InvoiceType | None:
     return InvoiceType(value)
 
 
+def _financial_year_bounds(target_date: date) -> tuple[date, date]:
+    start_year = target_date.year if target_date.month >= 4 else target_date.year - 1
+    return date(start_year, 4, 1), date(start_year + 1, 4, 1)
+
+
+def _financial_year_prefix(target_date: date) -> str:
+    start_year = target_date.year if target_date.month >= 4 else target_date.year - 1
+    return f'{start_year}-{(start_year + 1) % 100:02d}'
+
+
 def _format_bank_details(personal_details: PersonalDetails | None) -> str:
     if not personal_details:
         return 'N/A'
@@ -431,9 +441,41 @@ def list_invoices(
 
 @router.get('/latest-created', response_model=LatestCreatedInvoiceResponse)
 def latest_created_invoice(
+    invoice_date: date | None = Query(None),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> LatestCreatedInvoiceResponse:
+    if invoice_date:
+        financial_year_start, financial_year_end = _financial_year_bounds(invoice_date)
+        prefix = _financial_year_prefix(invoice_date)
+        serial_pattern = re.compile(rf'^{re.escape(prefix)}/(\d{{3}})$')
+
+        invoice_numbers = list(
+            db.scalars(
+                select(Invoice.invoice_number).where(
+                    Invoice.owner_id == current_user.id,
+                    Invoice.source == InvoiceSource.CREATED,
+                    Invoice.invoice_date >= financial_year_start,
+                    Invoice.invoice_date < financial_year_end,
+                )
+            ).all()
+        )
+
+        max_serial = 0
+        for number in invoice_numbers:
+            match = serial_pattern.match((number or '').strip().upper())
+            if not match:
+                continue
+            serial_value = int(match.group(1))
+            if serial_value > max_serial:
+                max_serial = serial_value
+
+        if max_serial <= 0:
+            return LatestCreatedInvoiceResponse(invoice_number=None)
+        return LatestCreatedInvoiceResponse(
+            invoice_number=f'{prefix}/{max_serial:03d}'
+        )
+
     latest = db.scalar(
         select(Invoice)
         .where(Invoice.owner_id == current_user.id, Invoice.source == InvoiceSource.CREATED)
