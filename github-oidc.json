@@ -1,0 +1,7 @@
+{
+  "name": "github-actions-scanmybill",
+  "issuer": "https://token.actions.githubusercontent.com",
+  "subject": "repo:niyaazshaikhh/ScanMyBill:ref:refs/heads/main",
+  "description": "GitHub Actions deployment",
+  "audiences": ["api://AzureADTokenExchange"]
+}
