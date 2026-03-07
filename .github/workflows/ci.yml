@@ -15,6 +15,13 @@ jobs:
   backend:
     name: Backend Checks
     runs-on: ubuntu-latest
+    env:
+      ENVIRONMENT: development
+      DEBUG: "false"
+      ENABLE_DOCS: "true"
+      EXPOSE_PASSWORD_RESET_TOKEN: "false"
+      SEED_DEFAULT_ADMIN: "false"
+      SECRET_KEY: ci-local-secret-key-change-before-production
     steps:
       - name: Checkout repo
         uses: actions/checkout@v4
@@ -44,9 +51,12 @@ jobs:
     name: Frontend Checks
     runs-on: ubuntu-latest
     env:
-      NEXT_PUBLIC_API_URL: ${{ vars.NEXT_PUBLIC_API_URL }}
-      NEXT_PUBLIC_APP_URL: ${{ vars.NEXT_PUBLIC_APP_URL }}
-      NEXT_PUBLIC_GOOGLE_CLIENT_ID: ${{ vars.NEXT_PUBLIC_GOOGLE_CLIENT_ID }}
+      NEXT_PUBLIC_API_URL: ${{ vars.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1' }}
+      NEXT_PUBLIC_APP_URL: ${{ vars.NEXT_PUBLIC_APP_URL || 'http://localhost:3000' }}
+      NEXT_PUBLIC_SESSION_IDLE_TIMEOUT_MINUTES: ${{ vars.NEXT_PUBLIC_SESSION_IDLE_TIMEOUT_MINUTES || '30' }}
+      NEXT_PUBLIC_IDLE_TIMEOUT_MINUTES: ${{ vars.NEXT_PUBLIC_IDLE_TIMEOUT_MINUTES || vars.NEXT_PUBLIC_SESSION_IDLE_TIMEOUT_MINUTES || '30' }}
+      NEXT_PUBLIC_GOOGLE_CLIENT_ID: ${{ vars.NEXT_PUBLIC_GOOGLE_CLIENT_ID || '' }}
+      NEXT_PUBLIC_RAZORPAY_KEY_ID: ${{ vars.NEXT_PUBLIC_RAZORPAY_KEY_ID || '' }}
     steps:
       - name: Checkout repo
         uses: actions/checkout@v4

@@ -27,7 +27,10 @@ jobs:
       ACR_NAME: ${{ vars.ACR_NAME }}
       NEXT_PUBLIC_API_URL: ${{ vars.NEXT_PUBLIC_API_URL }}
       NEXT_PUBLIC_APP_URL: ${{ vars.NEXT_PUBLIC_APP_URL }}
+      NEXT_PUBLIC_SESSION_IDLE_TIMEOUT_MINUTES: ${{ vars.NEXT_PUBLIC_SESSION_IDLE_TIMEOUT_MINUTES || '30' }}
+      NEXT_PUBLIC_IDLE_TIMEOUT_MINUTES: ${{ vars.NEXT_PUBLIC_IDLE_TIMEOUT_MINUTES || vars.NEXT_PUBLIC_SESSION_IDLE_TIMEOUT_MINUTES || '30' }}
       NEXT_PUBLIC_GOOGLE_CLIENT_ID: ${{ vars.NEXT_PUBLIC_GOOGLE_CLIENT_ID }}
+      NEXT_PUBLIC_RAZORPAY_KEY_ID: ${{ vars.NEXT_PUBLIC_RAZORPAY_KEY_ID }}
 
     outputs:
       backend_image: ${{ steps.images.outputs.backend_image }}
@@ -43,6 +46,8 @@ jobs:
           ACR_NAME: ${{ vars.ACR_NAME }}
           NEXT_PUBLIC_API_URL: ${{ vars.NEXT_PUBLIC_API_URL }}
           NEXT_PUBLIC_APP_URL: ${{ vars.NEXT_PUBLIC_APP_URL }}
+          NEXT_PUBLIC_SESSION_IDLE_TIMEOUT_MINUTES: ${{ vars.NEXT_PUBLIC_SESSION_IDLE_TIMEOUT_MINUTES || '30' }}
+          NEXT_PUBLIC_IDLE_TIMEOUT_MINUTES: ${{ vars.NEXT_PUBLIC_IDLE_TIMEOUT_MINUTES || vars.NEXT_PUBLIC_SESSION_IDLE_TIMEOUT_MINUTES || '30' }}
           AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
           AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
           AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
@@ -64,6 +69,12 @@ jobs:
             exit 1
           fi
           [[ ! "$NEXT_PUBLIC_API_URL" =~ localhost|127\.0\.0\.1 ]] || (echo "NEXT_PUBLIC_API_URL cannot point to localhost in production." && exit 1)
+          [[ "$NEXT_PUBLIC_SESSION_IDLE_TIMEOUT_MINUTES" =~ ^[0-9]+$ ]] || (echo "NEXT_PUBLIC_SESSION_IDLE_TIMEOUT_MINUTES must be a positive integer." && exit 1)
+          test "$NEXT_PUBLIC_SESSION_IDLE_TIMEOUT_MINUTES" -gt 0 || (echo "NEXT_PUBLIC_SESSION_IDLE_TIMEOUT_MINUTES must be > 0." && exit 1)
+          if [[ -n "$NEXT_PUBLIC_IDLE_TIMEOUT_MINUTES" ]]; then
+            [[ "$NEXT_PUBLIC_IDLE_TIMEOUT_MINUTES" =~ ^[0-9]+$ ]] || (echo "NEXT_PUBLIC_IDLE_TIMEOUT_MINUTES must be a positive integer when set." && exit 1)
+            test "$NEXT_PUBLIC_IDLE_TIMEOUT_MINUTES" -gt 0 || (echo "NEXT_PUBLIC_IDLE_TIMEOUT_MINUTES must be > 0 when set." && exit 1)
+          fi
 
       - name: Login to Azure (OIDC)
         uses: azure/login@v2
@@ -123,6 +134,7 @@ jobs:
             NEXT_PUBLIC_API_URL=${{ vars.NEXT_PUBLIC_API_URL }}
             NEXT_PUBLIC_APP_URL=${{ vars.NEXT_PUBLIC_APP_URL }}
             NEXT_PUBLIC_SESSION_IDLE_TIMEOUT_MINUTES=${{ vars.NEXT_PUBLIC_SESSION_IDLE_TIMEOUT_MINUTES || '30' }}
+            NEXT_PUBLIC_IDLE_TIMEOUT_MINUTES=${{ vars.NEXT_PUBLIC_IDLE_TIMEOUT_MINUTES || vars.NEXT_PUBLIC_SESSION_IDLE_TIMEOUT_MINUTES || '30' }}
             NEXT_PUBLIC_GOOGLE_CLIENT_ID=${{ vars.NEXT_PUBLIC_GOOGLE_CLIENT_ID }}
             NEXT_PUBLIC_RAZORPAY_KEY_ID=${{ vars.NEXT_PUBLIC_RAZORPAY_KEY_ID }}
           cache-from: type=gha
@@ -156,6 +168,173 @@ jobs:
         run: |
           az extension add --name containerapp --upgrade
           az provider register --namespace Microsoft.App
+
+      - name: Sync backend container secrets (optional)
+        env:
+          AZURE_RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP }}
+          AZURE_CONTAINERAPP_BACKEND_NAME: ${{ vars.AZURE_CONTAINERAPP_BACKEND_NAME }}
+          DATABASE_URL_OVERRIDE: ${{ secrets.DATABASE_URL_OVERRIDE }}
+          SECRET_KEY: ${{ secrets.SECRET_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          AZURE_OPENAI_API_KEY: ${{ secrets.AZURE_OPENAI_API_KEY }}
+          RAZORPAY_KEY_ID_SECRET: ${{ secrets.RAZORPAY_KEY_ID }}
+          RAZORPAY_KEY_SECRET: ${{ secrets.RAZORPAY_KEY_SECRET }}
+          RAZORPAY_WEBHOOK_SECRET: ${{ secrets.RAZORPAY_WEBHOOK_SECRET }}
+          SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+        run: |
+          set -euo pipefail
+          BACKEND_SECRETS=()
+          [[ -n "${DATABASE_URL_OVERRIDE:-}" ]] && BACKEND_SECRETS+=("database-url-override=${DATABASE_URL_OVERRIDE}")
+          [[ -n "${SECRET_KEY:-}" ]] && BACKEND_SECRETS+=("secret-key=${SECRET_KEY}")
+          [[ -n "${OPENAI_API_KEY:-}" ]] && BACKEND_SECRETS+=("openai-api-key=${OPENAI_API_KEY}")
+          [[ -n "${AZURE_OPENAI_API_KEY:-}" ]] && BACKEND_SECRETS+=("azure-openai-api-key=${AZURE_OPENAI_API_KEY}")
+          [[ -n "${RAZORPAY_KEY_ID_SECRET:-}" ]] && BACKEND_SECRETS+=("razorpay-key-id=${RAZORPAY_KEY_ID_SECRET}")
+          [[ -n "${RAZORPAY_KEY_SECRET:-}" ]] && BACKEND_SECRETS+=("razorpay-key-secret=${RAZORPAY_KEY_SECRET}")
+          [[ -n "${RAZORPAY_WEBHOOK_SECRET:-}" ]] && BACKEND_SECRETS+=("razorpay-webhook-secret=${RAZORPAY_WEBHOOK_SECRET}")
+          [[ -n "${SMTP_PASSWORD:-}" ]] && BACKEND_SECRETS+=("smtp-password=${SMTP_PASSWORD}")
+
+          if [[ "${#BACKEND_SECRETS[@]}" -eq 0 ]]; then
+            echo "No backend secret overrides found in GitHub secrets; skipping container secret sync."
+            exit 0
+          fi
+
+          az containerapp secret set \
+            --name "$AZURE_CONTAINERAPP_BACKEND_NAME" \
+            --resource-group "$AZURE_RESOURCE_GROUP" \
+            --secrets "${BACKEND_SECRETS[@]}"
+
+      - name: Sync backend runtime environment variables
+        env:
+          AZURE_RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP }}
+          AZURE_CONTAINERAPP_BACKEND_NAME: ${{ vars.AZURE_CONTAINERAPP_BACKEND_NAME }}
+          NEXT_PUBLIC_APP_URL: ${{ vars.NEXT_PUBLIC_APP_URL }}
+          ENVIRONMENT: ${{ vars.ENVIRONMENT || 'production' }}
+          API_V1_PREFIX: ${{ vars.API_V1_PREFIX || '/api/v1' }}
+          PORT: ${{ vars.BACKEND_INTERNAL_PORT || '8000' }}
+          DEBUG: ${{ vars.DEBUG || 'false' }}
+          ENABLE_DOCS: ${{ vars.ENABLE_DOCS || 'false' }}
+          LOG_LEVEL: ${{ vars.LOG_LEVEL || 'INFO' }}
+          TRUST_PROXY_HEADERS: ${{ vars.TRUST_PROXY_HEADERS || 'true' }}
+          ENFORCE_HTTPS: ${{ vars.ENFORCE_HTTPS || 'true' }}
+          CORS_ORIGINS: ${{ vars.CORS_ORIGINS || vars.NEXT_PUBLIC_APP_URL }}
+          TRUSTED_HOSTS: ${{ vars.TRUSTED_HOSTS }}
+          COOKIE_SECURE: ${{ vars.COOKIE_SECURE || 'true' }}
+          COOKIE_SAMESITE: ${{ vars.COOKIE_SAMESITE || 'lax' }}
+          COOKIE_DOMAIN: ${{ vars.COOKIE_DOMAIN }}
+          EXPOSE_PASSWORD_RESET_TOKEN: ${{ vars.EXPOSE_PASSWORD_RESET_TOKEN || 'false' }}
+          SEED_DEFAULT_ADMIN: ${{ vars.SEED_DEFAULT_ADMIN || 'false' }}
+          UPLOADS_DIR: ${{ vars.UPLOADS_DIR || 'uploads' }}
+          OPENAI_BASE_URL: ${{ vars.OPENAI_BASE_URL }}
+          OPENAI_MODEL: ${{ vars.OPENAI_MODEL || 'gpt-4o-mini' }}
+          AZURE_OPENAI_ENDPOINT: ${{ vars.AZURE_OPENAI_ENDPOINT }}
+          AZURE_OPENAI_API_VERSION: ${{ vars.AZURE_OPENAI_API_VERSION || '2024-12-01-preview' }}
+          AZURE_OPENAI_DEPLOYMENT: ${{ vars.AZURE_OPENAI_DEPLOYMENT }}
+          GOOGLE_CLIENT_ID: ${{ vars.GOOGLE_CLIENT_ID }}
+          GOOGLE_CLIENT_IDS: ${{ vars.GOOGLE_CLIENT_IDS }}
+          NEXT_PUBLIC_GOOGLE_CLIENT_ID: ${{ vars.NEXT_PUBLIC_GOOGLE_CLIENT_ID }}
+          RAZORPAY_PLAN_ID: ${{ vars.RAZORPAY_PLAN_ID }}
+          RAZORPAY_PLAN_IDS: ${{ vars.RAZORPAY_PLAN_IDS }}
+          SMTP_HOST: ${{ vars.SMTP_HOST }}
+          SMTP_PORT: ${{ vars.SMTP_PORT || '587' }}
+          SMTP_EMAIL: ${{ vars.SMTP_EMAIL }}
+          SMTP_USERNAME: ${{ vars.SMTP_USERNAME }}
+          SMTP_SENDER_EMAIL: ${{ vars.SMTP_SENDER_EMAIL }}
+          SMTP_SENDER_NAME: ${{ vars.SMTP_SENDER_NAME || 'ScanMyBill' }}
+          SMTP_USE_TLS: ${{ vars.SMTP_USE_TLS || 'true' }}
+          DATABASE_URL_OVERRIDE: ${{ secrets.DATABASE_URL_OVERRIDE }}
+          SECRET_KEY: ${{ secrets.SECRET_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          AZURE_OPENAI_API_KEY: ${{ secrets.AZURE_OPENAI_API_KEY }}
+          RAZORPAY_KEY_ID_SECRET: ${{ secrets.RAZORPAY_KEY_ID }}
+          RAZORPAY_KEY_SECRET: ${{ secrets.RAZORPAY_KEY_SECRET }}
+          RAZORPAY_WEBHOOK_SECRET: ${{ secrets.RAZORPAY_WEBHOOK_SECRET }}
+          SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+        run: |
+          set -euo pipefail
+          BACKEND_ENV_VARS=(
+            "ENVIRONMENT=${ENVIRONMENT}"
+            "API_V1_PREFIX=${API_V1_PREFIX}"
+            "PORT=${PORT}"
+            "DEBUG=${DEBUG}"
+            "ENABLE_DOCS=${ENABLE_DOCS}"
+            "LOG_LEVEL=${LOG_LEVEL}"
+            "TRUST_PROXY_HEADERS=${TRUST_PROXY_HEADERS}"
+            "ENFORCE_HTTPS=${ENFORCE_HTTPS}"
+            "COOKIE_SECURE=${COOKIE_SECURE}"
+            "COOKIE_SAMESITE=${COOKIE_SAMESITE}"
+            "EXPOSE_PASSWORD_RESET_TOKEN=${EXPOSE_PASSWORD_RESET_TOKEN}"
+            "SEED_DEFAULT_ADMIN=${SEED_DEFAULT_ADMIN}"
+            "UPLOADS_DIR=${UPLOADS_DIR}"
+            "OPENAI_MODEL=${OPENAI_MODEL}"
+            "AZURE_OPENAI_API_VERSION=${AZURE_OPENAI_API_VERSION}"
+            "SMTP_PORT=${SMTP_PORT}"
+            "SMTP_SENDER_NAME=${SMTP_SENDER_NAME}"
+            "SMTP_USE_TLS=${SMTP_USE_TLS}"
+          )
+
+          if [[ -n "${CORS_ORIGINS:-}" ]]; then
+            BACKEND_ENV_VARS+=("CORS_ORIGINS=${CORS_ORIGINS}")
+          elif [[ -n "${NEXT_PUBLIC_APP_URL:-}" ]]; then
+            BACKEND_ENV_VARS+=("CORS_ORIGINS=${NEXT_PUBLIC_APP_URL}")
+          fi
+
+          [[ -n "${TRUSTED_HOSTS:-}" ]] && BACKEND_ENV_VARS+=("TRUSTED_HOSTS=${TRUSTED_HOSTS}")
+          [[ -n "${COOKIE_DOMAIN:-}" ]] && BACKEND_ENV_VARS+=("COOKIE_DOMAIN=${COOKIE_DOMAIN}")
+          [[ -n "${OPENAI_BASE_URL:-}" ]] && BACKEND_ENV_VARS+=("OPENAI_BASE_URL=${OPENAI_BASE_URL}")
+          [[ -n "${AZURE_OPENAI_ENDPOINT:-}" ]] && BACKEND_ENV_VARS+=("AZURE_OPENAI_ENDPOINT=${AZURE_OPENAI_ENDPOINT}")
+          [[ -n "${AZURE_OPENAI_DEPLOYMENT:-}" ]] && BACKEND_ENV_VARS+=("AZURE_OPENAI_DEPLOYMENT=${AZURE_OPENAI_DEPLOYMENT}")
+          [[ -n "${GOOGLE_CLIENT_ID:-}" ]] && BACKEND_ENV_VARS+=("GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}")
+          [[ -n "${GOOGLE_CLIENT_IDS:-}" ]] && BACKEND_ENV_VARS+=("GOOGLE_CLIENT_IDS=${GOOGLE_CLIENT_IDS}")
+          [[ -n "${NEXT_PUBLIC_GOOGLE_CLIENT_ID:-}" ]] && BACKEND_ENV_VARS+=("NEXT_PUBLIC_GOOGLE_CLIENT_ID=${NEXT_PUBLIC_GOOGLE_CLIENT_ID}")
+          [[ -n "${RAZORPAY_PLAN_ID:-}" ]] && BACKEND_ENV_VARS+=("RAZORPAY_PLAN_ID=${RAZORPAY_PLAN_ID}")
+          [[ -n "${RAZORPAY_PLAN_IDS:-}" ]] && BACKEND_ENV_VARS+=("RAZORPAY_PLAN_IDS=${RAZORPAY_PLAN_IDS}")
+          [[ -n "${SMTP_HOST:-}" ]] && BACKEND_ENV_VARS+=("SMTP_HOST=${SMTP_HOST}")
+          [[ -n "${SMTP_EMAIL:-}" ]] && BACKEND_ENV_VARS+=("SMTP_EMAIL=${SMTP_EMAIL}")
+          [[ -n "${SMTP_USERNAME:-}" ]] && BACKEND_ENV_VARS+=("SMTP_USERNAME=${SMTP_USERNAME}")
+          [[ -n "${SMTP_SENDER_EMAIL:-}" ]] && BACKEND_ENV_VARS+=("SMTP_SENDER_EMAIL=${SMTP_SENDER_EMAIL}")
+
+          [[ -n "${DATABASE_URL_OVERRIDE:-}" ]] && BACKEND_ENV_VARS+=("DATABASE_URL_OVERRIDE=secretref:database-url-override")
+          [[ -n "${SECRET_KEY:-}" ]] && BACKEND_ENV_VARS+=("SECRET_KEY=secretref:secret-key")
+          [[ -n "${OPENAI_API_KEY:-}" ]] && BACKEND_ENV_VARS+=("OPENAI_API_KEY=secretref:openai-api-key")
+          [[ -n "${AZURE_OPENAI_API_KEY:-}" ]] && BACKEND_ENV_VARS+=("AZURE_OPENAI_API_KEY=secretref:azure-openai-api-key")
+          [[ -n "${RAZORPAY_KEY_ID_SECRET:-}" ]] && BACKEND_ENV_VARS+=("RAZORPAY_KEY_ID=secretref:razorpay-key-id")
+          [[ -n "${RAZORPAY_KEY_SECRET:-}" ]] && BACKEND_ENV_VARS+=("RAZORPAY_KEY_SECRET=secretref:razorpay-key-secret")
+          [[ -n "${RAZORPAY_WEBHOOK_SECRET:-}" ]] && BACKEND_ENV_VARS+=("RAZORPAY_WEBHOOK_SECRET=secretref:razorpay-webhook-secret")
+          [[ -n "${SMTP_PASSWORD:-}" ]] && BACKEND_ENV_VARS+=("SMTP_PASSWORD=secretref:smtp-password")
+
+          az containerapp update \
+            --name "$AZURE_CONTAINERAPP_BACKEND_NAME" \
+            --resource-group "$AZURE_RESOURCE_GROUP" \
+            --set-env-vars "${BACKEND_ENV_VARS[@]}"
+
+      - name: Sync frontend runtime environment variables
+        env:
+          AZURE_RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP }}
+          AZURE_CONTAINERAPP_FRONTEND_NAME: ${{ vars.AZURE_CONTAINERAPP_FRONTEND_NAME }}
+          NEXT_PUBLIC_API_URL: ${{ vars.NEXT_PUBLIC_API_URL }}
+          NEXT_PUBLIC_APP_URL: ${{ vars.NEXT_PUBLIC_APP_URL }}
+          NEXT_PUBLIC_SESSION_IDLE_TIMEOUT_MINUTES: ${{ vars.NEXT_PUBLIC_SESSION_IDLE_TIMEOUT_MINUTES || '30' }}
+          NEXT_PUBLIC_IDLE_TIMEOUT_MINUTES: ${{ vars.NEXT_PUBLIC_IDLE_TIMEOUT_MINUTES || vars.NEXT_PUBLIC_SESSION_IDLE_TIMEOUT_MINUTES || '30' }}
+          NEXT_PUBLIC_GOOGLE_CLIENT_ID: ${{ vars.NEXT_PUBLIC_GOOGLE_CLIENT_ID }}
+          NEXT_PUBLIC_RAZORPAY_KEY_ID: ${{ vars.NEXT_PUBLIC_RAZORPAY_KEY_ID }}
+          FRONTEND_PORT: ${{ vars.FRONTEND_INTERNAL_PORT || '3000' }}
+        run: |
+          set -euo pipefail
+          FRONTEND_ENV_VARS=(
+            "NODE_ENV=production"
+            "PORT=${FRONTEND_PORT}"
+            "NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}"
+            "NEXT_PUBLIC_APP_URL=${NEXT_PUBLIC_APP_URL}"
+            "NEXT_PUBLIC_SESSION_IDLE_TIMEOUT_MINUTES=${NEXT_PUBLIC_SESSION_IDLE_TIMEOUT_MINUTES}"
+            "NEXT_PUBLIC_IDLE_TIMEOUT_MINUTES=${NEXT_PUBLIC_IDLE_TIMEOUT_MINUTES}"
+          )
+          [[ -n "${NEXT_PUBLIC_GOOGLE_CLIENT_ID:-}" ]] && FRONTEND_ENV_VARS+=("NEXT_PUBLIC_GOOGLE_CLIENT_ID=${NEXT_PUBLIC_GOOGLE_CLIENT_ID}")
+          [[ -n "${NEXT_PUBLIC_RAZORPAY_KEY_ID:-}" ]] && FRONTEND_ENV_VARS+=("NEXT_PUBLIC_RAZORPAY_KEY_ID=${NEXT_PUBLIC_RAZORPAY_KEY_ID}")
+
+          az containerapp update \
+            --name "$AZURE_CONTAINERAPP_FRONTEND_NAME" \
+            --resource-group "$AZURE_RESOURCE_GROUP" \
+            --set-env-vars "${FRONTEND_ENV_VARS[@]}"
 
       - name: Deploy backend image
         run: |
