@@ -5,7 +5,7 @@ RUN npm ci
 
 FROM node:20-alpine AS builder
 WORKDIR /app
-ARG NEXT_PUBLIC_API_URL=http://localhost:8000/api/v1
+ARG NEXT_PUBLIC_API_URL=https://api.scanmybill.xyz/api/v1
 ARG NEXT_PUBLIC_APP_URL=http://localhost:3000
 ARG NEXT_PUBLIC_SESSION_IDLE_TIMEOUT_MINUTES=30
 ARG NEXT_PUBLIC_GOOGLE_CLIENT_ID=

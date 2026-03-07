@@ -8,11 +8,14 @@ const DEFAULT_LOCAL_API_BASE = 'http://localhost:8000/api/v1';
 const DEFAULT_PRODUCTION_API_BASE = 'https://api.scanmybill.xyz/api/v1';
 const API_DEBUG_MAX_PAYLOAD_CHARS = 12_000;
 const NODE_ENV = process.env.NODE_ENV || 'development';
-const FALLBACK_API_BASE =
+const API_BASE_CANDIDATE =
+  NODE_ENV === 'development'
+    ? process.env.NEXT_PUBLIC_API_URL || DEFAULT_LOCAL_API_BASE
+    : process.env.NEXT_PUBLIC_API_URL || DEFAULT_PRODUCTION_API_BASE;
+const DEFAULT_API_BASE =
   NODE_ENV === 'development'
     ? DEFAULT_LOCAL_API_BASE
     : DEFAULT_PRODUCTION_API_BASE;
-const RAW_API_BASE = process.env.NEXT_PUBLIC_API_URL ?? FALLBACK_API_BASE;
 
 function resolveConfiguredApiBase(configuredBase: string): string {
   if (!configuredBase) return '';
@@ -24,7 +27,7 @@ function resolveConfiguredApiBase(configuredBase: string): string {
   return configuredBase;
 }
 
-export const API_BASE = resolveConfiguredApiBase(RAW_API_BASE.trim()) || FALLBACK_API_BASE;
+export const API_BASE = resolveConfiguredApiBase(API_BASE_CANDIDATE.trim()) || DEFAULT_API_BASE;
 
 if (!process.env.NEXT_PUBLIC_API_URL) {
   console.warn(
