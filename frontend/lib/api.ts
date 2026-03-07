@@ -5,16 +5,13 @@ import { appendDashboardDebugRecord, getDebugModeEnabled } from '@/lib/debugging
 import { emitSessionTimeout } from '@/lib/session-timeout';
 
 const DEFAULT_LOCAL_API_BASE = 'http://localhost:8000/api/v1';
+const DEFAULT_PRODUCTION_API_BASE = 'https://api.scanmybill.xyz/api/v1';
 const API_DEBUG_MAX_PAYLOAD_CHARS = 12_000;
+const NODE_ENV = process.env.NODE_ENV || 'development';
+const CONFIGURED_PUBLIC_API_URL = (process.env.NEXT_PUBLIC_API_URL || '').trim();
 
-function isLocalhost(hostname: string): boolean {
-  return hostname === 'localhost' || hostname === '127.0.0.1';
-}
-
-function shouldUseLocalFallback(configuredBase: string): boolean {
-  if (typeof window === 'undefined') return false;
-  if (!isLocalhost(window.location.hostname.toLowerCase())) return false;
-  return !configuredBase;
+if (NODE_ENV === 'production' && !CONFIGURED_PUBLIC_API_URL) {
+  throw new Error('NEXT_PUBLIC_API_URL must be defined in production build');
 }
 
 function resolveConfiguredApiBase(configuredBase: string): string {
@@ -28,15 +25,14 @@ function resolveConfiguredApiBase(configuredBase: string): string {
 }
 
 function resolveApiBase(): string {
-  const configuredBase = resolveConfiguredApiBase((process.env.NEXT_PUBLIC_API_URL || '').trim());
-  if (shouldUseLocalFallback(configuredBase)) {
-    return DEFAULT_LOCAL_API_BASE;
+  const configuredBase = resolveConfiguredApiBase(CONFIGURED_PUBLIC_API_URL);
+  if (configuredBase) {
+    return configuredBase;
   }
-  if (!configuredBase && typeof window !== 'undefined' && !isLocalhost(window.location.hostname.toLowerCase())) {
-    return `${window.location.origin}/api/v1`;
-  }
-  return configuredBase || DEFAULT_LOCAL_API_BASE;
+  return NODE_ENV === 'development' ? DEFAULT_LOCAL_API_BASE : DEFAULT_PRODUCTION_API_BASE;
 }
+
+const API_BASE = resolveApiBase();
 
 type ApiOptions = {
   method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
@@ -191,8 +187,7 @@ function appendApiDebugRecord(input: {
 
 async function refreshAccessToken(): Promise<boolean> {
   try {
-    const apiBase = resolveApiBase();
-    const res = await fetch(`${apiBase}/auth/refresh`, {
+    const res = await fetch(`${API_BASE}/auth/refresh`, {
       method: 'POST',
       credentials: 'include',
     });
@@ -234,7 +229,6 @@ export async function apiRequest<T = unknown>(
   const requestLabel = `${method} ${path}`;
 
   const executeRequest = async (tokenOverride?: string | null) => {
-    const apiBase = resolveApiBase();
     const headers: HeadersInit = {};
     if (!isFormData) {
       headers['Content-Type'] = 'application/json';
@@ -256,7 +250,7 @@ export async function apiRequest<T = unknown>(
       headers.Authorization = `Bearer ${token}`;
     }
 
-    const url = `${apiBase}${path}`;
+    const url = `${API_BASE}${path}`;
     try {
       return await fetch(url, {
         method,
@@ -285,7 +279,7 @@ export async function apiRequest<T = unknown>(
       const mixedContentHint =
         typeof window !== 'undefined'
         && window.location.protocol === 'https:'
-        && apiBase.startsWith('http://')
+        && API_BASE.startsWith('http://')
           ? ' Mixed-content blocked: frontend is HTTPS but API URL is HTTP.'
           : '';
       const reason = error instanceof Error ? error.message : 'Failed to fetch';
@@ -423,5 +417,5 @@ export async function apiRequest<T = unknown>(
 }
 
 export function getApiBaseUrl() {
-  return resolveApiBase();
+  return API_BASE;
 }

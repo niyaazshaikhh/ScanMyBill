@@ -1,4 +1,5 @@
 import logging
+import os
 from datetime import date
 from pathlib import Path
 
@@ -48,6 +49,73 @@ app = FastAPI(
     redoc_url='/redoc' if settings.docs_enabled else None,
 )
 app.router.redirect_slashes = False
+
+DEFAULT_LOCAL_TRUSTED_HOSTS = ['localhost', '127.0.0.1', '*.localhost']
+DEFAULT_PRODUCTION_TRUSTED_HOSTS = [
+    'api.scanmybill.xyz',
+    'app.scanmybill.xyz',
+    'scanmybill-backend.kindriver-b1141450.centralindia.azurecontainerapps.io',
+]
+DEFAULT_LOCAL_CORS_ORIGINS = ['http://localhost:3000', 'http://127.0.0.1:3000']
+DEFAULT_PRODUCTION_CORS_ORIGINS = ['https://app.scanmybill.xyz']
+
+
+def _split_csv(value: str | None) -> list[str]:
+    if not value:
+        return []
+    return [item.strip().rstrip('/') for item in value.split(',') if item.strip()]
+
+
+def _as_list(value: list[str] | str | None) -> list[str]:
+    if isinstance(value, list):
+        raw_items = value
+    elif isinstance(value, str):
+        raw_items = value.split(',')
+    else:
+        raw_items = []
+    return [item.strip().rstrip('/') for item in raw_items if isinstance(item, str) and item.strip()]
+
+
+def _unique(values: list[str]) -> list[str]:
+    seen: set[str] = set()
+    unique_values: list[str] = []
+    for value in values:
+        if value not in seen:
+            seen.add(value)
+            unique_values.append(value)
+    return unique_values
+
+
+def _resolve_trusted_hosts() -> list[str]:
+    env_hosts = _split_csv(os.getenv('TRUSTED_HOSTS'))
+    configured_hosts = _as_list(settings.trusted_hosts)
+    hosts = env_hosts or configured_hosts
+
+    baseline_hosts = DEFAULT_PRODUCTION_TRUSTED_HOSTS if settings.is_production else DEFAULT_LOCAL_TRUSTED_HOSTS
+    missing_hosts = [host for host in baseline_hosts if host not in hosts]
+    if missing_hosts:
+        logger.warning(
+            'Appending baseline TRUSTED_HOSTS entries to avoid host-header rejections: %s',
+            ', '.join(missing_hosts),
+        )
+        hosts.extend(missing_hosts)
+    return _unique(hosts)
+
+
+def _resolve_cors_origins() -> list[str]:
+    env_origins = _split_csv(os.getenv('CORS_ORIGINS'))
+    configured_origins = _as_list(settings.cors_origins)
+    origins = env_origins or configured_origins
+
+    baseline_origins = DEFAULT_PRODUCTION_CORS_ORIGINS if settings.is_production else DEFAULT_LOCAL_CORS_ORIGINS
+    missing_origins = [origin for origin in baseline_origins if origin not in origins]
+    if missing_origins:
+        logger.info(
+            'Appending baseline CORS origins: %s',
+            ', '.join(missing_origins),
+        )
+        origins.extend(missing_origins)
+    return _unique(origins)
 
 
 def _path_is_within(parent: Path, child: Path) -> bool:
@@ -99,17 +167,19 @@ app.add_middleware(RequestSizeLimitMiddleware)
 app.add_middleware(RequestLoggingMiddleware)
 app.add_middleware(RequestContextMiddleware)
 app.add_middleware(SecurityHeadersMiddleware)
+cors_origins = _resolve_cors_origins()
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.cors_origins,
-    allow_credentials='*' not in settings.cors_origins,
+    allow_origins=cors_origins,
+    allow_credentials='*' not in cors_origins,
     allow_methods=['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allow_headers=['*'],
     expose_headers=['X-Access-Token', 'X-Token-Refreshed'],
 )
 
-if settings.trusted_hosts:
-    app.add_middleware(TrustedHostMiddleware, allowed_hosts=list(settings.trusted_hosts))
+trusted_hosts = _resolve_trusted_hosts()
+if trusted_hosts:
+    app.add_middleware(TrustedHostMiddleware, allowed_hosts=trusted_hosts)
 
 if settings.trust_proxy_headers:
     # Trust proxy-provided scheme/client metadata when running behind ingress.
