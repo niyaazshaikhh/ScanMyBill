@@ -32,10 +32,10 @@ services:
     env_file:
       - ./backend/.env
     environment:
-      ENVIRONMENT: ${ENVIRONMENT:-production}
+      ENVIRONMENT: ${ENVIRONMENT:-development}
       DEBUG: ${DEBUG:-false}
-      ENABLE_DOCS: ${ENABLE_DOCS:-false}
-      PORT: 8000
+      ENABLE_DOCS: ${ENABLE_DOCS:-true}
+      PORT: ${BACKEND_INTERNAL_PORT:-8000}
       POSTGRES_SERVER: db
       POSTGRES_PORT: 5432
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
@@ -44,13 +44,13 @@ services:
       DATABASE_URL_OVERRIDE: ${DATABASE_URL_OVERRIDE:-}
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000}
       TRUSTED_HOSTS: ${TRUSTED_HOSTS:-localhost,127.0.0.1,backend}
-      COOKIE_SECURE: ${COOKIE_SECURE:-true}
-      ENFORCE_HTTPS: ${ENFORCE_HTTPS:-true}
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}
+      ENFORCE_HTTPS: ${ENFORCE_HTTPS:-false}
       SEED_DEFAULT_ADMIN: ${SEED_DEFAULT_ADMIN:-false}
       EXPOSE_PASSWORD_RESET_TOKEN: ${EXPOSE_PASSWORD_RESET_TOKEN:-false}
       UPLOADS_DIR: ${UPLOADS_DIR:-uploads}
     ports:
-      - '${BACKEND_PORT:-8000}:8000'
+      - '${BACKEND_PORT:-8000}:${BACKEND_INTERNAL_PORT:-8000}'
     volumes:
       - backend_uploads:/app/uploads
     healthcheck:
@@ -58,7 +58,7 @@ services:
         - CMD
         - python
         - -c
-        - "import urllib.request; req=urllib.request.Request('http://127.0.0.1:8000/health/live', headers={'Host': 'localhost', 'X-Forwarded-Proto': 'https'}); urllib.request.urlopen(req, timeout=5)"
+        - "import os,urllib.request; port=os.getenv('PORT','8000'); req=urllib.request.Request(f'http://127.0.0.1:{port}/health/live', headers={'Host': 'localhost', 'X-Forwarded-Proto': 'https'}); urllib.request.urlopen(req, timeout=5)"
       interval: 15s
       timeout: 5s
       retries: 5
@@ -86,18 +86,18 @@ services:
       - ./frontend/.env
     environment:
       NODE_ENV: production
-      PORT: 3000
+      PORT: ${FRONTEND_INTERNAL_PORT:-3000}
       NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000/api/v1}
       NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:-http://localhost:3000}
       NEXT_PUBLIC_SESSION_IDLE_TIMEOUT_MINUTES: ${NEXT_PUBLIC_SESSION_IDLE_TIMEOUT_MINUTES:-30}
       NEXT_PUBLIC_GOOGLE_CLIENT_ID: ${NEXT_PUBLIC_GOOGLE_CLIENT_ID:-}
       NEXT_PUBLIC_RAZORPAY_KEY_ID: ${NEXT_PUBLIC_RAZORPAY_KEY_ID:-}
     ports:
-      - '${FRONTEND_PORT:-3000}:3000'
+      - '${FRONTEND_PORT:-3000}:${FRONTEND_INTERNAL_PORT:-3000}'
     healthcheck:
       test:
         - CMD-SHELL
-        - wget -q --spider http://127.0.0.1:3000/ || exit 1
+        - wget -q --spider "http://127.0.0.1:${FRONTEND_INTERNAL_PORT:-3000}/" || exit 1
       interval: 15s
       timeout: 5s
       retries: 5

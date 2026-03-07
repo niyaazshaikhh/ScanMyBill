@@ -188,6 +188,10 @@ az containerapp update --name "$FRONTEND_APP" --resource-group "$RG" \
 - `NEXT_PUBLIC_APP_URL`
 - Optional: `NEXT_PUBLIC_SESSION_IDLE_TIMEOUT_MINUTES`, `NEXT_PUBLIC_GOOGLE_CLIENT_ID`, `NEXT_PUBLIC_RAZORPAY_KEY_ID`
 
+Important:
+- `NEXT_PUBLIC_*` values are baked into the frontend image at build time.
+- If you change any `NEXT_PUBLIC_*` variable, re-run the deploy workflow to rebuild and redeploy frontend.
+
 ### 4.4 Run Pipelines
 
 - CI runs on PR and push (`.github/workflows/ci.yml`).

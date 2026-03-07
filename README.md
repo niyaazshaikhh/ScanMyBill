@@ -65,6 +65,25 @@ cp backend/.env.example backend/.env
 cp frontend/.env.example frontend/.env
 ```
 
+## Environment Profiles
+
+Use separate values for local and production:
+
+- Local development profile (`.env`): keep localhost URLs and relaxed security flags:
+  - `ENVIRONMENT=development`
+  - `ENABLE_DOCS=true`
+  - `COOKIE_SECURE=false`
+  - `ENFORCE_HTTPS=false`
+  - `NEXT_PUBLIC_APP_URL=http://localhost:3000`
+  - `NEXT_PUBLIC_API_URL=http://localhost:8000/api/v1`
+- Production profile (GitHub Variables + Azure runtime env):
+  - `NEXT_PUBLIC_APP_URL=https://app.yourdomain.com`
+  - `NEXT_PUBLIC_API_URL=https://api.yourdomain.com/api/v1` (or `/api/v1` with reverse proxy)
+  - `CORS_ORIGINS=https://app.yourdomain.com`
+  - `TRUSTED_HOSTS=api.yourdomain.com,app.yourdomain.com`
+  - `COOKIE_SECURE=true`
+  - `ENFORCE_HTTPS=true`
+
 ## Local Development (without Docker)
 
 ### Prerequisites
@@ -138,6 +157,11 @@ Required:
 GitHub Actions workflows are included:
 - `ci.yml`: backend tests + frontend lint/build + Docker build validation on PR/push.
 - `deploy.yml`: OIDC-based deployment to Azure Container Apps on `main` (and manual dispatch).
+
+Pipeline behavior:
+- Push to `develop`/PR: CI checks only.
+- Push to `main`: CI runs and production deploy workflow builds/pushes images, then deploys.
+- Deploy workflow now rejects production URL variables that still point to `localhost` or non-HTTPS values.
 
 Production pipeline configuration details:
 - `docs/AZURE_PRODUCTION_SETUP.md`

@@ -22,6 +22,7 @@ jobs:
   build-and-push:
     name: Build and Push Images
     runs-on: ubuntu-latest
+    environment: production
     outputs:
       backend_image: ${{ steps.images.outputs.backend_image }}
       frontend_image: ${{ steps.images.outputs.frontend_image }}
@@ -46,6 +47,17 @@ jobs:
           test -n "$AZURE_CLIENT_ID" || (echo "Missing GitHub secret: AZURE_CLIENT_ID" && exit 1)
           test -n "$AZURE_TENANT_ID" || (echo "Missing GitHub secret: AZURE_TENANT_ID" && exit 1)
           test -n "$AZURE_SUBSCRIPTION_ID" || (echo "Missing GitHub secret: AZURE_SUBSCRIPTION_ID" && exit 1)
+          [[ "$NEXT_PUBLIC_APP_URL" =~ ^https://[^[:space:]]+$ ]] || (echo "NEXT_PUBLIC_APP_URL must be an HTTPS URL for production." && exit 1)
+          [[ ! "$NEXT_PUBLIC_APP_URL" =~ localhost|127\.0\.0\.1 ]] || (echo "NEXT_PUBLIC_APP_URL cannot point to localhost in production." && exit 1)
+          if [[ "$NEXT_PUBLIC_API_URL" == "/api/v1" ]]; then
+            echo "NEXT_PUBLIC_API_URL uses same-domain reverse proxy mode (/api/v1)."
+          elif [[ "$NEXT_PUBLIC_API_URL" =~ ^https://[^[:space:]]+/api/v1$ ]]; then
+            echo "NEXT_PUBLIC_API_URL uses split-domain HTTPS mode."
+          else
+            echo "NEXT_PUBLIC_API_URL must be '/api/v1' or 'https://<api-host>/api/v1' for production."
+            exit 1
+          fi
+          [[ ! "$NEXT_PUBLIC_API_URL" =~ localhost|127\.0\.0\.1 ]] || (echo "NEXT_PUBLIC_API_URL cannot point to localhost in production." && exit 1)
 
       - name: Login to Azure (OIDC)
         uses: azure/login@v2
