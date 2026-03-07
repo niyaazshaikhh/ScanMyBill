@@ -8,11 +8,11 @@ const DEFAULT_LOCAL_API_BASE = 'http://localhost:8000/api/v1';
 const DEFAULT_PRODUCTION_API_BASE = 'https://api.scanmybill.xyz/api/v1';
 const API_DEBUG_MAX_PAYLOAD_CHARS = 12_000;
 const NODE_ENV = process.env.NODE_ENV || 'development';
-const CONFIGURED_PUBLIC_API_URL = (process.env.NEXT_PUBLIC_API_URL || '').trim();
-
-if (NODE_ENV === 'production' && !CONFIGURED_PUBLIC_API_URL) {
-  throw new Error('NEXT_PUBLIC_API_URL must be defined in production build');
-}
+const FALLBACK_API_BASE =
+  NODE_ENV === 'development'
+    ? DEFAULT_LOCAL_API_BASE
+    : DEFAULT_PRODUCTION_API_BASE;
+const RAW_API_BASE = process.env.NEXT_PUBLIC_API_URL ?? FALLBACK_API_BASE;
 
 function resolveConfiguredApiBase(configuredBase: string): string {
   if (!configuredBase) return '';
@@ -24,15 +24,14 @@ function resolveConfiguredApiBase(configuredBase: string): string {
   return configuredBase;
 }
 
-function resolveApiBase(): string {
-  const configuredBase = resolveConfiguredApiBase(CONFIGURED_PUBLIC_API_URL);
-  if (configuredBase) {
-    return configuredBase;
-  }
-  return NODE_ENV === 'development' ? DEFAULT_LOCAL_API_BASE : DEFAULT_PRODUCTION_API_BASE;
-}
+export const API_BASE = resolveConfiguredApiBase(RAW_API_BASE.trim()) || FALLBACK_API_BASE;
 
-const API_BASE = resolveApiBase();
+if (!process.env.NEXT_PUBLIC_API_URL) {
+  console.warn(
+    'NEXT_PUBLIC_API_URL not defined. Falling back to default API endpoint:',
+    API_BASE
+  );
+}
 
 type ApiOptions = {
   method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
