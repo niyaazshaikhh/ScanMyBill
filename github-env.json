@@ -1,0 +1,7 @@
+{
+  "name": "github-actions-production",
+  "issuer": "https://token.actions.githubusercontent.com",
+  "subject": "repo:niyaazshaikhh/ScanMyBill:environment:production",
+  "description": "GitHub Actions Production Deploy",
+  "audiences": ["api://AzureADTokenExchange"]
+}
