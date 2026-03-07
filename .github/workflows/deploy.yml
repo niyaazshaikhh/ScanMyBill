@@ -109,6 +109,7 @@ jobs:
           context: ./frontend
           file: ./frontend/Dockerfile
           push: true
+          no-cache: true
           tags: |
             ${{ steps.images.outputs.frontend_image }}
             ${{ steps.images.outputs.frontend_latest }}

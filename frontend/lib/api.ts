@@ -1,47 +1,67 @@
-import type { AuthUser } from '@/lib/auth';
-import { getAuthToken, getAuthUser, isAuthTokenExpired, setAuthSession } from '@/lib/auth';
-import { showAppErrorPopup } from '@/lib/app-popup';
-import { appendDashboardDebugRecord, getDebugModeEnabled } from '@/lib/debugging';
-import { emitSessionTimeout } from '@/lib/session-timeout';
+import type { AuthUser } from "@/lib/auth";
+import {
+  getAuthToken,
+  getAuthUser,
+  isAuthTokenExpired,
+  setAuthSession,
+} from "@/lib/auth";
+import { showAppErrorPopup } from "@/lib/app-popup";
+import {
+  appendDashboardDebugRecord,
+  getDebugModeEnabled,
+} from "@/lib/debugging";
+import { emitSessionTimeout } from "@/lib/session-timeout";
 
-const DEFAULT_LOCAL_API_BASE = 'http://localhost:8000/api/v1';
-const DEFAULT_PRODUCTION_API_BASE = 'https://api.scanmybill.xyz/api/v1';
+const DEFAULT_LOCAL_API_BASE = "http://localhost:8000/api/v1";
+const DEFAULT_PRODUCTION_API_BASE = "https://api.scanmybill.xyz/api/v1";
 const API_DEBUG_MAX_PAYLOAD_CHARS = 12_000;
-const NODE_ENV = process.env.NODE_ENV || 'development';
+const NODE_ENV = process.env.NODE_ENV || "development";
 const API_BASE_CANDIDATE =
-  NODE_ENV === 'development'
+  NODE_ENV === "development"
     ? process.env.NEXT_PUBLIC_API_URL || DEFAULT_LOCAL_API_BASE
     : process.env.NEXT_PUBLIC_API_URL || DEFAULT_PRODUCTION_API_BASE;
 const DEFAULT_API_BASE =
-  NODE_ENV === 'development'
+  NODE_ENV === "development"
     ? DEFAULT_LOCAL_API_BASE
     : DEFAULT_PRODUCTION_API_BASE;
 
 function resolveConfiguredApiBase(configuredBase: string): string {
-  if (!configuredBase) return '';
+  if (!configuredBase) return "";
 
-  if (configuredBase.startsWith('/')) {
-    if (typeof window === 'undefined') return configuredBase;
+  if (configuredBase.startsWith("/")) {
+    if (typeof window === "undefined") return configuredBase;
     return `${window.location.origin}${configuredBase}`;
   }
   return configuredBase;
 }
 
-export const API_BASE = resolveConfiguredApiBase(API_BASE_CANDIDATE.trim()) || DEFAULT_API_BASE;
+export const API_BASE =
+  resolveConfiguredApiBase(API_BASE_CANDIDATE.trim()) || DEFAULT_API_BASE;
+
+// Safety check for production builds
+if (process.env.NODE_ENV === "production") {
+  if (!process.env.NEXT_PUBLIC_API_URL) {
+    throw new Error("NEXT_PUBLIC_API_URL must be defined in production build");
+  }
+
+  if (process.env.NEXT_PUBLIC_API_URL.includes("localhost")) {
+    throw new Error("Production build cannot use localhost API");
+  }
+}
 
 if (!process.env.NEXT_PUBLIC_API_URL) {
   console.warn(
-    'NEXT_PUBLIC_API_URL not defined. Falling back to default API endpoint:',
-    API_BASE
+    "NEXT_PUBLIC_API_URL not defined. Falling back to default API endpoint:",
+    API_BASE,
   );
 }
 
 type ApiOptions = {
-  method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
+  method?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
   body?: unknown;
   auth?: boolean;
   isFormData?: boolean;
-  responseType?: 'json' | 'blob';
+  responseType?: "json" | "blob";
 };
 
 type RefreshResponse = {
@@ -51,7 +71,7 @@ type RefreshResponse = {
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null;
+  return typeof value === "object" && value !== null;
 }
 
 function formatValidationErrors(detail: unknown): string | null {
@@ -66,7 +86,7 @@ function formatValidationErrors(detail: unknown): string | null {
       }
 
       const rawMessage = entry.msg;
-      if (typeof rawMessage !== 'string' || !rawMessage.trim()) {
+      if (typeof rawMessage !== "string" || !rawMessage.trim()) {
         return null;
       }
 
@@ -76,10 +96,16 @@ function formatValidationErrors(detail: unknown): string | null {
       }
 
       const location = rawLoc
-        .filter((segment): segment is string | number => typeof segment === 'string' || typeof segment === 'number')
+        .filter(
+          (segment): segment is string | number =>
+            typeof segment === "string" || typeof segment === "number",
+        )
         .map((segment) => String(segment))
-        .filter((segment) => segment !== 'body' && segment !== 'query' && segment !== 'path')
-        .join('.');
+        .filter(
+          (segment) =>
+            segment !== "body" && segment !== "query" && segment !== "path",
+        )
+        .join(".");
 
       if (!location) {
         return rawMessage.trim();
@@ -93,7 +119,7 @@ function formatValidationErrors(detail: unknown): string | null {
     return null;
   }
 
-  return messages.join('; ');
+  return messages.join("; ");
 }
 
 function extractApiErrorMessage(payload: unknown, fallback: string): string {
@@ -102,14 +128,14 @@ function extractApiErrorMessage(payload: unknown, fallback: string): string {
   }
 
   const detail = payload.detail;
-  if (typeof detail === 'string' && detail.trim()) {
+  if (typeof detail === "string" && detail.trim()) {
     return detail.trim();
   }
 
   const nestedError = payload.error;
   if (isRecord(nestedError)) {
     const nestedMessage = nestedError.message;
-    if (typeof nestedMessage === 'string' && nestedMessage.trim()) {
+    if (typeof nestedMessage === "string" && nestedMessage.trim()) {
       return nestedMessage.trim();
     }
   }
@@ -120,12 +146,12 @@ function extractApiErrorMessage(payload: unknown, fallback: string): string {
   }
 
   const message = payload.message;
-  if (typeof message === 'string' && message.trim()) {
+  if (typeof message === "string" && message.trim()) {
     return message.trim();
   }
 
   const error = payload.error;
-  if (typeof error === 'string' && error.trim()) {
+  if (typeof error === "string" && error.trim()) {
     return error.trim();
   }
 
@@ -133,7 +159,7 @@ function extractApiErrorMessage(payload: unknown, fallback: string): string {
 }
 
 function shouldCaptureApiDebug(): boolean {
-  if (typeof window === 'undefined') return false;
+  if (typeof window === "undefined") return false;
   return getDebugModeEnabled();
 }
 
@@ -166,7 +192,7 @@ function toDebugHeaders(response: Response): Record<string, string> {
 }
 
 function appendApiDebugRecord(input: {
-  level: 'info' | 'success' | 'warning' | 'error';
+  level: "info" | "success" | "warning" | "error";
   method: string;
   path: string;
   message: string;
@@ -177,10 +203,11 @@ function appendApiDebugRecord(input: {
     return;
   }
 
-  const statusLabel = typeof input.status === 'number' ? ` (${input.status})` : '';
+  const statusLabel =
+    typeof input.status === "number" ? ` (${input.status})` : "";
   appendDashboardDebugRecord({
     level: input.level,
-    source: 'api',
+    source: "api",
     title: `API ${input.method} ${input.path}${statusLabel}`,
     message: input.message,
     details: input.details,
@@ -190,8 +217,8 @@ function appendApiDebugRecord(input: {
 async function refreshAccessToken(): Promise<boolean> {
   try {
     const res = await fetch(`${API_BASE}/auth/refresh`, {
-      method: 'POST',
-      credentials: 'include',
+      method: "POST",
+      credentials: "include",
     });
     if (!res.ok) return false;
 
@@ -205,7 +232,7 @@ async function refreshAccessToken(): Promise<boolean> {
 }
 
 function applyRotatedAccessToken(response: Response) {
-  const rotatedToken = response.headers.get('X-Access-Token');
+  const rotatedToken = response.headers.get("X-Access-Token");
   if (!rotatedToken) return;
 
   const currentUser = getAuthUser();
@@ -216,16 +243,16 @@ function applyRotatedAccessToken(response: Response) {
 
 export async function apiRequest<T = unknown>(
   path: string,
-  options: ApiOptions = {}
+  options: ApiOptions = {},
 ): Promise<T> {
-  const sessionTimeoutMessage = 'Session timed out. Please log in again.';
+  const sessionTimeoutMessage = "Session timed out. Please log in again.";
 
   const {
-    method = 'GET',
+    method = "GET",
     body,
     auth = true,
     isFormData = false,
-    responseType = 'json'
+    responseType = "json",
   } = options;
 
   const requestLabel = `${method} ${path}`;
@@ -233,7 +260,7 @@ export async function apiRequest<T = unknown>(
   const executeRequest = async (tokenOverride?: string | null) => {
     const headers: HeadersInit = {};
     if (!isFormData) {
-      headers['Content-Type'] = 'application/json';
+      headers["Content-Type"] = "application/json";
     }
 
     if (auth) {
@@ -241,10 +268,10 @@ export async function apiRequest<T = unknown>(
       if (!token) {
         emitSessionTimeout(sessionTimeoutMessage);
         appendApiDebugRecord({
-          level: 'error',
+          level: "error",
           method,
           path,
-          message: 'Missing auth token',
+          message: "Missing auth token",
           details: { session_timeout: true },
         });
         throw new Error(sessionTimeoutMessage);
@@ -257,37 +284,37 @@ export async function apiRequest<T = unknown>(
       return await fetch(url, {
         method,
         headers,
-        credentials: 'include',
+        credentials: "include",
         body:
           body === undefined
             ? undefined
             : isFormData
-            ? (body as FormData)
-            : JSON.stringify(body)
+              ? (body as FormData)
+              : JSON.stringify(body),
       });
     } catch (error) {
       const activeToken = tokenOverride ?? getAuthToken();
       if (auth && isAuthTokenExpired(activeToken)) {
         emitSessionTimeout(sessionTimeoutMessage);
         appendApiDebugRecord({
-          level: 'error',
+          level: "error",
           method,
           path,
           message: sessionTimeoutMessage,
-          details: { session_timeout: true, reason: 'token_expired' },
+          details: { session_timeout: true, reason: "token_expired" },
         });
         throw new Error(sessionTimeoutMessage);
       }
       const mixedContentHint =
-        typeof window !== 'undefined'
-        && window.location.protocol === 'https:'
-        && API_BASE.startsWith('http://')
-          ? ' Mixed-content blocked: frontend is HTTPS but API URL is HTTP.'
-          : '';
-      const reason = error instanceof Error ? error.message : 'Failed to fetch';
+        typeof window !== "undefined" &&
+        window.location.protocol === "https:" &&
+        API_BASE.startsWith("http://")
+          ? " Mixed-content blocked: frontend is HTTPS but API URL is HTTP."
+          : "";
+      const reason = error instanceof Error ? error.message : "Failed to fetch";
       const message = `Network error: Unable to reach API at ${url}. ${reason}.${mixedContentHint}`;
       appendApiDebugRecord({
-        level: 'error',
+        level: "error",
         method,
         path,
         message,
@@ -296,7 +323,7 @@ export async function apiRequest<T = unknown>(
           reason,
         },
       });
-      showAppErrorPopup(message, 'Network Error');
+      showAppErrorPopup(message, "Network Error");
       throw new Error(message);
     }
   };
@@ -313,7 +340,7 @@ export async function apiRequest<T = unknown>(
       } else {
         emitSessionTimeout(sessionTimeoutMessage);
         appendApiDebugRecord({
-          level: 'error',
+          level: "error",
           method,
           path,
           status: 401,
@@ -326,13 +353,12 @@ export async function apiRequest<T = unknown>(
   }
 
   if (!res.ok) {
-
     let message = `API Error (${res.status})`;
-    const contentType = (res.headers.get('content-type') || '').toLowerCase();
+    const contentType = (res.headers.get("content-type") || "").toLowerCase();
     let errorPayload: unknown = null;
     let errorText: string | null = null;
     try {
-      if (contentType.includes('application/json')) {
+      if (contentType.includes("application/json")) {
         const json = await res.json();
         errorPayload = json;
         message = extractApiErrorMessage(json, message);
@@ -347,7 +373,7 @@ export async function apiRequest<T = unknown>(
       // Ignore JSON parsing errors for non-JSON responses.
     }
     appendApiDebugRecord({
-      level: 'error',
+      level: "error",
       method,
       path,
       status: res.status,
@@ -359,25 +385,25 @@ export async function apiRequest<T = unknown>(
         response: toDebugPayload(errorPayload ?? errorText),
       },
     });
-    showAppErrorPopup(message, 'Request Failed');
+    showAppErrorPopup(message, "Request Failed");
     throw new Error(message);
   }
 
-  if (responseType === 'blob') {
+  if (responseType === "blob") {
     const blob = await res.blob();
     appendApiDebugRecord({
-      level: 'success',
+      level: "success",
       method,
       path,
       status: res.status,
-      message: 'Binary response received',
+      message: "Binary response received",
       details: {
         url: res.url,
         status: res.status,
         headers: toDebugHeaders(res),
         response: {
-          type: 'blob',
-          mime_type: blob.type || res.headers.get('content-type') || null,
+          type: "blob",
+          mime_type: blob.type || res.headers.get("content-type") || null,
           size_bytes: blob.size,
         },
       },
@@ -387,11 +413,11 @@ export async function apiRequest<T = unknown>(
 
   if (res.status === 204) {
     appendApiDebugRecord({
-      level: 'success',
+      level: "success",
       method,
       path,
       status: res.status,
-      message: 'No content response received',
+      message: "No content response received",
       details: {
         url: res.url,
         status: res.status,
@@ -403,11 +429,11 @@ export async function apiRequest<T = unknown>(
 
   const json = (await res.json()) as T;
   appendApiDebugRecord({
-    level: 'success',
+    level: "success",
     method,
     path,
     status: res.status,
-    message: 'JSON response received',
+    message: "JSON response received",
     details: {
       url: res.url,
       status: res.status,
