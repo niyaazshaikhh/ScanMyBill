@@ -11,8 +11,8 @@ from fastapi.staticfiles import StaticFiles
 from requests import exceptions as request_exceptions
 from sqlalchemy import inspect, text
 from sqlalchemy.exc import SQLAlchemyError
-from starlette.middleware.httpsredirect import HTTPSRedirectMiddleware
 from starlette.middleware.trustedhost import TrustedHostMiddleware
+from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 
 from app.api.v1.api import api_router
 from app.core.auth_exceptions import AuthException
@@ -47,6 +47,7 @@ app = FastAPI(
     docs_url='/docs' if settings.docs_enabled else None,
     redoc_url='/redoc' if settings.docs_enabled else None,
 )
+app.router.redirect_slashes = False
 
 
 def _path_is_within(parent: Path, child: Path) -> bool:
@@ -78,9 +79,6 @@ def _validate_security_configuration() -> None:
         # When DATABASE_URL_OVERRIDE is provided (managed DB/cloud), POSTGRES_* values may be placeholders.
         if not settings.database_url_override and settings.postgres_password.strip().lower() in {'', 'postgres'}:
             issues.append('POSTGRES_PASSWORD must be configured with a strong value in production.')
-        if not settings.enforce_https:
-            issues.append('ENFORCE_HTTPS must be true in production.')
-
     if issues:
         raise RuntimeError('Security configuration error(s): ' + ' '.join(issues))
 
@@ -95,18 +93,12 @@ def _resolved_uploads_path() -> Path:
     return resolved
 
 
-if settings.trusted_hosts:
-    app.add_middleware(TrustedHostMiddleware, allowed_hosts=list(settings.trusted_hosts))
-
-if settings.enforce_https:
-    app.add_middleware(HTTPSRedirectMiddleware)
-
-app.add_middleware(RequestContextMiddleware)
-app.add_middleware(RequestLoggingMiddleware)
-app.add_middleware(RequestSizeLimitMiddleware)
 app.add_middleware(RateLimitMiddleware)
-app.add_middleware(SecurityHeadersMiddleware)
 app.add_middleware(AuthSessionMiddleware)
+app.add_middleware(RequestSizeLimitMiddleware)
+app.add_middleware(RequestLoggingMiddleware)
+app.add_middleware(RequestContextMiddleware)
+app.add_middleware(SecurityHeadersMiddleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins,
@@ -115,6 +107,13 @@ app.add_middleware(
     allow_headers=['*'],
     expose_headers=['X-Access-Token', 'X-Token-Refreshed'],
 )
+
+if settings.trusted_hosts:
+    app.add_middleware(TrustedHostMiddleware, allowed_hosts=list(settings.trusted_hosts))
+
+if settings.trust_proxy_headers:
+    # Trust proxy-provided scheme/client metadata when running behind ingress.
+    app.add_middleware(ProxyHeadersMiddleware, trusted_hosts='*')
 
 app.include_router(api_router, prefix=settings.api_v1_prefix)
 
@@ -788,7 +787,14 @@ def health_ready() -> JSONResponse:
     return JSONResponse(status_code=200, content={'status': 'ok', 'database': 'ready'})
 
 
-@app.get('/health')
+@app.get('/healthz')
+@app.get('/healthz/', include_in_schema=False)
+def healthz() -> dict[str, str]:
+    return {'status': 'ok'}
+
+
+@app.get('/health', include_in_schema=False)
+@app.get('/health/', include_in_schema=False)
 def health() -> dict[str, str]:
     return {'status': 'ok'}
 
