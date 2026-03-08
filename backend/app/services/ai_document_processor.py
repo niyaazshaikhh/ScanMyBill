@@ -27,6 +27,8 @@ _MAX_TOKENS = 3000
 _DEBUG_RESPONSE_TEXT_LIMIT = 12_000
 _RESPONSE_SCHEMA_NAME = 'bill_extraction'
 _MAX_IMAGE_SIDE = 1800
+_QUALITY_ACCEPT_THRESHOLD = 45
+_GSTIN_PATTERN = re.compile(r'^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]$')
 
 
 def _get_resample_filter() -> Any:
@@ -303,6 +305,84 @@ def safe_json_parse(raw_content: str) -> dict[str, Any] | None:
         if isinstance(parsed, dict):
             return parsed
     return None
+
+
+def _to_float(value: Any) -> float | None:
+    if isinstance(value, (int, float)):
+        return float(value)
+    if not isinstance(value, str):
+        return None
+    cleaned = re.sub(r'[^0-9.\-]', '', value)
+    if not cleaned:
+        return None
+    try:
+        return float(cleaned)
+    except ValueError:
+        return None
+
+
+def _has_text(value: Any) -> bool:
+    return isinstance(value, str) and bool(value.strip())
+
+
+def _score_extraction_payload(parsed: dict[str, Any] | None) -> int:
+    if not isinstance(parsed, dict):
+        return -1
+
+    score = 0
+    document_type = _normalize_document_type_value(parsed)
+    if document_type:
+        score += 12
+
+    bill_type = str(parsed.get('bill_type') or '').strip().lower()
+    if bill_type in {'sales', 'purchase'}:
+        score += 8
+
+    gst_invoice = parsed.get('gst_invoice') if isinstance(parsed.get('gst_invoice'), dict) else {}
+    delivery_challan = (
+        parsed.get('delivery_challan') if isinstance(parsed.get('delivery_challan'), dict) else {}
+    )
+
+    if document_type == 'gst_invoice':
+        fields = [
+            'invoice_number',
+            'invoice_date',
+            'seller_name',
+            'buyer_name',
+            'place_of_supply',
+            'place_of_supply_code',
+            'notes',
+        ]
+        score += sum(4 for field in fields if _has_text(gst_invoice.get(field)))
+        gst_number = str(gst_invoice.get('gst_number') or '').strip().upper()
+        if _GSTIN_PATTERN.match(gst_number):
+            score += 8
+        for amount_field in ('subtotal', 'gst_amount', 'total_amount'):
+            value = _to_float(gst_invoice.get(amount_field))
+            if value is not None and value > 0:
+                score += 6
+        items = gst_invoice.get('items') if isinstance(gst_invoice.get('items'), list) else []
+        if items:
+            score += min(len(items), 5) * 2
+
+    if document_type == 'delivery_challan':
+        fields = [
+            'challan_number',
+            'order_number',
+            'challan_date',
+            'from_party',
+            'to_party',
+            'notes',
+        ]
+        score += sum(4 for field in fields if _has_text(delivery_challan.get(field)) or delivery_challan.get(field) is not None)
+        subtotal = _to_float(delivery_challan.get('subtotal'))
+        if subtotal is not None and subtotal > 0:
+            score += 6
+        items = delivery_challan.get('items') if isinstance(delivery_challan.get('items'), list) else []
+        if items:
+            score += min(len(items), 5) * 2
+
+    return score
 
 
 def _normalize_document_type_value(data: dict[str, Any]) -> str | None:
@@ -599,7 +679,8 @@ def _sync_completion(
     content = ''
     provider_errors: list[str] = []
     completion_mode: str | None = None
-    ocr_only_candidate: tuple[Any, str, str] | None = None
+    parsed_payload: dict[str, Any] | None = None
+    best_candidate: dict[str, Any] | None = None
 
     for provider in providers:
         try:
@@ -631,27 +712,40 @@ def _sync_completion(
             provider_errors.append(f'{provider}: {_format_model_error(exc)}')
             continue
 
-        if mode == 'ocr-only':
-            # Preserve OCR fallback result but keep trying other providers for full vision extraction.
-            if ocr_only_candidate is None:
-                ocr_only_candidate = (completion_candidate, provider, model_name)
-            continue
+        content_candidate = _extract_content_text(completion_candidate)
+        parsed_candidate = safe_json_parse(content_candidate) if content_candidate else None
+        payload_score = _score_extraction_payload(parsed_candidate)
+        mode_bonus = 100 if mode == 'vision+ocr' else 0
+        total_score = mode_bonus + max(payload_score, 0)
 
-        completion = completion_candidate
-        completion_mode = mode
-        content = _extract_content_text(completion)
-        debug_trace['provider'] = provider
-        debug_trace['model'] = model_name
-        debug_trace['selected_mode'] = mode
-        break
+        candidate = {
+            'completion': completion_candidate,
+            'provider': provider,
+            'model': model_name,
+            'mode': mode,
+            'content': content_candidate,
+            'parsed': parsed_candidate,
+            'payload_score': payload_score,
+            'total_score': total_score,
+        }
 
-    if completion is None and ocr_only_candidate is not None:
-        completion, provider, model_name = ocr_only_candidate
-        completion_mode = 'ocr-only'
-        content = _extract_content_text(completion)
-        debug_trace['provider'] = provider
-        debug_trace['model'] = model_name
+        if best_candidate is None or int(candidate['total_score']) > int(best_candidate['total_score']):
+            best_candidate = candidate
+
+        # If we already got a strong vision extraction, avoid extra latency/cost.
+        if mode == 'vision+ocr' and payload_score >= _QUALITY_ACCEPT_THRESHOLD:
+            break
+
+    if best_candidate is not None:
+        completion = best_candidate['completion']
+        completion_mode = str(best_candidate['mode'])
+        content = str(best_candidate['content'] or '')
+        parsed_payload = best_candidate['parsed'] if isinstance(best_candidate['parsed'], dict) else None
+        debug_trace['provider'] = best_candidate['provider']
+        debug_trace['model'] = best_candidate['model']
         debug_trace['selected_mode'] = completion_mode
+        debug_trace['selected_payload_score'] = int(best_candidate['payload_score'])
+        debug_trace['selected_total_score'] = int(best_candidate['total_score'])
 
     if completion is None:
         details = '; '.join(provider_errors) if provider_errors else 'No provider attempts available'
@@ -670,7 +764,7 @@ def _sync_completion(
     logger.info('AI raw response: %s', content)
     print(f'AI raw response: {content}')
 
-    parsed = safe_json_parse(content)
+    parsed = parsed_payload if isinstance(parsed_payload, dict) else safe_json_parse(content)
     if parsed is None:
         debug_trace['result'] = 'error'
         debug_trace['error'] = 'Model returned invalid JSON'
