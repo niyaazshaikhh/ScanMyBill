@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import re
 from datetime import date, datetime
 from typing import Any
@@ -14,7 +15,7 @@ from app.schemas.bill import (
     GSTInvoiceExtractedPayload,
 )
 from app.services.ai_document_processor import extract_document_data
-from app.services.ocr import extract_text_from_file
+from app.services.ocr import build_delivery_challan_fallback_payload, extract_text_from_file
 from app.utils.gstin import normalize_gstin
 
 GST_INVOICE_KEYWORDS = (
@@ -43,6 +44,7 @@ COMPANY_MISMATCH_MESSAGE = (
     'This document does not match your company profile. '
     'Please upload a bill where your company is listed as buyer/seller/consignee.'
 )
+logger = logging.getLogger(__name__)
 
 
 def normalize_party(data: dict[str, Any]) -> dict[str, Any]:
@@ -178,6 +180,59 @@ def normalize_items(items: Any) -> list[dict[str, Any]]:
     return normalized_items
 
 
+def _merge_delivery_challan_with_fallback(
+    raw: dict[str, Any],
+    *,
+    ocr_text: str,
+    fallback_type: InvoiceType,
+    company_name: str | None,
+    company_gstin: str | None,
+) -> tuple[dict[str, Any], bool]:
+    if not ocr_text.strip():
+        return raw, False
+
+    fallback_payload = build_delivery_challan_fallback_payload(
+        text=ocr_text,
+        fallback_type=fallback_type,
+        company_name=company_name,
+        company_gstin=company_gstin,
+    )
+    if not isinstance(fallback_payload, dict):
+        return raw, False
+
+    merged = dict(raw)
+    changed = False
+
+    for key in ('challan_number', 'order_number', 'challan_date', 'from_party', 'to_party', 'notes'):
+        if merged.get(key) in (None, '', []):
+            fallback_value = fallback_payload.get(key)
+            if fallback_value not in (None, '', []):
+                merged[key] = fallback_value
+                changed = True
+
+    merged_subtotal = _as_amount(merged.get('subtotal'))
+    fallback_subtotal = _as_amount(fallback_payload.get('subtotal'))
+    if merged_subtotal <= 0 and fallback_subtotal > 0:
+        merged['subtotal'] = fallback_subtotal
+        changed = True
+
+    merged_items = merged.get('items')
+    if not isinstance(merged_items, list) or not merged_items:
+        fallback_items = fallback_payload.get('items')
+        if isinstance(fallback_items, list) and fallback_items:
+            merged['items'] = fallback_items
+            changed = True
+
+    if changed:
+        warnings = [value for value in merged.get('warnings', []) if isinstance(value, str)]
+        fallback_warning = 'Delivery challan fields were supplemented using OCR fallback heuristics.'
+        if fallback_warning not in warnings:
+            warnings.append(fallback_warning)
+        merged['warnings'] = warnings
+
+    return merged, changed
+
+
 def normalize_ai_payload(raw: dict[str, Any]) -> dict[str, Any]:
     normalized = _flatten_document_payload(raw)
 
@@ -279,6 +334,15 @@ async def process_uploaded_document(
     document_type = _normalize_document_type(raw.get('document_type'))
     if document_type == 'unknown':
         raise ValueError(INVALID_DOCUMENT_MESSAGE)
+    fallback_merged = False
+    if document_type == 'delivery_challan':
+        raw, fallback_merged = _merge_delivery_challan_with_fallback(
+            raw,
+            ocr_text=ocr_text,
+            fallback_type=fallback_type,
+            company_name=company_name,
+            company_gstin=company_gstin,
+        )
     if document_type == 'gst_invoice':
         raw = validate_invoice_math(raw)
 
@@ -364,6 +428,17 @@ async def process_uploaded_document(
     total_amount = gst_payload.total_amount if document_type == 'gst_invoice' else challan_payload.subtotal
     if total_amount <= 0:
         total_amount = _as_amount(raw.get('total_amount'))
+
+    if isinstance(ai_debug, dict):
+        logger.info(
+            'document_extraction_summary mode=%s provider=%s model=%s document_type=%s bill_type=%s fallback_merged=%s',
+            ai_debug.get('selected_mode'),
+            ai_debug.get('provider'),
+            ai_debug.get('model'),
+            document_type,
+            bill_type.value,
+            fallback_merged,
+        )
 
     return {
         'text': ocr_text,

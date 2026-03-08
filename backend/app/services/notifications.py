@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.models.invoice import Invoice, InvoiceType
 from app.models.notification import Notification, NotificationCategory
+from app.models.personal_details import PersonalDetails
 from app.utils.period import financial_quarter_bounds, financial_quarter_number, financial_year_start
 
 
@@ -106,6 +107,52 @@ def _upsert_reminder_notification(
         message=message,
         route=route,
         dedupe_key=dedupe_key,
+    )
+
+
+def _is_non_empty_text(value: str | None) -> bool:
+    return bool(value and value.strip())
+
+
+def _has_completed_personal_details(details: PersonalDetails | None) -> bool:
+    if details is None:
+        return False
+
+    required_fields = (
+        details.company_name,
+        details.gstin_number,
+        details.address,
+        details.state_name,
+        details.state_code,
+        details.gst_filing_period,
+        details.email,
+        details.bank_name,
+        details.account_number,
+        details.branch,
+        details.ifsc_code,
+    )
+    return all(_is_non_empty_text(field) for field in required_fields)
+
+
+def ensure_personal_details_reminder_notification(db: Session, *, user_id: str) -> Notification | None:
+    details = db.scalar(select(PersonalDetails).where(PersonalDetails.owner_id == user_id))
+    if _has_completed_personal_details(details):
+        return None
+
+    today = date.today()
+    dedupe_key = f'personal-details-reminder-{today:%Y-%m-%d}'
+    title = 'Complete Personal Details'
+    message = (
+        'Please fill your personal details to improve invoice and challan extraction accuracy.'
+    )
+
+    return _upsert_reminder_notification(
+        db,
+        user_id=user_id,
+        dedupe_key=dedupe_key,
+        title=title,
+        message=message,
+        route='/settings/personal_details',
     )
 
 

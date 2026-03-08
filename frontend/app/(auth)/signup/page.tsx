@@ -13,6 +13,8 @@ import { Label } from '@/components/ui/label';
 import { apiRequest } from '@/lib/api';
 import { setAuthSession } from '@/lib/auth';
 
+const PERSONAL_DETAILS_SIGNUP_PROMPT_KEY = 'scanmybill_personal_details_signup_prompt';
+
 type TokenResponse = {
   access_token: string;
   token_type: string;
@@ -46,6 +48,9 @@ export default function SignUpPage() {
         auth: false,
         body: { full_name: fullName, email, password }
       });
+      if (typeof window !== 'undefined') {
+        localStorage.setItem(PERSONAL_DETAILS_SIGNUP_PROMPT_KEY, '1');
+      }
       setAuthSession(data.access_token, data.user);
       router.push('/dashboard');
     } catch (err) {
@@ -121,6 +126,9 @@ export default function SignUpPage() {
                       auth: false,
                       body: { id_token: credentialResponse.credential }
                     });
+                    if (typeof window !== 'undefined') {
+                      localStorage.setItem(PERSONAL_DETAILS_SIGNUP_PROMPT_KEY, '1');
+                    }
                     setAuthSession(data.access_token, data.user);
                     router.push('/dashboard');
                   } catch (err) {

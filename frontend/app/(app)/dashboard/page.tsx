@@ -22,6 +22,12 @@ import { Select } from "@/components/ui/select";
 import { useAuthGuard } from "@/hooks/useAuthGuard";
 import { apiRequest } from "@/lib/api";
 import { notifyApp } from "@/lib/app-notification";
+import {
+  getBillUploadState,
+  startBillUpload,
+  subscribeBillUpload,
+  type BillUploadState,
+} from "@/lib/bill-upload-manager";
 import { isoMonthIndex, isoYear } from "@/lib/date-format";
 import {
   appendDashboardDebugRecord,
@@ -188,7 +194,8 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const [uploading, setUploading] = useState(false);
+  const [uploadState, setUploadState] = useState<BillUploadState>(getBillUploadState());
+  const uploading = uploadState.status === "uploading";
   const [file, setFile] = useState<File | null>(null);
   const [uploadMessage, setUploadMessage] = useState<string | null>(null);
   const [debugModeEnabled, setDebugModeEnabled] = useState(false);
@@ -379,6 +386,74 @@ export default function DashboardPage() {
     };
   }, [appendDebugEntry]);
 
+  useEffect(() => {
+    let previousState = getBillUploadState();
+    return subscribeBillUpload((nextState) => {
+      setUploadState(nextState);
+
+      const completedUpload =
+        previousState.status === "uploading" &&
+        (nextState.status === "success" || nextState.status === "error");
+      if (!completedUpload) {
+        previousState = nextState;
+        return;
+      }
+
+      if (nextState.status === "success") {
+        const uploadResponse =
+          isRecord(nextState.response) ? (nextState.response as BillUploadApiResponse) : {};
+        const processingSource = summarizeProcessingSource(uploadResponse);
+        appendDebugEntry({
+          level: "success",
+          source: "upload",
+          title: "Bill upload succeeded",
+          message: processingSource.message,
+          file_name: nextState.fileName || undefined,
+          details: {
+            processing_source: processingSource.source_details,
+            response: uploadResponse,
+          },
+        });
+        notifyApp({
+          title: "Invoice uploaded successfully",
+          message: "Invoice uploaded successfully",
+          tone: "success",
+        });
+        setUploadMessage("Bill uploaded and processed successfully.");
+        setFile(null);
+        if (mainUploadInputRef.current) {
+          mainUploadInputRef.current.value = "";
+        }
+        if (quickUploadInputRef.current) {
+          quickUploadInputRef.current.value = "";
+        }
+        void loadYearOptions();
+        void loadSummary();
+      } else {
+        const message = nextState.error || "Upload failed";
+        appendDebugEntry({
+          level: "error",
+          source: "upload",
+          title: "Bill upload failed",
+          message,
+          file_name: nextState.fileName || undefined,
+          details: isRecord(nextState.response)
+            ? nextState.response
+            : { error: message },
+        });
+        setUploadMessage(message);
+        notifyApp({
+          title: "Invoice upload failed",
+          message,
+          tone: "error",
+        });
+      }
+
+      previousState = nextState;
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [appendDebugEntry]);
+
   const onClearDebugConsole = () => {
     clearDashboardDebugResponses();
     setDebugConsoleEntries([]);
@@ -396,7 +471,6 @@ export default function DashboardPage() {
   );
 
   const uploadFile = async (selectedFile: File) => {
-    setUploading(true);
     setUploadMessage(null);
     appendDebugEntry({
       level: "info",
@@ -411,60 +485,9 @@ export default function DashboardPage() {
     });
 
     try {
-      const formData = new FormData();
-      formData.append("file", selectedFile);
-      formData.append("invoice_type", "sales");
-
-      const response = await apiRequest<BillUploadApiResponse>("/bills/upload", {
-        method: "POST",
-        body: formData,
-        isFormData: true,
-      });
-      const processingSource = summarizeProcessingSource(response);
-      appendDebugEntry({
-        level: "success",
-        source: "upload",
-        title: "Bill upload succeeded",
-        message: processingSource.message,
-        file_name: selectedFile.name,
-        details: {
-          processing_source: processingSource.source_details,
-          response,
-        },
-      });
-      notifyApp({
-        title: "Invoice uploaded successfully",
-        message: "Invoice uploaded successfully",
-        tone: "success",
-      });
-      setUploadMessage("Bill uploaded and processed successfully.");
-      setFile(null);
-      if (mainUploadInputRef.current) {
-        mainUploadInputRef.current.value = "";
-      }
-      if (quickUploadInputRef.current) {
-        quickUploadInputRef.current.value = "";
-      }
-      await loadYearOptions();
-      await loadSummary();
-    } catch (err) {
-      const message = err instanceof Error ? err.message : "Upload failed";
-      appendDebugEntry({
-        level: "error",
-        source: "upload",
-        title: "Bill upload failed",
-        message,
-        file_name: selectedFile.name,
-        details: err instanceof Error ? { name: err.name, stack: err.stack } : { error: String(err) },
-      });
-      setUploadMessage(message);
-      notifyApp({
-        title: "Invoice upload failed",
-        message,
-        tone: "error",
-      });
-    } finally {
-      setUploading(false);
+      await startBillUpload(selectedFile, { invoiceType: "sales" });
+    } catch {
+      // Upload completion and errors are handled by the shared upload-state subscriber.
     }
   };
 
@@ -538,6 +561,24 @@ export default function DashboardPage() {
           <Button onClick={onUpload} disabled={!file || uploading}>
             {uploading ? "Uploading..." : "Upload Bill"}
           </Button>
+          {uploading ? (
+            <div className="space-y-2 md:col-span-2">
+              <div className="flex items-center justify-between gap-3 text-xs text-muted-foreground">
+                <span className="truncate">
+                  {uploadState.fileName
+                    ? `Uploading challan: ${uploadState.fileName}`
+                    : "Uploading challan..."}
+                </span>
+                <span>{uploadState.progress}%</span>
+              </div>
+              <div className="h-2 overflow-hidden rounded-full bg-muted">
+                <div
+                  className="h-full rounded-full bg-orange-500 transition-[width] duration-200 ease-out"
+                  style={{ width: `${Math.max(uploadState.progress, 2)}%` }}
+                />
+              </div>
+            </div>
+          ) : null}
           {uploadMessage ? (
             <p className="text-sm text-muted-foreground md:col-span-2">
               {uploadMessage}

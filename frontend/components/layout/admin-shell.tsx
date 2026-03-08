@@ -73,6 +73,8 @@ const adminNav = [
 ];
 const NOTIFICATIONS_PANEL_ID = "notifications-panel";
 const NOTIFICATIONS_HEADING_ID = "notifications-heading";
+const PERSONAL_DETAILS_SIGNUP_PROMPT_KEY =
+  "scanmybill_personal_details_signup_prompt";
 
 type SearchInvoice = {
   id: string;
@@ -120,6 +122,20 @@ type NotificationsResponse = {
   count: number;
 };
 
+type PersonalDetailsResponse = {
+  company_name: string | null;
+  gstin_number: string | null;
+  address: string | null;
+  state_name: string | null;
+  state_code: string | null;
+  gst_filing_period: string | null;
+  email: string | null;
+  bank_name: string | null;
+  account_number: string | null;
+  branch: string | null;
+  ifsc_code: string | null;
+};
+
 type ToastItem = {
   id: string;
   title: string;
@@ -134,6 +150,20 @@ type GlobalPopupState = {
   tone: "info" | "success" | "error";
   confirmLabel: string;
 };
+
+const PERSONAL_DETAILS_REQUIRED_KEYS: Array<keyof PersonalDetailsResponse> = [
+  "company_name",
+  "gstin_number",
+  "address",
+  "state_name",
+  "state_code",
+  "gst_filing_period",
+  "email",
+  "bank_name",
+  "account_number",
+  "branch",
+  "ifsc_code",
+];
 
 function formatNotificationTimestamp(value: string): string {
   const parsed = new Date(value);
@@ -205,6 +235,13 @@ function includesQuery(
   return (value || "").toLowerCase().includes(query);
 }
 
+function hasCompletedPersonalDetails(details: PersonalDetailsResponse): boolean {
+  return PERSONAL_DETAILS_REQUIRED_KEYS.every((key) => {
+    const value = details[key];
+    return typeof value === "string" && value.trim().length > 0;
+  });
+}
+
 export function AdminShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
@@ -236,6 +273,8 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
   const [sessionTimeoutMessage, setSessionTimeoutMessage] = useState(
     "Session timed out. Please log in again.",
   );
+  const [personalDetailsPromptOpen, setPersonalDetailsPromptOpen] =
+    useState(false);
   const [globalPopup, setGlobalPopup] = useState<GlobalPopupState>({
     open: false,
     title: "Message",
@@ -249,6 +288,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
   const initializedNotificationSyncRef = useRef(false);
   const toastTimersRef = useRef<Map<string, number>>(new Map());
   const notificationCloseTimerRef = useRef<number | null>(null);
+  const personalDetailsPromptShownRef = useRef(false);
 
   useAuthGuard();
 
@@ -309,6 +349,55 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
       window.removeEventListener("storage", onStorage);
     };
   }, []);
+
+  useEffect(() => {
+    let active = true;
+
+    const syncPersonalDetailsStatus = async () => {
+      const user = getAuthUser();
+      if (!getAuthToken() || user?.role === "admin") {
+        if (!active) return;
+        setPersonalDetailsPromptOpen(false);
+        return;
+      }
+
+      try {
+        const details = await apiRequest<PersonalDetailsResponse>(
+          "/users/personal-details",
+        );
+        if (!active) return;
+
+        const detailsCompleted = hasCompletedPersonalDetails(details);
+        if (detailsCompleted) {
+          setPersonalDetailsPromptOpen(false);
+          personalDetailsPromptShownRef.current = false;
+          localStorage.removeItem(PERSONAL_DETAILS_SIGNUP_PROMPT_KEY);
+          return;
+        }
+
+        if (pathname === "/settings/personal_details") {
+          setPersonalDetailsPromptOpen(false);
+          return;
+        }
+
+        const shouldShowSignupPrompt =
+          localStorage.getItem(PERSONAL_DETAILS_SIGNUP_PROMPT_KEY) === "1" &&
+          !personalDetailsPromptShownRef.current;
+        if (shouldShowSignupPrompt) {
+          setPersonalDetailsPromptOpen(true);
+          personalDetailsPromptShownRef.current = true;
+          localStorage.removeItem(PERSONAL_DETAILS_SIGNUP_PROMPT_KEY);
+        }
+      } catch {
+        if (!active) return;
+      }
+    };
+
+    void syncPersonalDetailsStatus();
+    return () => {
+      active = false;
+    };
+  }, [pathname]);
 
   const effectivePlan = useMemo(
     () =>
@@ -701,6 +790,15 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
     },
     [router, syncNotifications],
   );
+
+  const closePersonalDetailsPrompt = useCallback(() => {
+    setPersonalDetailsPromptOpen(false);
+  }, []);
+
+  const goToPersonalDetails = useCallback(() => {
+    setPersonalDetailsPromptOpen(false);
+    router.push("/settings/personal_details");
+  }, [router]);
 
   const searchSuggestions = useMemo<SearchSuggestion[]>(() => {
     const query = searchQuery.trim().toLowerCase();
@@ -1319,6 +1417,15 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
           </div>
         </div>
       ) : null}
+      <PopupWindow
+        open={personalDetailsPromptOpen}
+        title="Complete Personal Details"
+        message="Fill your personal details to improve invoice and challan accuracy."
+        confirmLabel="Fill detail"
+        cancelLabel="Cancel"
+        onCancel={closePersonalDetailsPrompt}
+        onConfirm={goToPersonalDetails}
+      />
       <PopupWindow
         open={globalPopup.open}
         title={globalPopup.title}

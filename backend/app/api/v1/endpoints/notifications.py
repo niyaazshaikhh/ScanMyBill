@@ -9,6 +9,7 @@ from app.models.user import User, UserRole
 from app.schemas.notification import NotificationListResponse, NotificationResponse, NotificationStatusResponse
 from app.services.notifications import (
     ensure_monthly_gst_payable_notification,
+    ensure_personal_details_reminder_notification,
     ensure_quarterly_gst_payable_notification,
 )
 
@@ -23,9 +24,17 @@ def list_notifications(
 ) -> NotificationListResponse:
     is_admin = current_user.role == UserRole.ADMIN
     if not is_admin:
+        personal_details_inserted_or_updated = ensure_personal_details_reminder_notification(
+            db,
+            user_id=current_user.id,
+        )
         monthly_inserted_or_updated = ensure_monthly_gst_payable_notification(db, user_id=current_user.id)
         quarterly_inserted_or_updated = ensure_quarterly_gst_payable_notification(db, user_id=current_user.id)
-        if monthly_inserted_or_updated or quarterly_inserted_or_updated:
+        if (
+            personal_details_inserted_or_updated
+            or monthly_inserted_or_updated
+            or quarterly_inserted_or_updated
+        ):
             db.commit()
 
     notification_filters = [Notification.owner_id == current_user.id]

@@ -810,6 +810,22 @@ def _build_fallback_delivery_challan_payload(text: str, heuristic: dict[str, Any
     }
 
 
+def build_delivery_challan_fallback_payload(
+    text: str,
+    *,
+    fallback_type: InvoiceType,
+    company_name: str | None = None,
+    company_gstin: str | None = None,
+) -> dict[str, Any]:
+    heuristic = extract_structured_data(
+        text=text,
+        fallback_type=fallback_type,
+        company_name=company_name,
+        company_gstin=company_gstin,
+    )
+    return _build_fallback_delivery_challan_payload(text, heuristic)
+
+
 def extract_structured_data(
     text: str,
     fallback_type: InvoiceType,
