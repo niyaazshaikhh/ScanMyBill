@@ -26,6 +26,14 @@ _MAX_PDF_PAGES = 3
 _MAX_TOKENS = 3000
 _DEBUG_RESPONSE_TEXT_LIMIT = 12_000
 _RESPONSE_SCHEMA_NAME = 'bill_extraction'
+_MAX_IMAGE_SIDE = 1800
+
+
+def _get_resample_filter() -> Any:
+    try:
+        return Image.Resampling.LANCZOS  # Pillow>=9
+    except AttributeError:
+        return Image.LANCZOS
 
 
 def _detect_mime(payload: bytes, file_path: Path) -> str | None:
@@ -52,8 +60,10 @@ def _detect_mime(payload: bytes, file_path: Path) -> str | None:
 
 def _encode_pil_to_jpeg_data_url(image: Image.Image) -> str | None:
     try:
+        resized = image.convert('RGB')
+        resized.thumbnail((_MAX_IMAGE_SIDE, _MAX_IMAGE_SIDE), _get_resample_filter())
         buffer = io.BytesIO()
-        image.convert('RGB').save(buffer, format='JPEG', quality=85, optimize=True)
+        resized.save(buffer, format='JPEG', quality=85, optimize=True)
         encoded = base64.b64encode(buffer.getvalue()).decode('ascii')
         return f'data:image/jpeg;base64,{encoded}'
     except Exception:
@@ -498,7 +508,7 @@ def _request_with_provider(
     company_name: str | None,
     ocr_text: str | None,
     debug_trace: dict[str, Any],
-) -> Any:
+) -> tuple[Any, str]:
     try:
         completion = _request_completion(
             client=client,
@@ -517,7 +527,7 @@ def _request_with_provider(
             response_text=content,
             image_blocks_count=len(image_blocks),
         )
-        return completion
+        return completion, 'vision+ocr'
     except Exception as exc:
         logger.exception('AI completion with image payload failed for provider=%s', provider)
         _append_debug_attempt(
@@ -562,7 +572,7 @@ def _request_with_provider(
         response_text=content,
         image_blocks_count=0,
     )
-    return completion
+    return completion, 'ocr-only'
 
 
 def _sync_completion(
@@ -588,6 +598,8 @@ def _sync_completion(
     completion: Any | None = None
     content = ''
     provider_errors: list[str] = []
+    completion_mode: str | None = None
+    ocr_only_candidate: tuple[Any, str, str] | None = None
 
     for provider in providers:
         try:
@@ -606,7 +618,7 @@ def _sync_completion(
             continue
 
         try:
-            completion = _request_with_provider(
+            completion_candidate, mode = _request_with_provider(
                 provider=provider,
                 model_name=model_name,
                 client=client,
@@ -619,10 +631,27 @@ def _sync_completion(
             provider_errors.append(f'{provider}: {_format_model_error(exc)}')
             continue
 
+        if mode == 'ocr-only':
+            # Preserve OCR fallback result but keep trying other providers for full vision extraction.
+            if ocr_only_candidate is None:
+                ocr_only_candidate = (completion_candidate, provider, model_name)
+            continue
+
+        completion = completion_candidate
+        completion_mode = mode
         content = _extract_content_text(completion)
         debug_trace['provider'] = provider
         debug_trace['model'] = model_name
+        debug_trace['selected_mode'] = mode
         break
+
+    if completion is None and ocr_only_candidate is not None:
+        completion, provider, model_name = ocr_only_candidate
+        completion_mode = 'ocr-only'
+        content = _extract_content_text(completion)
+        debug_trace['provider'] = provider
+        debug_trace['model'] = model_name
+        debug_trace['selected_mode'] = completion_mode
 
     if completion is None:
         details = '; '.join(provider_errors) if provider_errors else 'No provider attempts available'
@@ -655,6 +684,8 @@ def _sync_completion(
     else:
         debug_trace['result'] = 'success'
         debug_trace['document_type'] = validated.get('document_type')
+        if completion_mode:
+            debug_trace['selected_mode'] = completion_mode
     return _with_debug(validated, debug_trace)
 
 

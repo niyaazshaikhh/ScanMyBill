@@ -55,7 +55,27 @@ type InvoiceYearListResponse = {
   count: number;
 };
 
-type BillUploadApiResponse = Record<string, unknown>;
+type AIDebugAttempt = {
+  provider?: string | null;
+  model?: string | null;
+  mode?: string | null;
+  status?: string | null;
+  error?: string | null;
+};
+
+type AIDebugTrace = {
+  provider?: string | null;
+  model?: string | null;
+  result?: string | null;
+  error?: string | null;
+  details?: string | null;
+  attempts?: AIDebugAttempt[];
+};
+
+type BillUploadApiResponse = {
+  debug_trace?: AIDebugTrace | null;
+  [key: string]: unknown;
+};
 type PersonalDetailsPeriodResponse = {
   gst_filing_period: string | null;
 };
@@ -75,6 +95,81 @@ function toFinancialYearLabel(startYear: number) {
 function getCurrentFinancialYearStart() {
   const now = new Date();
   return now.getMonth() >= 3 ? now.getFullYear() : now.getFullYear() - 1;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function asString(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const cleaned = value.trim();
+  return cleaned.length > 0 ? cleaned : null;
+}
+
+function summarizeProcessingSource(response: BillUploadApiResponse): {
+  message: string;
+  source_details: Record<string, unknown>;
+} {
+  const traceCandidate = response.debug_trace;
+  const trace = isRecord(traceCandidate) ? traceCandidate : null;
+  const provider = asString(trace?.provider);
+  const model = asString(trace?.model);
+  const result = asString(trace?.result);
+  const traceError = asString(trace?.error);
+  const traceDetails = asString(trace?.details);
+
+  const attemptsRaw = Array.isArray(trace?.attempts) ? trace?.attempts : [];
+  const attempts = attemptsRaw
+    .filter((attempt) => isRecord(attempt))
+    .map((attempt) => ({
+      provider: asString(attempt.provider),
+      model: asString(attempt.model),
+      mode: asString(attempt.mode),
+      status: asString(attempt.status),
+      error: asString(attempt.error),
+    }));
+
+  const successfulAttempt = attempts.find((attempt) => attempt.status === "ok");
+  const successfulMode = successfulAttempt?.mode || null;
+  const serviceName = "ai_document_processor";
+
+  const messageParts = ["Upload pipeline completed successfully"];
+  if (provider || model || successfulMode) {
+    const providerLabel = provider || "ai_provider";
+    const modelLabel = model ? ` (${model})` : "";
+    const modeLabel = successfulMode ? ` via ${successfulMode}` : "";
+    messageParts.push(`Generator: ${providerLabel}${modelLabel}${modeLabel}`);
+  } else {
+    messageParts.push("Generator: api_service");
+  }
+
+  if (successfulMode === "ocr-only") {
+    messageParts.push("OCR fallback used");
+  }
+
+  const sourceDetails: Record<string, unknown> = {
+    service: serviceName,
+    provider: provider,
+    model: model,
+    result: result,
+    mode: successfulMode,
+    ocr_fallback_used: successfulMode === "ocr-only",
+  };
+  if (traceError) {
+    sourceDetails.error = traceError;
+  }
+  if (traceDetails) {
+    sourceDetails.error_details = traceDetails;
+  }
+  if (attempts.length > 0) {
+    sourceDetails.attempts = attempts;
+  }
+
+  return {
+    message: messageParts.join(" | "),
+    source_details: sourceDetails,
+  };
 }
 
 export default function DashboardPage() {
@@ -325,13 +420,17 @@ export default function DashboardPage() {
         body: formData,
         isFormData: true,
       });
+      const processingSource = summarizeProcessingSource(response);
       appendDebugEntry({
         level: "success",
         source: "upload",
         title: "Bill upload succeeded",
-        message: "Upload pipeline completed successfully",
+        message: processingSource.message,
         file_name: selectedFile.name,
-        details: response,
+        details: {
+          processing_source: processingSource.source_details,
+          response,
+        },
       });
       notifyApp({
         title: "Invoice uploaded successfully",
