@@ -12,7 +12,7 @@ from app.core.validators import ensure_password_strength
 from app.models.user import User
 
 PASSWORD_RESET_TOKEN_EXPIRY_MINUTES = 30
-FRONTEND_RESET_PASSWORD_URL = 'https://scanmybill.xyz/reset-password'
+FRONTEND_RESET_PASSWORD_URL = 'https://app.scanmybill.xyz/reset-password'
 
 
 def create_reset_token(db: Session, user: User) -> str:
