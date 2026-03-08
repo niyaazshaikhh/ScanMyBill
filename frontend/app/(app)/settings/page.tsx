@@ -275,16 +275,16 @@ export default function SettingsPage() {
   };
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-4">
       <h2 className="font-[var(--font-space)] text-2xl font-semibold">
         Settings
       </h2>
 
       <Card className="bg-white/85">
-        <CardHeader>
-          <CardTitle>Account and Access</CardTitle>
+        <CardHeader className="space-y-1 p-4 pb-2">
+          <CardTitle className="text-base">Account and Access</CardTitle>
         </CardHeader>
-        <CardContent className="space-y-2 text-sm">
+        <CardContent className="space-y-1.5 p-4 pt-0 text-sm">
           <p>
             <span className="font-medium">Name:</span> {loadingUser ? "Loading..." : user?.full_name || "-"}
           </p>
@@ -302,14 +302,14 @@ export default function SettingsPage() {
       </Card>
 
       <Card className="bg-white/85">
-        <CardHeader className="flex flex-row items-center justify-between space-y-0">
-          <CardTitle>Subscription</CardTitle>
+        <CardHeader className="flex flex-row items-center justify-between space-y-0 p-4 pb-2">
+          <CardTitle className="text-base">Subscription</CardTitle>
           <Button
             type="button"
             variant="ghost"
             size="sm"
             onClick={() => setSubscriptionExpanded((prev) => !prev)}
-            className="gap-1"
+            className="h-8 gap-1 px-2"
             aria-expanded={subscriptionExpanded}
             aria-label={subscriptionExpanded ? "Collapse subscription card" : "Expand subscription card"}
           >
@@ -318,8 +318,8 @@ export default function SettingsPage() {
           </Button>
         </CardHeader>
         {subscriptionExpanded ? (
-          <CardContent className="space-y-4">
-          <div className="grid gap-3 rounded-md border border-border bg-background/70 p-3 text-sm md:grid-cols-2">
+          <CardContent className="space-y-3 p-4 pt-0">
+          <div className="grid gap-2 rounded-md border border-border bg-background/70 p-2.5 text-sm md:grid-cols-2">
             <p className="flex items-center gap-2">
               <span className="font-medium">Current Plan:</span>
               <SubscriptionBadge plan={currentPlan} />
@@ -340,8 +340,8 @@ export default function SettingsPage() {
             </p>
           </div>
 
-          <div className="grid gap-3 lg:grid-cols-3">
-            <div className="space-y-2 rounded-md border border-border bg-background/70 p-3 lg:col-span-2">
+          <div className="grid gap-2.5 lg:grid-cols-3">
+            <div className="space-y-1.5 rounded-md border border-border bg-background/70 p-2.5 lg:col-span-2">
               <p className="text-sm font-medium">Upgrade</p>
               <p className="text-xs text-muted-foreground">
                 Move to a higher plan with immediate checkout.
@@ -361,8 +361,8 @@ export default function SettingsPage() {
               ) : null}
             </div>
 
-            <div className="grid gap-3">
-              <div className="space-y-2 rounded-md border border-border bg-background/70 p-3">
+            <div className="grid gap-2.5">
+              <div className="space-y-1.5 rounded-md border border-border bg-background/70 p-2.5">
                 <p className="text-sm font-medium">Renew</p>
                 <RazorpayCheckoutButton
                   className="w-full"
@@ -374,7 +374,7 @@ export default function SettingsPage() {
                 />
               </div>
 
-              <div className="space-y-2 rounded-md border border-border bg-background/70 p-3">
+              <div className="space-y-1.5 rounded-md border border-border bg-background/70 p-2.5">
                 <p className="text-sm font-medium">Cancel</p>
                 <Button
                   className="w-full"
@@ -396,13 +396,13 @@ export default function SettingsPage() {
       </Card>
 
       <Card className="bg-white/85">
-        <CardHeader>
-          <CardTitle>Business Setup</CardTitle>
+        <CardHeader className="space-y-1 p-4 pb-2">
+          <CardTitle className="text-base">Business Setup</CardTitle>
         </CardHeader>
-        <CardContent>
+        <CardContent className="p-4 pt-0">
           <Link
             href="/settings/personal_details"
-            className="flex items-center justify-between rounded-md border border-border bg-background px-4 py-3 transition hover:bg-muted"
+            className="flex items-center justify-between rounded-md border border-border bg-background px-3 py-2.5 transition hover:bg-muted"
           >
             <div>
               <p className="text-sm font-medium">Personal Details</p>
@@ -416,10 +416,10 @@ export default function SettingsPage() {
       </Card>
 
       <Card className="bg-white/85">
-        <CardHeader>
-          <CardTitle>Developer Tools</CardTitle>
+        <CardHeader className="space-y-1 p-4 pb-2">
+          <CardTitle className="text-base">Developer Tools</CardTitle>
         </CardHeader>
-        <CardContent className="flex items-center justify-between gap-3">
+        <CardContent className="flex items-center justify-between gap-2.5 p-4 pt-0">
           <p className="text-sm text-muted-foreground">
             Toggle Debug Console visibility on the dashboard upload flow.
           </p>
@@ -440,10 +440,10 @@ export default function SettingsPage() {
       </Card>
 
       <Card className="bg-white/85">
-        <CardHeader>
-          <CardTitle>Notification Preferences</CardTitle>
+        <CardHeader className="space-y-1 p-4 pb-2">
+          <CardTitle className="text-base">Notification Preferences</CardTitle>
         </CardHeader>
-        <CardContent className="flex items-center justify-between gap-3">
+        <CardContent className="flex items-center justify-between gap-2.5 p-4 pt-0">
           <p className="text-sm text-muted-foreground">
             Turn pop-up notifications on or off for this account.
           </p>
@@ -465,10 +465,10 @@ export default function SettingsPage() {
       </Card>
 
       <Card className="bg-white/85">
-        <CardHeader>
-          <CardTitle>Contact & Help</CardTitle>
+        <CardHeader className="space-y-1 p-4 pb-2">
+          <CardTitle className="text-base">Contact & Help</CardTitle>
         </CardHeader>
-        <CardContent className="space-y-3 text-sm">
+        <CardContent className="space-y-2.5 p-4 pt-0 text-sm">
           <p className="text-muted-foreground">
             Need help with billing, subscriptions, or account setup?
           </p>
@@ -484,7 +484,7 @@ export default function SettingsPage() {
           <button
             type="button"
             onClick={() => setHelpOpen(true)}
-            className="inline-flex w-full items-center justify-between rounded-md border border-border bg-background px-4 py-3 text-left transition hover:bg-muted"
+            className="inline-flex w-full items-center justify-between rounded-md border border-border bg-background px-3 py-2.5 text-left transition hover:bg-muted"
           >
             <span className="text-sm font-medium">Help, FAQ and About</span>
             <ChevronRight className="h-4 w-4 text-muted-foreground" />

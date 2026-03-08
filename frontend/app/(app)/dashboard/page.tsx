@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Loader2, Plus } from "lucide-react";
 
@@ -22,6 +23,7 @@ import { Select } from "@/components/ui/select";
 import { useAuthGuard } from "@/hooks/useAuthGuard";
 import { apiRequest } from "@/lib/api";
 import { notifyApp } from "@/lib/app-notification";
+import { getAuthUser } from "@/lib/auth";
 import {
   getBillUploadState,
   startBillUpload,
@@ -82,11 +84,34 @@ type BillUploadApiResponse = {
   debug_trace?: AIDebugTrace | null;
   [key: string]: unknown;
 };
-type PersonalDetailsPeriodResponse = {
+type PersonalDetailsResponse = {
+  company_name: string | null;
+  gstin_number: string | null;
+  address: string | null;
+  state_name: string | null;
+  state_code: string | null;
   gst_filing_period: string | null;
+  email: string | null;
+  bank_name: string | null;
+  account_number: string | null;
+  branch: string | null;
+  ifsc_code: string | null;
 };
 
 const periodOptions = ["monthly", "quarterly", "semi-annually", "annually"];
+const PERSONAL_DETAILS_REQUIRED_KEYS: Array<keyof PersonalDetailsResponse> = [
+  "company_name",
+  "gstin_number",
+  "address",
+  "state_name",
+  "state_code",
+  "gst_filing_period",
+  "email",
+  "bank_name",
+  "account_number",
+  "branch",
+  "ifsc_code",
+];
 
 function getFinancialYearStart(dateString: string) {
   const monthIndex = isoMonthIndex(dateString);
@@ -111,6 +136,25 @@ function asString(value: unknown): string | null {
   if (typeof value !== "string") return null;
   const cleaned = value.trim();
   return cleaned.length > 0 ? cleaned : null;
+}
+
+function hasCompletedPersonalDetails(details: PersonalDetailsResponse): boolean {
+  return PERSONAL_DETAILS_REQUIRED_KEYS.every((key) => {
+    const value = details[key];
+    return typeof value === "string" && value.trim().length > 0;
+  });
+}
+
+function resolveUserDisplayName(): string {
+  const user = getAuthUser();
+  const fullName = (user?.full_name || "").trim();
+  if (fullName) return fullName;
+  const email = (user?.email || "").trim();
+  if (email) {
+    const prefix = email.split("@")[0]?.trim();
+    if (prefix) return prefix;
+  }
+  return "User";
 }
 
 function summarizeProcessingSource(response: BillUploadApiResponse): {
@@ -200,6 +244,8 @@ export default function DashboardPage() {
   const [uploadMessage, setUploadMessage] = useState<string | null>(null);
   const [debugModeEnabled, setDebugModeEnabled] = useState(false);
   const [debugConsoleEntries, setDebugConsoleEntries] = useState<DashboardDebugConsoleRecord[]>([]);
+  const [dashboardUserName, setDashboardUserName] = useState("User");
+  const [showPersonalDetailsBanner, setShowPersonalDetailsBanner] = useState(false);
   const mainUploadInputRef = useRef<HTMLInputElement | null>(null);
   const quickUploadInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -285,16 +331,22 @@ export default function DashboardPage() {
   }, []);
 
   useEffect(() => {
+    setDashboardUserName(resolveUserDisplayName());
+  }, []);
+
+  useEffect(() => {
     let active = true;
-    apiRequest<PersonalDetailsPeriodResponse>("/users/personal-details")
+    apiRequest<PersonalDetailsResponse>("/users/personal-details")
       .then((details) => {
         if (!active) return;
+        setShowPersonalDetailsBanner(!hasCompletedPersonalDetails(details));
         const preferred = (details.gst_filing_period || "").trim().toLowerCase();
         if (preferred !== "monthly" && preferred !== "quarterly") return;
         setPeriod((current) => (current === "monthly" ? preferred : current));
       })
       .catch(() => {
         // Keep existing default period if personal details are unavailable.
+        setShowPersonalDetailsBanner(false);
       });
 
     return () => {
@@ -542,6 +594,20 @@ export default function DashboardPage() {
           </div>
         </div>
       </div>
+
+      {showPersonalDetailsBanner ? (
+        <p className="text-sm font-medium text-red-600">
+          ⚠️ {dashboardUserName} has not set up their Business Setup profile.
+          Please{" "}
+          <Link
+            href="/settings/personal_details"
+            className="font-semibold text-red-700 underline underline-offset-2 hover:text-red-800"
+          >
+            click here
+          </Link>{" "}
+          to fill the details.
+        </p>
+      ) : null}
 
       <Card className="border-amber-300/80 bg-amber-50/70">
         <CardHeader>
