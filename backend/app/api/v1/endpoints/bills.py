@@ -110,7 +110,7 @@ def _decode_text_payload(payload: bytes) -> str | None:
     return None
 
 
-def _detect_mime(payload: bytes, *, extension: str) -> str | None:
+def _detect_mime(payload: bytes, *, extension: str = '') -> str | None:
     if payload.startswith(b'%PDF-'):
         return 'application/pdf'
     if payload.startswith(b'\x89PNG\r\n\x1a\n'):
