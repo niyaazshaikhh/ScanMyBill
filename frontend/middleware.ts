@@ -61,6 +61,12 @@ export function middleware(request: NextRequest) {
   const normalizedPathname = pathname.toLowerCase();
   const token = request.cookies.get('token')?.value;
 
+  if (pathname === '/' && token) {
+    const role = resolveRoleFromToken(token);
+    const targetPath = role === 'admin' ? '/admin' : '/dashboard';
+    return withNoCache(NextResponse.redirect(new URL(targetPath, request.url)));
+  }
+
   if (pathname === '/Newsletter' || pathname.startsWith('/Newsletter/')) {
     const url = request.nextUrl.clone();
     url.pathname = pathname.replace('/Newsletter', '/newsletter');
@@ -128,6 +134,7 @@ export function middleware(request: NextRequest) {
 
 export const config = {
   matcher: [
+    '/',
     '/admin/:path*',
     '/Admin/:path*',
     '/newsletter/:path*',
