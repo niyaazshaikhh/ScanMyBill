@@ -6,6 +6,7 @@ import io
 import json
 import logging
 import re
+import zipfile
 from pathlib import Path
 from typing import Any
 
@@ -21,6 +22,9 @@ _SUPPORTED_MIME = {
     'image/png',
     'image/jpeg',
     'image/webp',
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    'text/csv',
 }
 _MAX_PDF_PAGES = 3
 _MAX_TOKENS = 3000
@@ -36,6 +40,16 @@ def _get_resample_filter() -> Any:
         return Image.Resampling.LANCZOS  # Pillow>=9
     except AttributeError:
         return Image.LANCZOS
+
+
+def _is_probably_text_payload(value: str) -> bool:
+    sample = value[:4000]
+    if not sample:
+        return False
+    disallowed_control_chars = sum(
+        1 for char in sample if ord(char) < 32 and char not in {'\n', '\r', '\t'}
+    )
+    return disallowed_control_chars <= max(1, len(sample) // 100)
 
 
 def _detect_mime(payload: bytes, file_path: Path) -> str | None:
@@ -57,6 +71,27 @@ def _detect_mime(payload: bytes, file_path: Path) -> str | None:
         return 'image/jpeg'
     if suffix == '.webp':
         return 'image/webp'
+    if suffix in {'.docx', '.xlsx'}:
+        if not payload.startswith(b'PK'):
+            return None
+        try:
+            with zipfile.ZipFile(io.BytesIO(payload)) as archive:
+                names = set(archive.namelist())
+        except (zipfile.BadZipFile, RuntimeError):
+            return None
+        if suffix == '.docx' and 'word/document.xml' in names:
+            return 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+        if suffix == '.xlsx' and 'xl/workbook.xml' in names:
+            return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        return None
+    if suffix == '.csv':
+        for encoding in ('utf-8-sig', 'utf-16', 'latin-1'):
+            try:
+                decoded = payload.decode(encoding)
+            except UnicodeDecodeError:
+                continue
+            if decoded.strip() and _is_probably_text_payload(decoded):
+                return 'text/csv'
     return None
 
 
@@ -589,6 +624,7 @@ def _request_with_provider(
     ocr_text: str | None,
     debug_trace: dict[str, Any],
 ) -> tuple[Any, str]:
+    primary_mode = 'vision+ocr' if image_blocks else 'text-only'
     try:
         completion = _request_completion(
             client=client,
@@ -602,19 +638,19 @@ def _request_with_provider(
             debug_trace,
             provider=provider,
             model=model_name,
-            mode='vision+ocr',
+            mode=primary_mode,
             status='ok',
             response_text=content,
             image_blocks_count=len(image_blocks),
         )
-        return completion, 'vision+ocr'
+        return completion, primary_mode
     except Exception as exc:
         logger.exception('AI completion with image payload failed for provider=%s', provider)
         _append_debug_attempt(
             debug_trace,
             provider=provider,
             model=model_name,
-            mode='vision+ocr',
+            mode=primary_mode,
             status='error',
             error=_format_model_error(exc),
             image_blocks_count=len(image_blocks),
@@ -802,7 +838,7 @@ async def extract_document_data(
         return {'error': 'Unsupported file type for AI processing'}
 
     image_blocks = _build_image_blocks(path, mime_type, payload)
-    if not image_blocks:
+    if not image_blocks and not (ocr_text or '').strip():
         return {'error': 'File cannot be processed'}
 
     return await asyncio.to_thread(_sync_completion, image_blocks, company_name, ocr_text)

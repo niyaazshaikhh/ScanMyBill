@@ -524,15 +524,15 @@ export default function DashboardPage() {
         <CardHeader>
           <CardTitle>Bill Processing Flow</CardTitle>
           <CardDescription>
-            Upload JPEG/PNG/PDF bills, run AI extraction, and auto-store
-            structured records.
+            Upload JPEG/PNG/PDF/DOCX/XLSX/CSV bills, run AI extraction, and
+            auto-store structured records.
           </CardDescription>
         </CardHeader>
         <CardContent className="grid gap-3 md:grid-cols-[1fr_130px]">
           <Input
             ref={mainUploadInputRef}
             type="file"
-            accept=".jpeg,.jpg,.png,.pdf,.xls,.xlsx"
+            accept=".jpeg,.jpg,.png,.pdf,.docx,.xlsx,.csv"
             onChange={(event) => setFile(event.target.files?.[0] || null)}
           />
           <Button onClick={onUpload} disabled={!file || uploading}>
@@ -658,7 +658,7 @@ export default function DashboardPage() {
       <input
         ref={quickUploadInputRef}
         type="file"
-        accept=".jpeg,.jpg,.png,.pdf,.xls,.xlsx"
+        accept=".jpeg,.jpg,.png,.pdf,.docx,.xlsx,.csv"
         className="hidden"
         onChange={(event) => {
           const selected = event.target.files?.[0] || null;

@@ -1,10 +1,13 @@
 from __future__ import annotations
 
 import base64
+import csv
 import io
 import json
 import logging
 import re
+import zipfile
+import xml.etree.ElementTree as ET
 from datetime import date, datetime
 from pathlib import Path
 from typing import Any
@@ -57,6 +60,8 @@ PURCHASE_KEYWORDS = ('purchase', 'supplier', 'vendor bill', 'inward')
 
 MAX_VISUAL_PAGES = 3
 LLM_TIMEOUT_SECONDS = 45
+MAX_TEXT_EXTRACT_LINES = 300
+MAX_TEXT_EXTRACT_CHARS = 12_000
 
 def preprocess_image(image: Image.Image):
 
@@ -68,6 +73,132 @@ def preprocess_image(image: Image.Image):
     image = image.point(lambda x: 0 if x < 140 else 255)
 
     return image
+
+
+def _clip_text(text: str) -> str:
+    cleaned = (text or '').strip()
+    if len(cleaned) <= MAX_TEXT_EXTRACT_CHARS:
+        return cleaned
+    return cleaned[:MAX_TEXT_EXTRACT_CHARS]
+
+
+def _extract_text_from_docx(path: Path) -> str:
+    try:
+        with zipfile.ZipFile(path) as archive:
+            document_xml = archive.read('word/document.xml')
+    except Exception:
+        return ''
+
+    try:
+        root = ET.fromstring(document_xml)
+    except ET.ParseError:
+        return ''
+
+    ns = '{http://schemas.openxmlformats.org/wordprocessingml/2006/main}'
+    paragraphs: list[str] = []
+    for paragraph in root.iter(f'{ns}p'):
+        text_parts = [node.text for node in paragraph.iter(f'{ns}t') if isinstance(node.text, str) and node.text]
+        if text_parts:
+            paragraphs.append(''.join(text_parts))
+        if len(paragraphs) >= MAX_TEXT_EXTRACT_LINES:
+            break
+    return _clip_text('\n'.join(paragraphs))
+
+
+def _load_xlsx_shared_strings(archive: zipfile.ZipFile) -> list[str]:
+    try:
+        payload = archive.read('xl/sharedStrings.xml')
+    except KeyError:
+        return []
+    except Exception:
+        return []
+
+    try:
+        root = ET.fromstring(payload)
+    except ET.ParseError:
+        return []
+
+    ns = '{http://schemas.openxmlformats.org/spreadsheetml/2006/main}'
+    shared: list[str] = []
+    for item in root.findall(f'.//{ns}si'):
+        text_parts = [node.text for node in item.iter(f'{ns}t') if isinstance(node.text, str) and node.text]
+        shared.append(''.join(text_parts))
+    return shared
+
+
+def _extract_rows_from_sheet_xml(payload: bytes, shared_strings: list[str]) -> list[str]:
+    try:
+        root = ET.fromstring(payload)
+    except ET.ParseError:
+        return []
+
+    ns = '{http://schemas.openxmlformats.org/spreadsheetml/2006/main}'
+    rows: list[str] = []
+    for row in root.findall(f'.//{ns}row'):
+        values: list[str] = []
+        for cell in row.findall(f'{ns}c'):
+            cell_type = cell.attrib.get('t')
+            raw_value = ''
+            if cell_type == 'inlineStr':
+                inline_text = cell.find(f'{ns}is/{ns}t')
+                raw_value = inline_text.text if inline_text is not None and isinstance(inline_text.text, str) else ''
+            else:
+                value_node = cell.find(f'{ns}v')
+                raw_value = value_node.text if value_node is not None and isinstance(value_node.text, str) else ''
+
+            value = raw_value.strip()
+            if cell_type == 's' and value.isdigit():
+                index = int(value)
+                if 0 <= index < len(shared_strings):
+                    value = shared_strings[index]
+            values.append(value)
+
+        if values:
+            rows.append(', '.join(item for item in values if item))
+        if len(rows) >= MAX_TEXT_EXTRACT_LINES:
+            break
+    return rows
+
+
+def _extract_text_from_xlsx(path: Path) -> str:
+    try:
+        with zipfile.ZipFile(path) as archive:
+            shared_strings = _load_xlsx_shared_strings(archive)
+            sheet_entries = sorted(
+                name
+                for name in archive.namelist()
+                if name.startswith('xl/worksheets/sheet') and name.endswith('.xml')
+            )
+            row_lines: list[str] = []
+            for entry in sheet_entries[:3]:
+                sheet_xml = archive.read(entry)
+                row_lines.extend(_extract_rows_from_sheet_xml(sheet_xml, shared_strings))
+                if len(row_lines) >= MAX_TEXT_EXTRACT_LINES:
+                    break
+    except Exception:
+        return ''
+
+    return _clip_text('\n'.join(row_lines[:MAX_TEXT_EXTRACT_LINES]))
+
+
+def _extract_text_from_csv(path: Path) -> str:
+    encodings = ('utf-8-sig', 'utf-16', 'latin-1')
+    for encoding in encodings:
+        try:
+            lines: list[str] = []
+            with path.open('r', encoding=encoding, newline='') as handle:
+                reader = csv.reader(handle)
+                for index, row in enumerate(reader):
+                    if index >= MAX_TEXT_EXTRACT_LINES:
+                        break
+                    lines.append(', '.join(cell.strip() for cell in row if isinstance(cell, str)))
+            if lines:
+                return _clip_text('\n'.join(lines))
+        except UnicodeDecodeError:
+            continue
+        except Exception:
+            return ''
+    return ''
 
 def extract_text_from_file(file_path: str, mime_type: str) -> str:
     path = Path(file_path)
@@ -81,6 +212,15 @@ def extract_text_from_file(file_path: str, mime_type: str) -> str:
 
         if mime_type == 'application/pdf':
             return _extract_text_from_pdf(path)
+
+        if mime_type == 'application/vnd.openxmlformats-officedocument.wordprocessingml.document':
+            return _extract_text_from_docx(path)
+
+        if mime_type == 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet':
+            return _extract_text_from_xlsx(path)
+
+        if mime_type == 'text/csv':
+            return _extract_text_from_csv(path)
 
         return ''
     except Exception:

@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 from datetime import date, datetime
+import csv
 import io
 import logging
 from pathlib import Path
 import re
 import tempfile
+import zipfile
 from typing import Any, Final
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
@@ -42,24 +44,98 @@ ALLOWED_MIME_TYPES = {
     'image/png',
     'image/jpeg',
     'image/jpg',
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    'text/csv',
+    'application/csv',
+    'text/plain',
+    'application/vnd.ms-excel',
+    'application/octet-stream',
 }
-ALLOWED_EXTENSIONS = {'.pdf', '.png', '.jpg', '.jpeg'}
+ALLOWED_EXTENSIONS = {'.pdf', '.png', '.jpg', '.jpeg', '.docx', '.xlsx', '.csv'}
 MIME_BY_EXTENSION: Final[dict[str, str]] = {
     '.pdf': 'application/pdf',
     '.png': 'image/png',
     '.jpg': 'image/jpeg',
     '.jpeg': 'image/jpeg',
+    '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    '.csv': 'text/csv',
+}
+REPORTED_MIME_BY_EXTENSION: Final[dict[str, set[str]]] = {
+    '.pdf': {'application/pdf'},
+    '.png': {'image/png'},
+    '.jpg': {'image/jpeg', 'image/jpg'},
+    '.jpeg': {'image/jpeg', 'image/jpg'},
+    '.docx': {
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        'application/octet-stream',
+        'application/zip',
+    },
+    '.xlsx': {
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        'application/vnd.ms-excel',
+        'application/octet-stream',
+        'application/zip',
+    },
+    '.csv': {
+        'text/csv',
+        'application/csv',
+        'text/plain',
+        'application/vnd.ms-excel',
+        'application/octet-stream',
+    },
 }
 ALLOWED_INVOICE_TYPES: Final[set[str]] = {InvoiceType.SALES.value, InvoiceType.PURCHASE.value}
 
 
-def _detect_mime(payload: bytes) -> str | None:
+def _is_probably_text_payload(value: str) -> bool:
+    sample = value[:4000]
+    if not sample:
+        return False
+    disallowed_control_chars = sum(
+        1 for char in sample if ord(char) < 32 and char not in {'\n', '\r', '\t'}
+    )
+    return disallowed_control_chars <= max(1, len(sample) // 100)
+
+
+def _decode_text_payload(payload: bytes) -> str | None:
+    for encoding in ('utf-8-sig', 'utf-16', 'latin-1'):
+        try:
+            decoded = payload.decode(encoding)
+        except UnicodeDecodeError:
+            continue
+        if decoded.strip() and _is_probably_text_payload(decoded):
+            return decoded
+    return None
+
+
+def _detect_mime(payload: bytes, *, extension: str) -> str | None:
     if payload.startswith(b'%PDF-'):
         return 'application/pdf'
     if payload.startswith(b'\x89PNG\r\n\x1a\n'):
         return 'image/png'
     if payload.startswith(b'\xff\xd8\xff'):
         return 'image/jpeg'
+
+    if extension in {'.docx', '.xlsx'}:
+        if not payload.startswith(b'PK'):
+            return None
+        try:
+            with zipfile.ZipFile(io.BytesIO(payload)) as archive:
+                names = set(archive.namelist())
+        except (zipfile.BadZipFile, RuntimeError):
+            return None
+        if extension == '.docx' and 'word/document.xml' in names:
+            return 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+        if extension == '.xlsx' and 'xl/workbook.xml' in names:
+            return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        return None
+
+    if extension == '.csv':
+        text = _decode_text_payload(payload)
+        return 'text/csv' if text else None
+
     return None
 
 
@@ -74,6 +150,57 @@ def _scan_upload_metadata(payload: bytes, detected_mime: str) -> None:
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail='Uploaded PDF appears corrupted or unreadable.',
             ) from exc
+        return
+
+    if detected_mime == 'application/vnd.openxmlformats-officedocument.wordprocessingml.document':
+        try:
+            with zipfile.ZipFile(io.BytesIO(payload)) as archive:
+                document_xml = archive.read('word/document.xml')
+            if not document_xml.strip():
+                raise ValueError('word/document.xml is empty')
+        except Exception as exc:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail='Uploaded DOCX appears corrupted or unreadable.',
+            ) from exc
+        return
+
+    if detected_mime == 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet':
+        try:
+            with zipfile.ZipFile(io.BytesIO(payload)) as archive:
+                workbook_xml = archive.read('xl/workbook.xml')
+                sheet_names = [
+                    name for name in archive.namelist() if name.startswith('xl/worksheets/sheet') and name.endswith('.xml')
+                ]
+            if not workbook_xml.strip() or not sheet_names:
+                raise ValueError('Missing workbook metadata or sheets')
+        except Exception as exc:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail='Uploaded XLSX appears corrupted or unreadable.',
+            ) from exc
+        return
+
+    if detected_mime == 'text/csv':
+        text = _decode_text_payload(payload)
+        if not text:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail='Uploaded CSV appears corrupted or unreadable.',
+            )
+        preview = '\n'.join(text.splitlines()[:50])
+        try:
+            rows = list(csv.reader(io.StringIO(preview)))
+        except Exception as exc:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail='Uploaded CSV appears corrupted or unreadable.',
+            ) from exc
+        if not rows:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail='Uploaded CSV appears empty or unreadable.',
+            )
         return
 
     if detected_mime not in {'image/png', 'image/jpeg'}:
@@ -475,11 +602,17 @@ async def upload_bill(
     current_user: User = Depends(get_current_user),
 ) -> BillUploadResponse:
     mime_type = (file.content_type or '').lower()
+    if mime_type == 'image/jpg':
+        mime_type = 'image/jpeg'
     extension = Path(file.filename or '').suffix.lower()
     if extension not in ALLOWED_EXTENSIONS:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Unsupported file type')
     if mime_type and mime_type not in ALLOWED_MIME_TYPES:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Unsupported file type')
+    if mime_type:
+        expected_reported_mimes = REPORTED_MIME_BY_EXTENSION.get(extension, set())
+        if expected_reported_mimes and mime_type not in expected_reported_mimes:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Unsupported file type')
 
     normalized_invoice_type = invoice_type.strip().lower()
     if normalized_invoice_type not in ALLOWED_INVOICE_TYPES:
@@ -496,15 +629,10 @@ async def upload_bill(
             detail=f'File exceeds {settings.max_upload_mb}MB limit',
         )
 
-    detected_mime = _detect_mime(payload)
+    detected_mime = _detect_mime(payload, extension=extension)
     expected_mime = MIME_BY_EXTENSION.get(extension)
     if not detected_mime or (expected_mime and detected_mime != expected_mime):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Uploaded file content is invalid')
-
-    if mime_type and mime_type == 'image/jpg':
-        mime_type = 'image/jpeg'
-    if mime_type and mime_type != detected_mime:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='File MIME type does not match file content')
     _scan_upload_metadata(payload, detected_mime)
 
     safe_original_name = _sanitize_display_filename(file.filename, extension)

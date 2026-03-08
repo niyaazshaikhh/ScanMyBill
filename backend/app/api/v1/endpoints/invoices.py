@@ -2,6 +2,7 @@
 
 from datetime import date
 from io import BytesIO
+import logging
 import mimetypes
 from pathlib import Path
 import re
@@ -43,6 +44,7 @@ from app.utils.pdf_filename import build_bill_pdf_filename
 from app.utils.period import matches_bucket, valid_period
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 
 def _invoice_to_response(invoice: Invoice) -> InvoiceResponse:
@@ -293,6 +295,36 @@ def _resolve_invoice_pdf_for_response(
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail='Generated invoice PDF missing')
 
     return absolute_pdf_path, generated_pdf_path
+
+
+def _generated_invoice_pdf_file_response(
+    invoice: Invoice,
+    *,
+    db: Session,
+    owner_id: str,
+    company_details: PersonalDetails | None,
+    inline: bool,
+) -> FileResponse:
+    absolute_pdf_path, cleanup_path = _resolve_invoice_pdf_for_response(
+        invoice,
+        db=db,
+        owner_id=owner_id,
+        company_details=company_details,
+    )
+    filename = build_bill_pdf_filename(
+        bill_date=invoice.invoice_date,
+        document_number=invoice.invoice_number,
+        client_name=invoice.client.name if invoice.client else None,
+    )
+    disposition = 'inline' if inline else 'attachment'
+    background = BackgroundTask(remove_generated_pdf, cleanup_path) if cleanup_path else None
+    return FileResponse(
+        path=str(absolute_pdf_path),
+        media_type='application/pdf',
+        filename=filename,
+        headers={'Content-Disposition': f'{disposition}; filename="{filename}"'},
+        background=background,
+    )
 
 
 def _is_uploaded_invoice(invoice: Invoice) -> bool:
@@ -647,9 +679,24 @@ def export_folder(
     try:
         for invoice in invoices:
             if _is_uploaded_invoice(invoice):
-                uploaded_pdf_bytes = _uploaded_invoice_pdf_bytes(invoice)
-                _append_pdf_bytes(writer, uploaded_pdf_bytes, invoice_number=invoice.invoice_number)
-                continue
+                try:
+                    uploaded_pdf_bytes = _uploaded_invoice_pdf_bytes(invoice)
+                    _append_pdf_bytes(writer, uploaded_pdf_bytes, invoice_number=invoice.invoice_number)
+                    continue
+                except HTTPException as exc:
+                    if exc.status_code not in {
+                        status.HTTP_404_NOT_FOUND,
+                        status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    }:
+                        raise
+                    logger.warning(
+                        'Falling back to generated PDF for uploaded invoice export due to missing/unsupported source file. '
+                        'invoice_id=%s owner_id=%s path=%s status=%s',
+                        invoice.id,
+                        current_user.id,
+                        invoice.original_file_path,
+                        exc.status_code,
+                    )
 
             absolute_pdf_path, cleanup_path = _resolve_invoice_pdf_for_response(
                 invoice,
@@ -784,28 +831,27 @@ def get_invoice_preview(
     if not invoice:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='Invoice not found')
 
-    if _is_uploaded_invoice(invoice):
-        return _as_uploaded_invoice_file_response(invoice, inline=True)
-
     company_details = db.scalar(select(PersonalDetails).where(PersonalDetails.owner_id == current_user.id))
-    absolute_pdf_path, cleanup_path = _resolve_invoice_pdf_for_response(
+    if _is_uploaded_invoice(invoice):
+        try:
+            return _as_uploaded_invoice_file_response(invoice, inline=True)
+        except HTTPException as exc:
+            if exc.status_code != status.HTTP_404_NOT_FOUND:
+                raise
+            logger.warning(
+                'Uploaded invoice preview source file missing. Falling back to generated PDF. '
+                'invoice_id=%s owner_id=%s path=%s',
+                invoice.id,
+                current_user.id,
+                invoice.original_file_path,
+            )
+
+    return _generated_invoice_pdf_file_response(
         invoice,
         db=db,
         owner_id=current_user.id,
         company_details=company_details,
-    )
-    filename = build_bill_pdf_filename(
-        bill_date=invoice.invoice_date,
-        document_number=invoice.invoice_number,
-        client_name=invoice.client.name if invoice.client else None,
-    )
-    background = BackgroundTask(remove_generated_pdf, cleanup_path) if cleanup_path else None
-    return FileResponse(
-        path=str(absolute_pdf_path),
-        media_type='application/pdf',
-        filename=filename,
-        headers={'Content-Disposition': f'inline; filename="{filename}"'},
-        background=background,
+        inline=True,
     )
 
 
@@ -823,29 +869,28 @@ def get_invoice_pdf(
     if not invoice:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='Invoice not found')
 
-    if _is_uploaded_invoice(invoice):
-        _create_notification_best_effort(
-            db,
-            user_id=current_user.id,
-            title='Invoice File Downloaded',
-            message=f'Invoice {invoice.invoice_number} file has been downloaded.',
-            route='/invoices',
-        )
-        return _as_uploaded_invoice_file_response(invoice, inline=False)
-
     company_details = db.scalar(select(PersonalDetails).where(PersonalDetails.owner_id == current_user.id))
-    absolute_pdf_path, cleanup_path = _resolve_invoice_pdf_for_response(
-        invoice,
-        db=db,
-        owner_id=current_user.id,
-        company_details=company_details,
-    )
+    if _is_uploaded_invoice(invoice):
+        try:
+            _create_notification_best_effort(
+                db,
+                user_id=current_user.id,
+                title='Invoice File Downloaded',
+                message=f'Invoice {invoice.invoice_number} file has been downloaded.',
+                route='/invoices',
+            )
+            return _as_uploaded_invoice_file_response(invoice, inline=False)
+        except HTTPException as exc:
+            if exc.status_code != status.HTTP_404_NOT_FOUND:
+                raise
+            logger.warning(
+                'Uploaded invoice download source file missing. Falling back to generated PDF. '
+                'invoice_id=%s owner_id=%s path=%s',
+                invoice.id,
+                current_user.id,
+                invoice.original_file_path,
+            )
 
-    filename = build_bill_pdf_filename(
-        bill_date=invoice.invoice_date,
-        document_number=invoice.invoice_number,
-        client_name=invoice.client.name if invoice.client else None,
-    )
     _create_notification_best_effort(
         db,
         user_id=current_user.id,
@@ -853,11 +898,11 @@ def get_invoice_pdf(
         message=f'Invoice {invoice.invoice_number} PDF has been downloaded.',
         route='/invoices',
     )
-    background = BackgroundTask(remove_generated_pdf, cleanup_path) if cleanup_path else None
-    return FileResponse(
-        path=str(absolute_pdf_path),
-        media_type='application/pdf',
-        filename=filename,
-        background=background,
-    )
 
+    return _generated_invoice_pdf_file_response(
+        invoice,
+        db=db,
+        owner_id=current_user.id,
+        company_details=company_details,
+        inline=False,
+    )
