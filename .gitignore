@@ -63,3 +63,6 @@ project_tree.txt
 *.p12
 *.pfx
 *.crt
+
+# credentials and steps 
+run.txt

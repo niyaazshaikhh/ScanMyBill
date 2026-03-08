@@ -7,12 +7,21 @@ from urllib.parse import quote_plus
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.core.config import settings
 from app.core.security import get_password_hash, hash_token, utc_now
 from app.core.validators import ensure_password_strength
 from app.models.user import User
 
 PASSWORD_RESET_TOKEN_EXPIRY_MINUTES = 30
-FRONTEND_RESET_PASSWORD_URL = 'https://app.scanmybill.xyz/reset-password'
+
+
+def _normalized_reset_password_url() -> str:
+    raw = (settings.frontend_reset_password_url or '').strip()
+    if not raw:
+        raw = 'https://app.scanmybill.xyz/reset-password'
+    if not raw.startswith(('http://', 'https://')):
+        raw = f'https://{raw.lstrip("/")}'
+    return raw.rstrip('/')
 
 
 def create_reset_token(db: Session, user: User) -> str:
@@ -24,7 +33,7 @@ def create_reset_token(db: Session, user: User) -> str:
 
 
 def build_password_reset_link(token: str) -> str:
-    return f'{FRONTEND_RESET_PASSWORD_URL}?token={quote_plus(token)}'
+    return f'{_normalized_reset_password_url()}?token={quote_plus(token)}'
 
 
 def verify_reset_token(db: Session, token: str) -> User | None:

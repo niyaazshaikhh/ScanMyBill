@@ -73,6 +73,8 @@ class Settings(BaseSettings):
     aws_region: str = 'ap-south-1'
     aws_s3_bucket: str | None = None
 
+    frontend_reset_password_url: str = 'https://app.scanmybill.xyz/reset-password'
+
     openai_api_key: str | None = None
     openai_base_url: str | None = None
     openai_model: str = 'gpt-4o-mini'

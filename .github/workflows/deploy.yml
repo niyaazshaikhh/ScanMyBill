@@ -224,6 +224,7 @@ jobs:
           EXPOSE_PASSWORD_RESET_TOKEN: ${{ vars.EXPOSE_PASSWORD_RESET_TOKEN || 'false' }}
           SEED_DEFAULT_ADMIN: ${{ vars.SEED_DEFAULT_ADMIN || 'false' }}
           UPLOADS_DIR: ${{ vars.UPLOADS_DIR || 'uploads' }}
+          FRONTEND_RESET_PASSWORD_URL: ${{ vars.FRONTEND_RESET_PASSWORD_URL || 'https://app.scanmybill.xyz/reset-password' }}
           OPENAI_BASE_URL: ${{ vars.OPENAI_BASE_URL }}
           OPENAI_MODEL: ${{ vars.OPENAI_MODEL || 'gpt-4o-mini' }}
           AZURE_OPENAI_ENDPOINT: ${{ vars.AZURE_OPENAI_ENDPOINT }}
@@ -265,6 +266,7 @@ jobs:
             "EXPOSE_PASSWORD_RESET_TOKEN=${EXPOSE_PASSWORD_RESET_TOKEN}"
             "SEED_DEFAULT_ADMIN=${SEED_DEFAULT_ADMIN}"
             "UPLOADS_DIR=${UPLOADS_DIR}"
+            "FRONTEND_RESET_PASSWORD_URL=${FRONTEND_RESET_PASSWORD_URL}"
             "OPENAI_MODEL=${OPENAI_MODEL}"
             "AZURE_OPENAI_API_VERSION=${AZURE_OPENAI_API_VERSION}"
             "SMTP_PORT=${SMTP_PORT}"

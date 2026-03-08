@@ -11,3 +11,7 @@ Docker
 
 Production
 ----------
+How to login into PostgreSQL database: 
+DATABASE_URL_OVERRIDE = postgresql+psycopg2://scanadmin:Niyaz%407860@scanmybillpg001.postgres.database.azure.com:5432/scanmybill?sslmode=require
+
+psql "host=scanmybillpg001.postgres.database.azure.com port=5432 dbname=scanmybill user=scanadmin password=Niyaz@7860 sslmode=require"
