@@ -6,10 +6,10 @@
     <title>{{ subject }}</title>
   </head>
   <body
-    style="
-      font-family: Arial, sans-serif;
-      line-height: 1.5;
-      color: #222;
+      style="
+        font-family: Arial, sans-serif;
+        line-height: 1.5;
+        color: #222;
       margin: 0;
       padding: 20px;
       background: #f6f8fb;
@@ -33,7 +33,7 @@
           style="
             padding: 18px 24px;
             border-bottom: 1px solid #e2e8f0;
-            background: #f8fafc;
+            background: #fff7f1;
           "
         >
           <table
@@ -45,8 +45,8 @@
             <tr>
               <td style="width: 44px; vertical-align: middle">
                 <img
-                  src="../../../frontend/public/icons/icon-512.png"
-                  alt="ScanMyBill logo"
+                  src="{{ logo_url }}"
+                  alt="{{ brand_name }} logo"
                   width="36"
                   height="36"
                   style="display: block; border: 0; border-radius: 8px"
@@ -58,10 +58,10 @@
                     margin: 0;
                     font-size: 18px;
                     font-weight: 700;
-                    color: #0f172a;
+                    color: {{ brand_color }};
                   "
                 >
-                  ScanMyBill
+                  {{ brand_name }}
                 </p>
                 <p style="margin: 2px 0 0; font-size: 12px; color: #64748b">
                   AI Billing &amp; GST Workflows for Indian MSMEs
@@ -81,13 +81,13 @@
             style="border: 0; border-top: 1px solid #e2e8f0; margin: 20px 0"
           />
           <p style="margin: 0; font-size: 13px; color: #475569">
-            You received this email because you subscribed to ScanMyBill.
+            You received this email because you subscribed to {{ brand_name }}.
           </p>
           <p style="margin: 6px 0 0; font-size: 13px; color: #475569">
             Unsubscribe:
             <a
               href="{{ unsubscribe_link }}"
-              style="color: #2563eb; text-decoration: none"
+              style="color: {{ brand_color }}; text-decoration: none"
               >{{ unsubscribe_link }}</a
             >
           </p>

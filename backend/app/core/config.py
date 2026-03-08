@@ -74,6 +74,10 @@ class Settings(BaseSettings):
     aws_s3_bucket: str | None = None
 
     frontend_reset_password_url: str = 'https://app.scanmybill.xyz/reset-password'
+    newsletter_unsubscribe_base_url: str = 'https://api.scanmybill.xyz/api/v1/newsletter/unsubscribe'
+    newsletter_logo_url: str = 'https://app.scanmybill.xyz/icons/icon-512.png'
+    newsletter_brand_name: str = 'ScanMyBill'
+    newsletter_brand_color: str = '#d85b1b'
 
     openai_api_key: str | None = None
     openai_base_url: str | None = None

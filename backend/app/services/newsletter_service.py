@@ -9,6 +9,7 @@ from jinja2 import Environment, FileSystemLoader, TemplateNotFound, select_autoe
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app.core.config import settings
 from app.core.security import utc_now
 from app.models.newsletter import NewsletterSubscriber
 from app.services.email_service import EmailMessagePayload, send_email_batch
@@ -17,7 +18,10 @@ logger = logging.getLogger(__name__)
 
 APP_ROOT = Path(__file__).resolve().parents[1]
 TEMPLATE_NAME = 'newsletter.html'
-UNSUBSCRIBE_BASE_URL = 'https://app.scanmybill.xyz/unsubscribe'
+DEFAULT_UNSUBSCRIBE_BASE_URL = 'https://api.scanmybill.xyz/api/v1/newsletter/unsubscribe'
+DEFAULT_LOGO_URL = 'https://app.scanmybill.xyz/icons/icon-512.png'
+DEFAULT_BRAND_NAME = 'ScanMyBill'
+DEFAULT_BRAND_COLOR = '#d85b1b'
 
 
 def _normalize_email(email: str) -> str:
@@ -54,16 +58,24 @@ def _template_environment() -> Environment:
 
 
 def _unsubscribe_link(email: str) -> str:
-    return f'{UNSUBSCRIBE_BASE_URL}?email={quote_plus(email)}'
+    base_url = (settings.newsletter_unsubscribe_base_url or '').strip() or DEFAULT_UNSUBSCRIBE_BASE_URL
+    return f'{base_url}?email={quote_plus(email)}'
 
 
 def _render_newsletter_html(subject: str, message: str, unsubscribe_link: str) -> str:
+    brand_name = (settings.newsletter_brand_name or '').strip() or DEFAULT_BRAND_NAME
+    brand_color = (settings.newsletter_brand_color or '').strip() or DEFAULT_BRAND_COLOR
+    logo_url = (settings.newsletter_logo_url or '').strip() or DEFAULT_LOGO_URL
+
     try:
         template = _template_environment().get_template(TEMPLATE_NAME)
         return template.render(
             subject=subject,
             message=message,
             unsubscribe_link=unsubscribe_link,
+            brand_name=brand_name,
+            brand_color=brand_color,
+            logo_url=logo_url,
         )
     except TemplateNotFound:
         logger.error('Newsletter template missing at app/templates/%s. Using fallback template.', TEMPLATE_NAME)
@@ -73,12 +85,19 @@ def _render_newsletter_html(subject: str, message: str, unsubscribe_link: str) -
     safe_subject = escape(subject)
     safe_message = escape(message).replace('\n', '<br/>')
     safe_unsubscribe = escape(unsubscribe_link)
+    safe_brand_name = escape(brand_name)
+    safe_brand_color = escape(brand_color)
+    safe_logo_url = escape(logo_url)
     return (
-        f'<html><body>'
+        f'<html><body style="font-family:Arial,sans-serif;line-height:1.5;color:#222;">'
+        f'<div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;">'
+        f'<img src="{safe_logo_url}" alt="{safe_brand_name} logo" width="32" height="32" style="display:block;border:0;border-radius:6px;" />'
+        f'<span style="font-size:18px;font-weight:700;color:{safe_brand_color};">{safe_brand_name}</span>'
+        f'</div>'
         f'<h2>{safe_subject}</h2>'
         f'<p>{safe_message}</p>'
         f'<hr/>'
-        f'<p>You received this email because you subscribed to ScanMyBill.</p>'
+        f'<p>You received this email because you subscribed to {safe_brand_name}.</p>'
         f'<p>Unsubscribe: <a href="{safe_unsubscribe}">{safe_unsubscribe}</a></p>'
         f'</body></html>'
     )
