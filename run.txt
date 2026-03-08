@@ -1,0 +1,13 @@
+Local
+----------
+Backend: 
+
+Frontend: 
+
+
+Docker
+----------
+
+
+Production
+----------

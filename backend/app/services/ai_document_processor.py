@@ -25,6 +25,7 @@ _SUPPORTED_MIME = {
 _MAX_PDF_PAGES = 3
 _MAX_TOKENS = 3000
 _DEBUG_RESPONSE_TEXT_LIMIT = 12_000
+_RESPONSE_SCHEMA_NAME = 'bill_extraction'
 
 
 def _detect_mime(payload: bytes, file_path: Path) -> str | None:
@@ -135,6 +136,112 @@ def _build_user_instruction(company_name: str | None, ocr_text: str | None) -> s
     )
 
 
+def _bill_extraction_json_schema() -> dict[str, Any]:
+    return {
+        'type': 'object',
+        'additionalProperties': False,
+        'properties': {
+            'document_type': {'type': 'string', 'enum': ['gst_invoice', 'delivery_challan']},
+            'bill_type': {'type': 'string', 'enum': ['sales', 'purchase']},
+            'gst_invoice': {
+                'type': 'object',
+                'additionalProperties': False,
+                'properties': {
+                    'invoice_number': {'type': ['string', 'null']},
+                    'invoice_date': {'type': ['string', 'null']},
+                    'seller_name': {'type': ['string', 'null']},
+                    'buyer_name': {'type': ['string', 'null']},
+                    'place_of_supply': {'type': ['string', 'null']},
+                    'place_of_supply_code': {'type': ['string', 'null']},
+                    'gst_number': {'type': ['string', 'null']},
+                    'subtotal': {'type': ['number', 'null']},
+                    'gst_amount': {'type': ['number', 'null']},
+                    'total_amount': {'type': ['number', 'null']},
+                    'notes': {'type': ['string', 'null']},
+                    'items': {
+                        'type': 'array',
+                        'items': {
+                            'type': 'object',
+                            'additionalProperties': False,
+                            'properties': {
+                                'description': {'type': ['string', 'null']},
+                                'hsn_sac': {'type': ['string', 'null']},
+                                'quantity': {'type': ['number', 'null']},
+                                'rate': {'type': ['number', 'null']},
+                                'tax_rate': {'type': ['number', 'null']},
+                            },
+                            'required': ['description', 'hsn_sac', 'quantity', 'rate', 'tax_rate'],
+                        },
+                    },
+                },
+                'required': [
+                    'invoice_number',
+                    'invoice_date',
+                    'seller_name',
+                    'buyer_name',
+                    'place_of_supply',
+                    'place_of_supply_code',
+                    'gst_number',
+                    'subtotal',
+                    'gst_amount',
+                    'total_amount',
+                    'notes',
+                    'items',
+                ],
+            },
+            'delivery_challan': {
+                'type': 'object',
+                'additionalProperties': False,
+                'properties': {
+                    'challan_number': {'type': ['number', 'null']},
+                    'order_number': {'type': ['string', 'null']},
+                    'challan_date': {'type': ['string', 'null']},
+                    'from_party': {'type': ['string', 'null']},
+                    'to_party': {'type': ['string', 'null']},
+                    'subtotal': {'type': ['number', 'null']},
+                    'notes': {'type': ['string', 'null']},
+                    'items': {
+                        'type': 'array',
+                        'items': {
+                            'type': 'object',
+                            'additionalProperties': False,
+                            'properties': {
+                                'description': {'type': ['string', 'null']},
+                                'quantity': {'type': ['number', 'null']},
+                                'rate': {'type': ['number', 'null']},
+                            },
+                            'required': ['description', 'quantity', 'rate'],
+                        },
+                    },
+                },
+                'required': [
+                    'challan_number',
+                    'order_number',
+                    'challan_date',
+                    'from_party',
+                    'to_party',
+                    'subtotal',
+                    'notes',
+                    'items',
+                ],
+            },
+            'warnings': {'type': 'array', 'items': {'type': 'string'}},
+        },
+        'required': ['document_type', 'bill_type', 'gst_invoice', 'delivery_challan', 'warnings'],
+    }
+
+
+def _strict_json_response_format() -> dict[str, Any]:
+    return {
+        'type': 'json_schema',
+        'json_schema': {
+            'name': _RESPONSE_SCHEMA_NAME,
+            'strict': True,
+            'schema': _bill_extraction_json_schema(),
+        },
+    }
+
+
 def _validate_document_type(data: dict[str, Any]) -> dict[str, Any]:
     normalized_document_type = _normalize_document_type_value(data)
     if normalized_document_type is None:
@@ -225,17 +332,16 @@ def _clip_debug_text(value: str, limit: int = _DEBUG_RESPONSE_TEXT_LIMIT) -> str
     return f'{cleaned[:limit]}... [truncated {omitted} chars]'
 
 
-def _new_debug_trace(
-    *,
-    endpoint: str | None,
-    deployment: str | None,
-) -> dict[str, Any]:
+def _new_debug_trace() -> dict[str, Any]:
     return {
-        'provider': 'azure_openai',
+        'provider': None,
+        'model': None,
         'configured_model': settings.openai_model,
-        'endpoint': endpoint,
-        'deployment': deployment,
+        'openai_base_url': settings.openai_base_url,
+        'azure_endpoint': settings.azure_openai_endpoint,
+        'azure_deployment': settings.azure_openai_deployment,
         'api_version': settings.azure_openai_api_version,
+        'providers_configured': _build_provider_sequence(),
         'attempts': [],
     }
 
@@ -243,6 +349,8 @@ def _new_debug_trace(
 def _append_debug_attempt(
     trace: dict[str, Any],
     *,
+    provider: str,
+    model: str,
     mode: str,
     status: str,
     response_text: str | None = None,
@@ -255,6 +363,8 @@ def _append_debug_attempt(
         trace['attempts'] = attempts
 
     payload: dict[str, Any] = {
+        'provider': provider,
+        'model': model,
         'mode': mode,
         'status': status,
     }
@@ -275,13 +385,13 @@ def _with_debug(payload: dict[str, Any], trace: dict[str, Any]) -> dict[str, Any
 
 def _request_completion(
     client: Any,
-    deployment: str,
+    model_name: str,
     company_name: str | None,
     ocr_text: str | None,
     image_blocks: list[dict[str, Any]],
 ) -> Any:
     return client.chat.completions.create(
-        model=deployment,
+        model=model_name,
         messages=[
             {'role': 'system', 'content': _system_prompt()},
             {
@@ -294,46 +404,67 @@ def _request_completion(
         ],
         temperature=0,
         max_tokens=_MAX_TOKENS,
-        response_format={'type': 'json_object'},
+        response_format=_strict_json_response_format(),
     )
 
 
-def _sync_completion(
+def _build_provider_sequence() -> list[str]:
+    providers: list[str] = []
+    if settings.azure_openai_endpoint and settings.azure_openai_deployment and (
+        settings.azure_openai_api_key or settings.openai_api_key
+    ):
+        providers.append('azure_openai')
+    if settings.openai_api_key:
+        providers.append('openai')
+    return providers
+
+
+def _build_provider_client(provider: str) -> tuple[Any, str]:
+    if provider == 'azure_openai':
+        from openai import AzureOpenAI
+
+        endpoint = settings.azure_openai_endpoint
+        deployment = settings.azure_openai_deployment
+        api_key = settings.azure_openai_api_key or settings.openai_api_key
+        if not endpoint or not deployment or not api_key:
+            raise ValueError('Azure OpenAI configuration missing')
+        client = AzureOpenAI(
+            api_version=settings.azure_openai_api_version,
+            azure_endpoint=endpoint,
+            api_key=api_key,
+        )
+        return client, deployment
+
+    if provider == 'openai':
+        from openai import OpenAI
+
+        api_key = settings.openai_api_key
+        if not api_key:
+            raise ValueError('OpenAI configuration missing')
+        base_url = (settings.openai_base_url or '').strip()
+        if base_url:
+            client = OpenAI(api_key=api_key, base_url=base_url)
+        else:
+            client = OpenAI(api_key=api_key)
+        return client, settings.openai_model
+
+    raise ValueError(f'Unsupported AI provider: {provider}')
+
+
+def _request_with_provider(
+    *,
+    provider: str,
+    model_name: str,
+    client: Any,
     image_blocks: list[dict[str, Any]],
     company_name: str | None,
     ocr_text: str | None,
-) -> dict[str, Any]:
-    try:
-        from openai import AzureOpenAI
-    except Exception:
-        debug_trace = _new_debug_trace(
-            endpoint=settings.azure_openai_endpoint,
-            deployment=settings.azure_openai_deployment,
-        )
-        debug_trace['result'] = 'error'
-        debug_trace['error'] = 'OpenAI SDK is not installed on server'
-        return _with_debug({'error': 'OpenAI SDK is not installed on server'}, debug_trace)
-
-    endpoint = settings.azure_openai_endpoint
-    deployment = settings.azure_openai_deployment
-    api_key = settings.openai_api_key or settings.azure_openai_api_key
-    debug_trace = _new_debug_trace(endpoint=endpoint, deployment=deployment)
-
-    if not endpoint or not deployment or not api_key:
-        debug_trace['result'] = 'error'
-        debug_trace['error'] = 'Azure OpenAI configuration missing'
-        return _with_debug({'error': 'Azure OpenAI configuration missing'}, debug_trace)
-
-    client = AzureOpenAI(
-        api_version=settings.azure_openai_api_version,
-        azure_endpoint=endpoint,
-        api_key=api_key,
-    )
-
+    debug_trace: dict[str, Any],
+) -> Any:
     try:
         completion = _request_completion(
             client=client,
-            deployment=deployment,
+            model_name=model_name,
             company_name=company_name,
             ocr_text=ocr_text,
             image_blocks=image_blocks,
@@ -341,60 +472,130 @@ def _sync_completion(
         content = _extract_content_text(completion)
         _append_debug_attempt(
             debug_trace,
+            provider=provider,
+            model=model_name,
             mode='vision+ocr',
             status='ok',
             response_text=content,
             image_blocks_count=len(image_blocks),
         )
+        return completion
     except Exception as exc:
-        logger.exception('AI completion with image payload failed')
+        logger.exception('AI completion with image payload failed for provider=%s', provider)
         _append_debug_attempt(
             debug_trace,
+            provider=provider,
+            model=model_name,
             mode='vision+ocr',
             status='error',
             error=_format_model_error(exc),
             image_blocks_count=len(image_blocks),
         )
-        if ocr_text:
-            try:
-                completion = _request_completion(
-                    client=client,
-                    deployment=deployment,
-                    company_name=company_name,
-                    ocr_text=ocr_text,
-                    image_blocks=[],
-                )
-                content = _extract_content_text(completion)
-                _append_debug_attempt(
-                    debug_trace,
-                    mode='ocr-only',
-                    status='ok',
-                    response_text=content,
-                    image_blocks_count=0,
-                )
-            except Exception as fallback_exc:
-                _append_debug_attempt(
-                    debug_trace,
-                    mode='ocr-only',
-                    status='error',
-                    error=_format_model_error(fallback_exc),
-                    image_blocks_count=0,
-                )
-                debug_trace['result'] = 'error'
-                debug_trace['error'] = 'Failed to extract data from AI model'
-                return _with_debug({
-                    'error': 'Failed to extract data from AI model',
-                    'details': _format_model_error(fallback_exc),
-                }, debug_trace)
-        else:
-            debug_trace['result'] = 'error'
-            debug_trace['error'] = 'Failed to extract data from AI model'
-            return _with_debug({
-                'error': 'Failed to extract data from AI model',
-                'details': _format_model_error(exc),
-            }, debug_trace)
+        if not ocr_text:
+            raise
+
+    try:
+        completion = _request_completion(
+            client=client,
+            model_name=model_name,
+            company_name=company_name,
+            ocr_text=ocr_text,
+            image_blocks=[],
+        )
+    except Exception as exc:
+        _append_debug_attempt(
+            debug_trace,
+            provider=provider,
+            model=model_name,
+            mode='ocr-only',
+            status='error',
+            error=_format_model_error(exc),
+            image_blocks_count=0,
+        )
+        raise
 
     content = _extract_content_text(completion)
+    _append_debug_attempt(
+        debug_trace,
+        provider=provider,
+        model=model_name,
+        mode='ocr-only',
+        status='ok',
+        response_text=content,
+        image_blocks_count=0,
+    )
+    return completion
+
+
+def _sync_completion(
+    image_blocks: list[dict[str, Any]],
+    company_name: str | None,
+    ocr_text: str | None,
+) -> dict[str, Any]:
+    debug_trace = _new_debug_trace()
+
+    try:
+        from openai import AzureOpenAI, OpenAI  # noqa: F401
+    except Exception:
+        debug_trace['result'] = 'error'
+        debug_trace['error'] = 'OpenAI SDK is not installed on server'
+        return _with_debug({'error': 'OpenAI SDK is not installed on server'}, debug_trace)
+
+    providers = _build_provider_sequence()
+    if not providers:
+        debug_trace['result'] = 'error'
+        debug_trace['error'] = 'AI provider configuration missing'
+        return _with_debug({'error': 'AI provider configuration missing'}, debug_trace)
+
+    completion: Any | None = None
+    content = ''
+    provider_errors: list[str] = []
+
+    for provider in providers:
+        try:
+            client, model_name = _build_provider_client(provider)
+        except Exception as exc:
+            message = _format_model_error(exc)
+            provider_errors.append(f'{provider}: {message}')
+            _append_debug_attempt(
+                debug_trace,
+                provider=provider,
+                model='',
+                mode='provider-setup',
+                status='error',
+                error=message,
+            )
+            continue
+
+        try:
+            completion = _request_with_provider(
+                provider=provider,
+                model_name=model_name,
+                client=client,
+                image_blocks=image_blocks,
+                company_name=company_name,
+                ocr_text=ocr_text,
+                debug_trace=debug_trace,
+            )
+        except Exception as exc:
+            provider_errors.append(f'{provider}: {_format_model_error(exc)}')
+            continue
+
+        content = _extract_content_text(completion)
+        debug_trace['provider'] = provider
+        debug_trace['model'] = model_name
+        break
+
+    if completion is None:
+        details = '; '.join(provider_errors) if provider_errors else 'No provider attempts available'
+        debug_trace['result'] = 'error'
+        debug_trace['error'] = 'Failed to extract data from AI model'
+        debug_trace['details'] = details[:1000]
+        return _with_debug({
+            'error': 'Failed to extract data from AI model',
+            'details': details[:1000],
+        }, debug_trace)
+
     if not content:
         debug_trace['result'] = 'error'
         debug_trace['error'] = 'AI model returned empty response'
