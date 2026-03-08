@@ -383,6 +383,17 @@ def _with_debug(payload: dict[str, Any], trace: dict[str, Any]) -> dict[str, Any
     return result
 
 
+def _is_unsupported_token_param_error(exc: Exception, param_name: str) -> bool:
+    message = str(exc).lower()
+    return (
+        'unsupported parameter' in message
+        and f"'{param_name.lower()}'" in message
+    ) or (
+        'unsupported parameter' in message
+        and param_name.lower() in message
+    )
+
+
 def _request_completion(
     client: Any,
     model_name: str,
@@ -390,9 +401,9 @@ def _request_completion(
     ocr_text: str | None,
     image_blocks: list[dict[str, Any]],
 ) -> Any:
-    return client.chat.completions.create(
-        model=model_name,
-        messages=[
+    request_payload = {
+        'model': model_name,
+        'messages': [
             {'role': 'system', 'content': _system_prompt()},
             {
                 'role': 'user',
@@ -402,9 +413,24 @@ def _request_completion(
                 ],
             },
         ],
-        temperature=0,
+        'temperature': 0,
+        'response_format': _strict_json_response_format(),
+    }
+
+    # Newer models (including GPT-5-class deployments) require max_completion_tokens.
+    try:
+        return client.chat.completions.create(
+            **request_payload,
+            max_completion_tokens=_MAX_TOKENS,
+        )
+    except Exception as exc:
+        if not _is_unsupported_token_param_error(exc, 'max_completion_tokens'):
+            raise
+
+    # Backward compatibility for deployments that still expect max_tokens.
+    return client.chat.completions.create(
+        **request_payload,
         max_tokens=_MAX_TOKENS,
-        response_format=_strict_json_response_format(),
     )
 
 

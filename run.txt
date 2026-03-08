@@ -15,3 +15,33 @@ How to login into PostgreSQL database:
 DATABASE_URL_OVERRIDE = postgresql+psycopg2://scanadmin:Niyaz%407860@scanmybillpg001.postgres.database.azure.com:5432/scanmybill?sslmode=require
 
 psql "host=scanmybillpg001.postgres.database.azure.com port=5432 dbname=scanmybill user=scanadmin password=Niyaz@7860 sslmode=require"
+
+Insert admin: 
+INSERT INTO users (
+    id,
+    full_name,
+    email,
+    hashed_password,
+    role,
+    is_active,
+    notifications_enabled,
+    failed_login_attempts,
+    subscription_plan,
+    subscription_status,
+    created_at,
+    updated_at
+)
+VALUES (
+    gen_random_uuid(),
+    'Admin Niyaz',
+    'admin@scanmybill.xyz',
+    '$2b$12$ZG7A6uKlPrungkMWJPzyEeMcnBBnIO5AJDDyPb2mcG1UsX327opSS',
+    'ADMIN',
+    true,
+    true,
+    0,
+    'BUSINESS',
+    'ACTIVE',
+    NOW(),
+    NOW()
+);
