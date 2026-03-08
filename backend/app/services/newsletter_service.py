@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 
 APP_ROOT = Path(__file__).resolve().parents[1]
 TEMPLATE_NAME = 'newsletter.html'
-UNSUBSCRIBE_BASE_URL = 'https://scanmybill.xyz/unsubscribe'
+UNSUBSCRIBE_BASE_URL = 'https://app.scanmybill.xyz/unsubscribe'
 
 
 def _normalize_email(email: str) -> str:
