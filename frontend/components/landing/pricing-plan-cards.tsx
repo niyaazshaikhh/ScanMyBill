@@ -46,7 +46,7 @@ const planCards: Array<{
   {
     tier: 'PRO',
     name: 'Pro',
-    priceLabel: 'Rs 101 / month',
+    priceLabel: 'Rs 2 / month',
     description: 'Best for growing MSME teams handling more clients.',
     accentClass: 'border-orange-300 bg-orange-50/40',
     icon: Sparkles,
@@ -60,7 +60,7 @@ const planCards: Array<{
   {
     tier: 'BUSINESS',
     name: 'Business',
-    priceLabel: 'Rs 1001 / month',
+    priceLabel: 'Rs 3 / month',
     description: 'Best for high-volume Indian MSMEs that need full access.',
     accentClass: 'border-teal-300 bg-teal-50/40',
     icon: Crown,

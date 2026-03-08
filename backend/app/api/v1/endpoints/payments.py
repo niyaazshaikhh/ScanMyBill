@@ -58,9 +58,13 @@ def _create_notification_best_effort(
 def _build_plan_options(client: razorpay.Client | None = None) -> list[RazorpayPlanOption]:
     plan_options: list[RazorpayPlanOption] = []
     for plan_id in settings.allowed_razorpay_plan_ids:
+        mapped_plan = _resolve_plan_hint(plan_id=plan_id)
+        configured_amount = _configured_plan_amount(mapped_plan)
         option = RazorpayPlanOption(
             id=plan_id,
-            mapped_plan=_resolve_plan_hint(plan_id=plan_id),
+            amount=configured_amount,
+            currency='INR' if configured_amount is not None else None,
+            mapped_plan=mapped_plan,
         )
         if client:
             try:
@@ -69,19 +73,24 @@ def _build_plan_options(client: razorpay.Client | None = None) -> list[RazorpayP
                 notes = plan.get('notes') if isinstance(plan.get('notes'), dict) else {}
                 item_name = item.get('name') if isinstance(item, dict) else None
                 item_description = item.get('description') if isinstance(item, dict) else None
+                mapped_plan = _resolve_plan_hint(
+                    plan_id=str(plan.get('id', plan_id) or plan_id),
+                    item_name=item_name if isinstance(item_name, str) else None,
+                    item_description=item_description if isinstance(item_description, str) else None,
+                    notes=notes,
+                )
+                configured_amount = _configured_plan_amount(mapped_plan)
+                currency_value = item.get('currency') if isinstance(item, dict) else None
+                if configured_amount is not None and (not isinstance(currency_value, str) or not currency_value.strip()):
+                    currency_value = 'INR'
                 option = RazorpayPlanOption(
                     id=plan.get('id', plan_id),
                     item_name=item_name,
                     interval=plan.get('interval'),
                     period=plan.get('period'),
-                    amount=item.get('amount'),
-                    currency=item.get('currency'),
-                    mapped_plan=_resolve_plan_hint(
-                        plan_id=str(plan.get('id', plan_id) or plan_id),
-                        item_name=item_name if isinstance(item_name, str) else None,
-                        item_description=item_description if isinstance(item_description, str) else None,
-                        notes=notes,
-                    ),
+                    amount=configured_amount if configured_amount is not None else item.get('amount'),
+                    currency=currency_value,
+                    mapped_plan=mapped_plan,
                 )
             except Exception:
                 # Fallback to plan ID only when metadata fetch fails.
@@ -163,6 +172,19 @@ def _duration_for_plan(period: str | None, interval: int | None) -> timedelta | 
     return timedelta(days=base_days * interval)
 
 
+PLAN_PRICE_PAISE: dict[SubscriptionPlan, int] = {
+    SubscriptionPlan.STANDARD: 100,
+    SubscriptionPlan.PRO: 200,
+    SubscriptionPlan.BUSINESS: 300,
+}
+
+
+def _configured_plan_amount(plan: SubscriptionPlan | None) -> int | None:
+    if not plan or plan == SubscriptionPlan.FREE:
+        return None
+    return PLAN_PRICE_PAISE.get(plan)
+
+
 def _resolve_plan_details(
     client: razorpay.Client,
     *,
@@ -180,8 +202,20 @@ def _resolve_plan_details(
     amount = item.get('amount') if isinstance(item, dict) else None
     currency = item.get('currency') if isinstance(item, dict) else None
     plan_name = item.get('name') if isinstance(item, dict) else None
+    item_description = item.get('description') if isinstance(item, dict) else None
     interval = plan.get('interval')
     period = plan.get('period')
+    notes = plan.get('notes') if isinstance(plan.get('notes'), dict) else {}
+
+    mapped_plan = _resolve_plan_hint(
+        plan_id=plan_id,
+        item_name=plan_name if isinstance(plan_name, str) else None,
+        item_description=item_description if isinstance(item_description, str) else None,
+        notes=notes,
+    )
+    configured_amount = _configured_plan_amount(mapped_plan)
+    if configured_amount is not None:
+        amount = configured_amount
 
     if not isinstance(amount, int) or amount <= 0:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Selected Razorpay plan amount is invalid')

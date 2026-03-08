@@ -87,7 +87,7 @@ const pricingHighlights = [
   },
   {
     name: "Pro",
-    price: "Rs 101 / month",
+    price: "Rs 2 / month",
     description:
       "Best for small teams that want better reports and faster daily work.",
     accent: "border-orange-300 bg-orange-50/40",
@@ -100,7 +100,7 @@ const pricingHighlights = [
   },
   {
     name: "Business",
-    price: "Rs 1001 / month",
+    price: "Rs 3 / month",
     description: "Best for busy businesses that need every section of the app.",
     accent: "border-teal-300 bg-teal-50/40",
     points: [
