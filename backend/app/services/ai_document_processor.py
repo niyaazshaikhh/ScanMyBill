@@ -14,6 +14,7 @@ from pdf2image import convert_from_path
 from PIL import Image
 
 from app.core.config import settings
+from app.utils.gstin import normalize_gstin
 
 logger = logging.getLogger(__name__)
 
@@ -144,8 +145,10 @@ def _system_prompt() -> str:
         'You are a financial document extraction engine for Indian invoices and delivery challans. '
         'Return only valid JSON with no markdown or commentary. '
         'Detect document_type strictly as gst_invoice or delivery_challan. '
-        'Detect bill type as sales or purchase using the provided company name with highest priority. '
+        'Detect bill type as sales or purchase using the provided company name and company GSTIN with highest priority. '
         'Classification priority rule: '
+        'if seller/supplier/issuer GSTIN matches company GSTIN, classify sales; '
+        'if buyer/bill to/consignee GSTIN matches company GSTIN, classify purchase; '
         'if buyer/bill to/consignee matches company name, classify purchase; '
         'if seller/supplier/issuer matches company name, classify sales. '
         'Extract fields by semantic meaning, not position or layout. '
@@ -166,16 +169,26 @@ def _system_prompt() -> str:
     )
 
 
-def _build_user_instruction(company_name: str | None, ocr_text: str | None) -> str:
+def _build_user_instruction(
+    company_name: str | None,
+    company_gstin: str | None,
+    ocr_text: str | None,
+) -> str:
     normalized_company = (company_name or '').strip() or 'UNKNOWN'
+    normalized_company_gstin = normalize_gstin(company_gstin) or 'UNKNOWN'
     compact_ocr = ' '.join((ocr_text or '').split()).strip()
     clipped_ocr = compact_ocr[:6000] if compact_ocr else ''
     return (
         'Extract structured bill information from this document. '
         f'Settings company name from /settings/personal_details: {normalized_company}. '
-        'Use this company name first when deciding transaction_type and bill_type. '
+        f'Settings company GSTIN from /settings/personal_details: {normalized_company_gstin}. '
+        'Use company GSTIN and company name first when deciding transaction_type and bill_type. '
+        'Classification rule priority: '
+        'seller GSTIN match => sales; buyer GSTIN match => purchase; '
+        'seller name match => sales; buyer name match => purchase. '
         'Always include transaction_type and bill_type keys with value sales or purchase. '
-        'For gst_invoice include invoice_number, invoice_date, seller/seller_name, buyer/buyer_name, amounts, and items. '
+        'For gst_invoice include invoice_number, invoice_date, '
+        'seller/seller_name, buyer/buyer_name, seller_gstin, buyer_gstin, amounts, and items. '
         'For delivery_challan include challan_number, order_number, challan_date, from_party, to_party, subtotal, and items. '
         'Output JSON only with fields needed for gst_invoice or delivery_challan. '
         'Use null for missing scalar fields and [] for missing item lists. '
@@ -198,6 +211,8 @@ def _bill_extraction_json_schema() -> dict[str, Any]:
                     'invoice_date': {'type': ['string', 'null']},
                     'seller_name': {'type': ['string', 'null']},
                     'buyer_name': {'type': ['string', 'null']},
+                    'seller_gstin': {'type': ['string', 'null']},
+                    'buyer_gstin': {'type': ['string', 'null']},
                     'place_of_supply': {'type': ['string', 'null']},
                     'place_of_supply_code': {'type': ['string', 'null']},
                     'gst_number': {'type': ['string', 'null']},
@@ -226,6 +241,8 @@ def _bill_extraction_json_schema() -> dict[str, Any]:
                     'invoice_date',
                     'seller_name',
                     'buyer_name',
+                    'seller_gstin',
+                    'buyer_gstin',
                     'place_of_supply',
                     'place_of_supply_code',
                     'gst_number',
@@ -384,14 +401,19 @@ def _score_extraction_payload(parsed: dict[str, Any] | None) -> int:
             'invoice_date',
             'seller_name',
             'buyer_name',
+            'seller_gstin',
+            'buyer_gstin',
             'place_of_supply',
             'place_of_supply_code',
             'notes',
         ]
         score += sum(4 for field in fields if _has_text(gst_invoice.get(field)))
-        gst_number = str(gst_invoice.get('gst_number') or '').strip().upper()
-        if _GSTIN_PATTERN.match(gst_number):
-            score += 8
+        gstin_fields = ('gst_number', 'seller_gstin', 'buyer_gstin')
+        score += sum(
+            8
+            for field in gstin_fields
+            if _GSTIN_PATTERN.match(str(gst_invoice.get(field) or '').strip().upper())
+        )
         for amount_field in ('subtotal', 'gst_amount', 'total_amount'):
             value = _to_float(gst_invoice.get(amount_field))
             if value is not None and value > 0:
@@ -524,6 +546,7 @@ def _request_completion(
     client: Any,
     model_name: str,
     company_name: str | None,
+    company_gstin: str | None,
     ocr_text: str | None,
     image_blocks: list[dict[str, Any]],
 ) -> Any:
@@ -534,7 +557,10 @@ def _request_completion(
             {
                 'role': 'user',
                 'content': [
-                    {'type': 'text', 'text': _build_user_instruction(company_name, ocr_text)},
+                    {
+                        'type': 'text',
+                        'text': _build_user_instruction(company_name, company_gstin, ocr_text),
+                    },
                     *image_blocks,
                 ],
             },
@@ -621,6 +647,7 @@ def _request_with_provider(
     client: Any,
     image_blocks: list[dict[str, Any]],
     company_name: str | None,
+    company_gstin: str | None,
     ocr_text: str | None,
     debug_trace: dict[str, Any],
 ) -> tuple[Any, str]:
@@ -630,6 +657,7 @@ def _request_with_provider(
             client=client,
             model_name=model_name,
             company_name=company_name,
+            company_gstin=company_gstin,
             ocr_text=ocr_text,
             image_blocks=image_blocks,
         )
@@ -663,6 +691,7 @@ def _request_with_provider(
             client=client,
             model_name=model_name,
             company_name=company_name,
+            company_gstin=company_gstin,
             ocr_text=ocr_text,
             image_blocks=[],
         )
@@ -694,6 +723,7 @@ def _request_with_provider(
 def _sync_completion(
     image_blocks: list[dict[str, Any]],
     company_name: str | None,
+    company_gstin: str | None,
     ocr_text: str | None,
 ) -> dict[str, Any]:
     debug_trace = _new_debug_trace()
@@ -741,6 +771,7 @@ def _sync_completion(
                 client=client,
                 image_blocks=image_blocks,
                 company_name=company_name,
+                company_gstin=company_gstin,
                 ocr_text=ocr_text,
                 debug_trace=debug_trace,
             )
@@ -822,6 +853,7 @@ def _sync_completion(
 async def extract_document_data(
     file_path: str,
     company_name: str | None = None,
+    company_gstin: str | None = None,
     ocr_text: str | None = None,
 ) -> dict[str, Any]:
     path = Path(file_path)
@@ -841,4 +873,10 @@ async def extract_document_data(
     if not image_blocks and not (ocr_text or '').strip():
         return {'error': 'File cannot be processed'}
 
-    return await asyncio.to_thread(_sync_completion, image_blocks, company_name, ocr_text)
+    return await asyncio.to_thread(
+        _sync_completion,
+        image_blocks,
+        company_name,
+        company_gstin,
+        ocr_text,
+    )

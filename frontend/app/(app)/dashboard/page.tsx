@@ -563,18 +563,14 @@ export default function DashboardPage() {
           </Button>
           {uploading ? (
             <div className="space-y-2 md:col-span-2">
-              <div className="flex items-center justify-between gap-3 text-xs text-muted-foreground">
-                <span className="truncate">
-                  {uploadState.fileName
-                    ? `Uploading challan: ${uploadState.fileName}`
-                    : "Uploading challan..."}
-                </span>
-                <span>{uploadState.progress}%</span>
-              </div>
-              <div className="h-2 overflow-hidden rounded-full bg-muted">
+              <p className="truncate text-xs text-muted-foreground">
+                {uploadState.fileName
+                  ? `Uploading challan: ${uploadState.fileName}`
+                  : "Uploading challan..."}
+              </p>
+              <div className="relative h-2 overflow-hidden rounded-full bg-muted">
                 <div
-                  className="h-full rounded-full bg-orange-500 transition-[width] duration-200 ease-out"
-                  style={{ width: `${Math.max(uploadState.progress, 2)}%` }}
+                  className="upload-marquee-indicator absolute inset-y-0 left-0 w-1/3 rounded-full bg-orange-500"
                 />
               </div>
             </div>
@@ -727,6 +723,20 @@ export default function DashboardPage() {
           <Plus className="h-7 w-7" />
         )}
       </Button>
+      <style jsx>{`
+        @keyframes uploadMarqueeSlide {
+          0% {
+            transform: translateX(-120%);
+          }
+          100% {
+            transform: translateX(320%);
+          }
+        }
+
+        .upload-marquee-indicator {
+          animation: uploadMarqueeSlide 1.05s linear infinite;
+        }
+      `}</style>
     </div>
   );
 }

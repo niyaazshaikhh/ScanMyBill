@@ -314,7 +314,12 @@ async def process_uploaded_document(
     except Exception:
         ocr_text = ''
 
-    raw = await extract_document_data(file_path, company_name=company_name, ocr_text=ocr_text)
+    raw = await extract_document_data(
+        file_path,
+        company_name=company_name,
+        company_gstin=company_gstin,
+        ocr_text=ocr_text,
+    )
     if not isinstance(raw, dict):
         raise ValueError('AI extraction failed')
     ai_debug = raw.get('__ai_debug') if isinstance(raw.get('__ai_debug'), dict) else None
@@ -372,6 +377,7 @@ async def process_uploaded_document(
     ):
         raise ValueError(COMPANY_MISMATCH_MESSAGE)
 
+    seller_name, buyer_name, seller_gstin, buyer_gstin = _extract_invoice_party_identity(raw)
     bill_type = _determine_bill_type(
         document_type=document_type,
         explicit_transaction_type=_first_non_empty_value(
@@ -381,8 +387,11 @@ async def process_uploaded_document(
         ),
         fallback=fallback_type,
         company_name=company_name,
-        seller_name=_extract_party_name(_first_non_empty_value(raw.get('seller'), raw.get('seller_name'))),
-        buyer_name=_extract_party_name(_first_non_empty_value(raw.get('buyer'), raw.get('buyer_name'))),
+        company_gstin=company_gstin,
+        seller_name=seller_name,
+        buyer_name=buyer_name,
+        seller_gstin=seller_gstin,
+        buyer_gstin=buyer_gstin,
         from_party=challan_payload.from_party,
         to_party=challan_payload.to_party,
     )
@@ -393,7 +402,6 @@ async def process_uploaded_document(
         if document_type == 'gst_invoice'
         else normalize_gstin(raw.get('gst_number'))
     )
-    seller_name, buyer_name, seller_gstin, buyer_gstin = _extract_invoice_party_identity(raw)
     client_name, client_gstin = _resolve_client_identity(
         document_type=document_type,
         bill_type=bill_type,
@@ -906,26 +914,43 @@ def _determine_bill_type(
     explicit_transaction_type: Any,
     fallback: InvoiceType,
     company_name: str | None,
+    company_gstin: str | None,
     seller_name: str | None,
     buyer_name: str | None,
+    seller_gstin: str | None,
+    buyer_gstin: str | None,
     from_party: str | None,
     to_party: str | None,
 ) -> InvoiceType:
+    normalized_company_gstin = normalize_gstin(company_gstin)
+    normalized_seller_gstin = normalize_gstin(seller_gstin)
+    normalized_buyer_gstin = normalize_gstin(buyer_gstin)
+
+    if normalized_company_gstin:
+        if normalized_seller_gstin and normalized_seller_gstin == normalized_company_gstin:
+            return InvoiceType.SALES
+        if normalized_buyer_gstin and normalized_buyer_gstin == normalized_company_gstin:
+            return InvoiceType.PURCHASE
+
     normalized_company = _normalize_name(company_name)
     if normalized_company:
+        seller_candidate = seller_name
+        buyer_candidate = buyer_name
+        if document_type == 'delivery_challan':
+            seller_candidate = from_party or seller_name
+            buyer_candidate = to_party or buyer_name
+
+        if _name_matches_company(normalized_company, seller_candidate):
+            return InvoiceType.SALES
+        if _name_matches_company(normalized_company, buyer_candidate):
+            return InvoiceType.PURCHASE
+
         if document_type == 'delivery_challan':
             normalized_from = _normalize_name(from_party)
             normalized_to = _normalize_name(to_party)
-            if normalized_from and normalized_from == normalized_company:
+            if normalized_from and _name_matches_company(normalized_company, normalized_from):
                 return InvoiceType.SALES
-            if normalized_to and normalized_to == normalized_company:
-                return InvoiceType.PURCHASE
-        else:
-            normalized_seller = _normalize_name(seller_name)
-            normalized_buyer = _normalize_name(buyer_name)
-            if normalized_seller and normalized_seller == normalized_company:
-                return InvoiceType.SALES
-            if normalized_buyer and normalized_buyer == normalized_company:
+            if normalized_to and _name_matches_company(normalized_company, normalized_to):
                 return InvoiceType.PURCHASE
 
     explicit = _coerce_invoice_type(explicit_transaction_type)

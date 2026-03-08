@@ -88,7 +88,6 @@ export default function InvoicesPage() {
   const [downloadingInvoiceId, setDownloadingInvoiceId] = useState<string | null>(null);
   const [uploadingBill, setUploadingBill] = useState(false);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
-  const [popupErrorMessage, setPopupErrorMessage] = useState<string | null>(null);
   const [pendingDeleteInvoice, setPendingDeleteInvoice] = useState<Invoice | null>(null);
   const quickUploadInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -213,6 +212,7 @@ export default function InvoicesPage() {
   const exportFolder = async () => {
     if (!selectedFolder) return;
     const yearQuery = year === ALL_FINANCIAL_YEARS ? '' : `&financial_year_start=${year}`;
+    setActionMessage(null);
     try {
       const blob = await apiRequest<Blob>(
         `/invoices/export-folder?period=${period}&bucket=${encodeURIComponent(selectedFolder)}&invoice_type=${invoiceType}${yearQuery}`,
@@ -226,7 +226,7 @@ export default function InvoicesPage() {
       link.click();
       URL.revokeObjectURL(url);
     } catch (err) {
-      setPopupErrorMessage(err instanceof Error ? err.message : 'Failed to export folder');
+      setActionMessage(err instanceof Error ? err.message : 'Failed to export folder');
     }
   };
 
@@ -590,13 +590,6 @@ export default function InvoicesPage() {
       >
         {uploadingBill ? <Loader2 className='h-6 w-6 animate-spin' /> : <Plus className='h-7 w-7' />}
       </Button>
-      <PopupWindow
-        open={Boolean(popupErrorMessage)}
-        title='Action Failed'
-        message={popupErrorMessage || ''}
-        confirmLabel='Close'
-        onConfirm={() => setPopupErrorMessage(null)}
-      />
       <PopupWindow
         open={Boolean(pendingDeleteInvoice)}
         title='Delete Bill'

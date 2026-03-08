@@ -39,6 +39,7 @@ from app.services.pdf_invoice_service import (
     remove_generated_pdf,
     resolve_generated_pdf_path,
 )
+from app.services.pdf_service import build_invoice_pdf
 from app.services.notifications import create_notification
 from app.utils.pdf_filename import build_bill_pdf_filename
 from app.utils.period import matches_bucket, valid_period
@@ -433,6 +434,16 @@ def _append_pdf_bytes(writer: PdfWriter, pdf_bytes: bytes, *, invoice_number: st
         ) from exc
 
 
+def _build_basic_invoice_pdf_bytes(invoice: Invoice) -> bytes:
+    try:
+        return build_invoice_pdf(invoice)
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f'Failed to generate fallback invoice PDF for invoice {invoice.invoice_number}.',
+        ) from exc
+
+
 @router.get('', response_model=InvoiceListResponse)
 def list_invoices(
     period: str = Query('monthly'),
@@ -698,22 +709,39 @@ def export_folder(
                         exc.status_code,
                     )
 
-            absolute_pdf_path, cleanup_path = _resolve_invoice_pdf_for_response(
-                invoice,
-                db=db,
-                owner_id=current_user.id,
-                company_details=company_details,
-            )
-            if cleanup_path:
-                temporary_generated_paths.append(cleanup_path)
-
             try:
+                absolute_pdf_path, cleanup_path = _resolve_invoice_pdf_for_response(
+                    invoice,
+                    db=db,
+                    owner_id=current_user.id,
+                    company_details=company_details,
+                )
+                if cleanup_path:
+                    temporary_generated_paths.append(cleanup_path)
+
                 writer.append(str(absolute_pdf_path))
+            except HTTPException as exc:
+                if exc.status_code < status.HTTP_500_INTERNAL_SERVER_ERROR:
+                    raise
+                logger.warning(
+                    'Falling back to basic invoice PDF for folder export due to advanced PDF generation failure. '
+                    'invoice_id=%s owner_id=%s detail=%s',
+                    invoice.id,
+                    current_user.id,
+                    exc.detail,
+                )
+                fallback_pdf_bytes = _build_basic_invoice_pdf_bytes(invoice)
+                _append_pdf_bytes(writer, fallback_pdf_bytes, invoice_number=invoice.invoice_number)
             except Exception as exc:
-                raise HTTPException(
-                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                    detail=f'Failed to append invoice {invoice.invoice_number} to folder export.',
-                ) from exc
+                logger.warning(
+                    'Falling back to basic invoice PDF for folder export due to append failure. '
+                    'invoice_id=%s owner_id=%s error=%s',
+                    invoice.id,
+                    current_user.id,
+                    str(exc),
+                )
+                fallback_pdf_bytes = _build_basic_invoice_pdf_bytes(invoice)
+                _append_pdf_bytes(writer, fallback_pdf_bytes, invoice_number=invoice.invoice_number)
 
         output = BytesIO()
         try:

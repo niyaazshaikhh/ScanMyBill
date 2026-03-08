@@ -3,6 +3,7 @@ import unittest
 from app.models.invoice import InvoiceType
 from app.schemas.bill import DeliveryChallanExtractedPayload
 from app.services.document_processor import (
+    _determine_bill_type,
     _extract_invoice_party_identity,
     _resolve_client_identity,
 )
@@ -22,6 +23,40 @@ def _empty_challan_payload() -> DeliveryChallanExtractedPayload:
 
 
 class DocumentProcessorClientIdentityTests(unittest.TestCase):
+    def test_determine_bill_type_prefers_company_gstin_role_match(self) -> None:
+        bill_type = _determine_bill_type(
+            document_type='gst_invoice',
+            explicit_transaction_type='purchase',
+            fallback=InvoiceType.PURCHASE,
+            company_name='Acme Labs Pvt Ltd',
+            company_gstin='27AAAAA0000A1Z5',
+            seller_name='Acme Labs Private Limited',
+            buyer_name='Client One',
+            seller_gstin='27AAAAA0000A1Z5',
+            buyer_gstin='29BBBBB1111B1Z6',
+            from_party=None,
+            to_party=None,
+        )
+
+        self.assertEqual(bill_type, InvoiceType.SALES)
+
+    def test_determine_bill_type_uses_company_name_when_gstin_missing(self) -> None:
+        bill_type = _determine_bill_type(
+            document_type='delivery_challan',
+            explicit_transaction_type=None,
+            fallback=InvoiceType.PURCHASE,
+            company_name='Acme Traders LLP',
+            company_gstin=None,
+            seller_name='Fallback Seller',
+            buyer_name='Fallback Buyer',
+            seller_gstin=None,
+            buyer_gstin=None,
+            from_party='Acme Traders LLP Warehouse',
+            to_party='Customer Depot',
+        )
+
+        self.assertEqual(bill_type, InvoiceType.SALES)
+
     def test_extract_invoice_party_identity_from_nested_objects(self) -> None:
         raw = {
             'seller': {
