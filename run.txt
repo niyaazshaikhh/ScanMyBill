@@ -1,13 +1,20 @@
 Local
 ----------
 Backend: 
-
+CD:  cd backend               
+VENV: venv\Scripts\Activate 
+RUN: python -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 Frontend: 
 
 
 Docker
 ----------
+ docker compose up --build
+ docker system prune 
 
+ GITHUB CONNECT to REMOTE REPO
+ ----------------------------------
+  git remote add origin https://github.com/niyaazshaikhh/ScanMyBill.git    
 
 Production
 ----------
@@ -45,3 +52,13 @@ VALUES (
     NOW(),
     NOW()
 );
+
+ALLOW_EMPTY_COMMIT: 
+git commit --allow-empty -m "retry deploy"
+git push origin main
+
+CLI_AZURE_LOGIN=az login 
+
+BUILD_PUSH_FRESH_DOCKER_IMAGE = 
+ docker build --no-cache -t scanmybillacr001.azurecr.io/backend:latest ./backend             
+>> docker push scanmybillacr001.azurecr.io/backend:latest

@@ -383,15 +383,16 @@ def _with_debug(payload: dict[str, Any], trace: dict[str, Any]) -> dict[str, Any
     return result
 
 
-def _is_unsupported_token_param_error(exc: Exception, param_name: str) -> bool:
+def _is_incompatible_param_error(exc: Exception, param_name: str) -> bool:
     message = str(exc).lower()
-    return (
-        'unsupported parameter' in message
-        and f"'{param_name.lower()}'" in message
-    ) or (
-        'unsupported parameter' in message
-        and param_name.lower() in message
+    normalized_param = param_name.lower()
+    unsupported_markers = ('unsupported parameter', 'unsupported value', 'does not support')
+    mentions_param = (
+        f"'{normalized_param}'" in message
+        or f'"{normalized_param}"' in message
+        or normalized_param in message
     )
+    return mentions_param and any(marker in message for marker in unsupported_markers)
 
 
 def _request_completion(
@@ -401,7 +402,7 @@ def _request_completion(
     ocr_text: str | None,
     image_blocks: list[dict[str, Any]],
 ) -> Any:
-    request_payload = {
+    request_payload_base = {
         'model': model_name,
         'messages': [
             {'role': 'system', 'content': _system_prompt()},
@@ -413,25 +414,36 @@ def _request_completion(
                 ],
             },
         ],
-        'temperature': 0,
         'response_format': _strict_json_response_format(),
     }
 
-    # Newer models (including GPT-5-class deployments) require max_completion_tokens.
-    try:
-        return client.chat.completions.create(
-            **request_payload,
-            max_completion_tokens=_MAX_TOKENS,
-        )
-    except Exception as exc:
-        if not _is_unsupported_token_param_error(exc, 'max_completion_tokens'):
+    attempts: list[tuple[str, bool]] = [
+        ('max_completion_tokens', True),
+        ('max_completion_tokens', False),
+        ('max_tokens', True),
+        ('max_tokens', False),
+    ]
+    last_compat_error: Exception | None = None
+
+    for token_param, include_temperature in attempts:
+        request_payload = dict(request_payload_base)
+        request_payload[token_param] = _MAX_TOKENS
+        if include_temperature:
+            request_payload['temperature'] = 0
+
+        try:
+            return client.chat.completions.create(**request_payload)
+        except Exception as exc:
+            token_unsupported = _is_incompatible_param_error(exc, token_param)
+            temperature_unsupported = include_temperature and _is_incompatible_param_error(exc, 'temperature')
+            if token_unsupported or temperature_unsupported:
+                last_compat_error = exc
+                continue
             raise
 
-    # Backward compatibility for deployments that still expect max_tokens.
-    return client.chat.completions.create(
-        **request_payload,
-        max_tokens=_MAX_TOKENS,
-    )
+    if last_compat_error:
+        raise last_compat_error
+    raise RuntimeError('Failed to request completion')
 
 
 def _build_provider_sequence() -> list[str]:
