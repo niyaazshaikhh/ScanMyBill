@@ -133,6 +133,15 @@ canvas {
   height: auto;
 }
 
+.recharts-pie:focus {
+  outline: none;
+}
+
+.recharts-pie:focus-visible {
+  outline: 2px solid hsl(var(--ring));
+  outline-offset: 3px;
+}
+
 .hero-grid {
   background-image:
     linear-gradient(to right, rgba(120, 113, 108, 0.14) 1px, transparent 1px),

@@ -28,20 +28,30 @@ export function GstPieChart({ data }: { data: GstPoint[] }) {
               innerRadius={65}
               outerRadius={110}
               paddingAngle={2}
+              stroke='none'
+              activeShape={{ stroke: 'none', strokeWidth: 0 }}
+              inactiveShape={{ stroke: 'none', strokeWidth: 0 }}
             >
               {data.map((entry, index) => (
-                <Cell key={entry.name} fill={COLORS[index % COLORS.length]} />
+                <Cell key={entry.name} fill={COLORS[index % COLORS.length]} stroke='none' />
               ))}
             </Pie>
             <Tooltip
               formatter={(value) => `Rs ${formatAccountingAmount(Number(value))}`}
+              cursor={false}
+              allowEscapeViewBox={{ x: true, y: true }}
+              wrapperStyle={{ zIndex: 30, outline: 'none', pointerEvents: 'none' }}
               contentStyle={{
                 backgroundColor: isDark ? '#1e293b' : '#ffffff',
                 borderColor: isDark ? '#334155' : '#e2e8f0',
                 color: isDark ? '#f1f5f9' : '#0f172a',
-                borderRadius: '0.5rem'
+                borderRadius: '0.5rem',
+                boxShadow: isDark
+                  ? '0 12px 24px rgba(2, 6, 23, 0.45)'
+                  : '0 10px 20px rgba(15, 23, 42, 0.12)'
               }}
               labelStyle={{ color: isDark ? '#f1f5f9' : '#0f172a' }}
+              itemStyle={{ color: isDark ? '#e2e8f0' : '#0f172a' }}
             />
           </PieChart>
         </ResponsiveContainer>

@@ -7,7 +7,7 @@ import { Loader2, Plus } from "lucide-react";
 export const dynamic = "force-dynamic";
 
 import { GstPieChart } from "@/components/charts/gst-pie";
-import { SalesPurchaseLineChart } from "@/components/charts/sales-purchase-line";
+import { SalesPurchaseBarChart } from "@/components/charts/sales-purchase-line";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -101,7 +101,9 @@ type PersonalDetailsResponse = {
   ifsc_code: string | null;
 };
 
-const periodOptions = ["monthly", "quarterly", "semi-annually", "annually"];
+type DashboardPeriod = "monthly" | "quarterly" | "semi-annually" | "annually";
+
+const periodOptions: DashboardPeriod[] = ["monthly", "quarterly", "semi-annually", "annually"];
 const SUPPORTED_UPLOAD_FORMAT_LABEL = "JPEG/PNG/PDF/DOCX/XLSX/CSV";
 const SUPPORTED_UPLOAD_EXTENSIONS = new Set(["jpeg", "jpg", "png", "pdf", "docx", "xlsx", "csv"]);
 const SUPPORTED_UPLOAD_MIME_TYPES = new Set([
@@ -256,7 +258,7 @@ export default function DashboardPage() {
   useAuthGuard();
 
   const currentFinancialYearStart = getCurrentFinancialYearStart();
-  const [period, setPeriod] = useState("monthly");
+  const [period, setPeriod] = useState<DashboardPeriod>("monthly");
   const [year, setYear] = useState(String(currentFinancialYearStart));
   const [yearOptions, setYearOptions] = useState<{ value: string; label: string }[]>([
     {
@@ -663,7 +665,7 @@ export default function DashboardPage() {
             <Select
               id="period"
               value={period}
-              onChange={(event) => setPeriod(event.target.value)}
+              onChange={(event) => setPeriod(event.target.value as DashboardPeriod)}
             >
               {periodOptions.map((item) => (
                 <option key={item} value={item}>
@@ -785,7 +787,8 @@ export default function DashboardPage() {
               <VerticalScrollNumber
                 value={`Rs ${formatAccountingAmount(card.value)}`}
                 className="text-2xl font-semibold"
-                durationMs={900}
+                durationMs={1000}
+                staggerMs={30}
               />
               {card.title === "GST Payable" ? (
                 <Badge variant={card.value >= 0 ? "default" : "success"}>
@@ -803,7 +806,10 @@ export default function DashboardPage() {
             <CardTitle>Sales vs Purchases</CardTitle>
           </CardHeader>
           <CardContent>
-            <SalesPurchaseLineChart data={summary?.trend ?? []} />
+            <SalesPurchaseBarChart
+              data={summary?.trend ?? []}
+              period={period}
+            />
           </CardContent>
         </Card>
 

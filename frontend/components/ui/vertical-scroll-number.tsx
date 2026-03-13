@@ -8,6 +8,7 @@ type VerticalScrollNumberProps = {
   value: string | number;
   className?: string;
   durationMs?: number;
+  staggerMs?: number;
 };
 
 type Direction = 'up' | 'down';
@@ -90,30 +91,35 @@ function AnimatedDigit({
   direction,
   animate,
   durationMs,
+  delayMs,
 }: {
   from: string;
   to: string;
   direction: Direction;
   animate: boolean;
   durationMs: number;
+  delayMs: number;
 }) {
   const isUp = direction === 'up';
   const frames = isUp ? [from, to] : [to, from];
   const transform = isUp
     ? animate
-      ? 'translateY(-50%)'
-      : 'translateY(0%)'
+      ? 'translate3d(0,-50%,0)'
+      : 'translate3d(0,0%,0)'
     : animate
-      ? 'translateY(0%)'
-      : 'translateY(-50%)';
+      ? 'translate3d(0,0%,0)'
+      : 'translate3d(0,-50%,0)';
 
   return (
-    <span className='relative inline-flex h-[1.35em] w-[0.68em] overflow-hidden align-middle'>
+    <span className='relative inline-flex h-[1.35em] w-[0.68em] overflow-hidden align-middle [backface-visibility:hidden]'>
       <span
         className='flex flex-col will-change-transform'
         style={{
           transform,
-          transition: `transform ${durationMs}ms cubic-bezier(0.4, 0, 0.2, 1)`,
+          transitionProperty: 'transform',
+          transitionDuration: `${durationMs}ms`,
+          transitionTimingFunction: 'cubic-bezier(0.16, 1, 0.3, 1)',
+          transitionDelay: `${delayMs}ms`,
         }}
       >
         <span className='block h-[1.35em] leading-[1.35em]'>{frames[0]}</span>
@@ -126,7 +132,8 @@ function AnimatedDigit({
 export function VerticalScrollNumber({
   value,
   className,
-  durationMs = 780,
+  durationMs = 900,
+  staggerMs = 24,
 }: VerticalScrollNumberProps) {
   const nextValue = toDisplayValue(value);
   const [currentValue, setCurrentValue] = useState(nextValue);
@@ -200,34 +207,45 @@ export function VerticalScrollNumber({
     >
       {tokens === null
         ? currentValue
-        : tokens.map((token) => {
-            if (token.kind === 'static') {
-              return (
-                <span key={token.key} className='block h-[1.35em] leading-[1.35em]'>
-                  {token.char}
-                </span>
-              );
-            }
+        : (() => {
+            const totalDigits = tokens.reduce((count, token) => {
+              return token.kind === 'digit' ? count + 1 : count;
+            }, 0);
+            let digitIndex = 0;
 
-            if (!token.changed) {
-              return (
-                <span key={token.key} className='inline-flex h-[1.35em] w-[0.68em] leading-[1.35em]'>
-                  {token.to}
-                </span>
-              );
-            }
+            return tokens.map((token) => {
+              if (token.kind === 'static') {
+                return (
+                  <span key={token.key} className='block h-[1.35em] leading-[1.35em]'>
+                    {token.char}
+                  </span>
+                );
+              }
 
-            return (
-              <AnimatedDigit
-                key={token.key}
-                from={token.from}
-                to={token.to}
-                direction={direction}
-                animate={animate}
-                durationMs={durationMs}
-              />
-            );
-          })}
+              const delayMs = Math.max(0, (totalDigits - digitIndex - 1) * staggerMs);
+              digitIndex += 1;
+
+              if (!token.changed) {
+                return (
+                  <span key={token.key} className='inline-flex h-[1.35em] w-[0.68em] leading-[1.35em]'>
+                    {token.to}
+                  </span>
+                );
+              }
+
+              return (
+                <AnimatedDigit
+                  key={token.key}
+                  from={token.from}
+                  to={token.to}
+                  direction={direction}
+                  animate={animate}
+                  durationMs={durationMs}
+                  delayMs={delayMs}
+                />
+              );
+            });
+          })()}
     </span>
   );
 }
