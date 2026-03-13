@@ -15,6 +15,7 @@ import { DraggableBills } from "@/components/landing/draggable-bills";
 import { NewsletterForm } from "@/components/landing/newsletter-form";
 import { RazorpayCheckoutButton } from "@/components/landing/razorpay-checkout-button";
 import { InstallAppButton } from "@/components/pwa/install-app-button";
+import { AboutTrigger } from "@/components/about/about-trigger";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -131,7 +132,7 @@ export default function LandingPage() {
             </span>
           </Link>
           <nav className="hidden items-center gap-5 text-sm font-medium md:flex">
-            <Link href="/about">About Us</Link>
+            <AboutTrigger label="About Us" />
             <a href="#features">Features</a>
             <a href="#pricing">Pricing</a>
             <a href="#faq">FAQ</a>
@@ -146,9 +147,12 @@ export default function LandingPage() {
             <ThemeToggle />
           </nav>
           <div className="flex flex-wrap items-center justify-end gap-2 md:hidden">
-            <Button asChild size="sm" variant="ghost">
-              <Link href="/about">About</Link>
-            </Button>
+            <AboutTrigger
+              label="About"
+              mode="button"
+              buttonVariant="ghost"
+              buttonSize="sm"
+            />
             <Button asChild size="sm" variant="outline">
               <Link href="/signin">Log in</Link>
             </Button>

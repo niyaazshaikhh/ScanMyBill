@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from 'next';
 import { Manrope, Space_Grotesk } from 'next/font/google';
 
 import '@/app/globals.css';
+import { AboutModalHost } from '@/components/about/about-modal-host';
 import { PWARegister } from '@/components/pwa/pwa-register';
 import { CustomCursor } from '@/components/ui/custom-cursor';
 import { Providers } from '@/components/providers';
@@ -84,6 +85,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <PWARegister />
           <CustomCursor />
           {children}
+          <AboutModalHost />
         </Providers>
       </body>
     </html>

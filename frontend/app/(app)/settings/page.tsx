@@ -14,6 +14,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { PopupWindow } from "@/components/ui/popup-window";
 import { useAuthGuard } from "@/hooks/useAuthGuard";
 import { apiRequest } from "@/lib/api";
+import { openAboutModal } from "@/lib/about-modal";
 import { updateAuthUser } from "@/lib/auth";
 import { setDebugModeEnabled } from "@/lib/debugging";
 
@@ -531,9 +532,16 @@ export default function SettingsPage() {
               <p className="text-xs text-muted-foreground">2. Manage reusable masters from HSN/SAC and Clients modules.</p>
               <p className="text-xs text-muted-foreground">3. Use Settings for plan management and personal details updates.</p>
               <div className="pt-1">
-                <Link href="/about" className="text-primary hover:underline" onClick={() => setHelpOpen(false)}>
-                  Open full About page
-                </Link>
+                <button
+                  type="button"
+                  className="text-primary hover:underline"
+                  onClick={() => {
+                    setHelpOpen(false);
+                    openAboutModal();
+                  }}
+                >
+                  Open About popup
+                </button>
               </div>
             </div>
           </div>
