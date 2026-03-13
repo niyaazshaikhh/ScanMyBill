@@ -10,7 +10,7 @@ import {
   type DragEvent,
   type FormEvent,
 } from "react";
-import { Loader2, Plus, Send, Sparkles, X } from "lucide-react";
+import { BrushCleaning, Loader2, Plus, Send, Sparkles, X } from "lucide-react";
 
 export const dynamic = "force-dynamic";
 
@@ -105,7 +105,7 @@ type AIChatMessage = {
 
 type DashboardAssistantApiResponse = {
   answer: string;
-  model: string;
+  model?: string;
 };
 
 type PersonalDetailsResponse = {
@@ -312,7 +312,6 @@ export default function DashboardPage() {
   const [aiChatOpen, setAiChatOpen] = useState(false);
   const [aiChatThinking, setAiChatThinking] = useState(false);
   const [aiChatInput, setAiChatInput] = useState("");
-  const [aiModelLabel, setAiModelLabel] = useState("OPENAI_MODEL");
   const [aiChatMessages, setAiChatMessages] = useState<AIChatMessage[]>([
     {
       id: "assistant-welcome",
@@ -756,7 +755,9 @@ export default function DashboardPage() {
         let assistantReply = "";
         try {
           const requestedYear = Number(year);
-          const response = await apiRequest<DashboardAssistantApiResponse>("/dashboard/assistant", {
+          const response = await apiRequest<DashboardAssistantApiResponse>(
+            "/dashboard/assistant",
+            {
             method: "POST",
             body: {
               message: prompt,
@@ -765,11 +766,9 @@ export default function DashboardPage() {
                 Number.isInteger(requestedYear) && requestedYear >= 2000 ? requestedYear : null,
               history: nextHistory,
             },
-          });
+            },
+          );
           assistantReply = (response.answer || "").trim();
-          if (response.model?.trim()) {
-            setAiModelLabel(response.model.trim());
-          }
         } catch {
           // Fallback keeps chat responsive if AI service is temporarily unavailable.
           assistantReply = buildFallbackAssistantResponse(prompt);
@@ -1079,8 +1078,7 @@ export default function DashboardPage() {
                 <Sparkles className="h-4 w-4" />
               </span>
               <div>
-                <p className="text-sm font-semibold text-foreground">AI Assistant</p>
-                <p className="text-[11px] text-muted-foreground">Powered by {aiModelLabel}</p>
+                <p className="text-sm font-semibold text-foreground">SMB AI Assistant</p>
               </div>
             </div>
             <div className="flex items-center gap-1">
@@ -1093,7 +1091,7 @@ export default function DashboardPage() {
                 aria-label="Reset chat"
                 title="Reset chat"
               >
-                <Sparkles className="h-4 w-4" />
+                <BrushCleaning className="h-4 w-4" />
               </Button>
               <Button
                 type="button"
@@ -1184,8 +1182,8 @@ export default function DashboardPage() {
         type="button"
         onClick={() => setAiChatOpen((previous) => !previous)}
         className="fixed bottom-24 right-6 z-50 h-12 w-12 rounded-full bg-sky-600 p-0 text-white shadow-lg hover:bg-sky-500 focus-visible:ring-sky-500"
-        aria-label={aiChatOpen ? "Close AI Assistant chat" : "Open AI Assistant chat"}
-        title="AI Assistant"
+        aria-label={aiChatOpen ? "Close SMB AI Assistant chat" : "Open SMB AI Assistant chat"}
+        title="SMB AI Assistant"
       >
         {!aiChatOpen ? (
           <span

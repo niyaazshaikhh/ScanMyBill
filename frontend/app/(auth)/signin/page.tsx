@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { useTheme } from '@/hooks/useTheme';
 import { apiRequest } from '@/lib/api';
 import { setAuthSession } from '@/lib/auth';
 
@@ -28,6 +29,7 @@ type TokenResponse = {
 
 export default function SignInPage() {
   const router = useRouter();
+  const { currentTheme } = useTheme();
   const [nextPath, setNextPath] = useState('/dashboard');
 
   const [email, setEmail] = useState('');
@@ -112,6 +114,8 @@ export default function SignInPage() {
             <div className='flex justify-center'>
               <GoogleLogin
                 text='continue_with'
+                theme={currentTheme === 'dark' ? 'filled_black' : 'outline'}
+                size='large'
                 onSuccess={async (credentialResponse) => {
                   if (!credentialResponse.credential) return;
                   try {

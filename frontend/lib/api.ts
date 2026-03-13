@@ -426,6 +426,16 @@ export async function apiRequest<T = unknown>(
     } catch {
       // Ignore JSON parsing errors for non-JSON responses.
     }
+    if (
+      path.startsWith("/bills/upload")
+      && res.status === 409
+      && (
+        message === `API Error (${res.status})`
+        || /conflict/i.test(message)
+      )
+    ) {
+      message = "This bill already exists in the database.";
+    }
     appendApiDebugRecord({
       level: "error",
       method,

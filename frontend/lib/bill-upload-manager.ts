@@ -59,6 +59,35 @@ function extractApiErrorMessage(payload: unknown, fallback: string): string {
   if (typeof detail === "string" && detail.trim()) {
     return detail.trim();
   }
+  if (isRecord(detail)) {
+    const detailMessage = detail.message;
+    if (typeof detailMessage === "string" && detailMessage.trim()) {
+      return detailMessage.trim();
+    }
+    const nestedDetailError = detail.error;
+    if (isRecord(nestedDetailError)) {
+      const nestedDetailMessage = nestedDetailError.message;
+      if (typeof nestedDetailMessage === "string" && nestedDetailMessage.trim()) {
+        return nestedDetailMessage.trim();
+      }
+    }
+  }
+  if (Array.isArray(detail)) {
+    const firstValidationMessage = detail.find(
+      (item) => isRecord(item) && typeof item.msg === "string" && item.msg.trim(),
+    );
+    if (isRecord(firstValidationMessage) && typeof firstValidationMessage.msg === "string") {
+      return firstValidationMessage.msg.trim();
+    }
+  }
+
+  const nestedError = payload.error;
+  if (isRecord(nestedError)) {
+    const nestedMessage = nestedError.message;
+    if (typeof nestedMessage === "string" && nestedMessage.trim()) {
+      return nestedMessage.trim();
+    }
+  }
 
   const message = payload.message;
   if (typeof message === "string" && message.trim()) {
@@ -178,7 +207,16 @@ export function startBillUpload(
         return;
       }
 
-      const message = extractApiErrorMessage(payload, `API Error (${xhr.status})`);
+      let message = extractApiErrorMessage(payload, `API Error (${xhr.status})`);
+      if (
+        xhr.status === 409
+        && (
+          message === `API Error (${xhr.status})`
+          || /conflict/i.test(message)
+        )
+      ) {
+        message = "This bill already exists in the database.";
+      }
       if (xhr.status === 401) {
         emitSessionTimeout(SESSION_TIMEOUT_MESSAGE);
       }
