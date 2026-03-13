@@ -10,6 +10,8 @@ import {
   FileText,
   LayoutDashboard,
   Lock,
+  LogOut,
+  Mail,
   Menu,
   PlusCircle,
   Search,
@@ -35,6 +37,7 @@ import {
   type AppPopupPayload,
   openAppPopup,
 } from "@/lib/app-popup";
+import { openAboutModal } from "@/lib/about-modal";
 import { Input } from "@/components/ui/input";
 import {
   clearAuthSession,
@@ -250,6 +253,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
   const [collapsed, setCollapsed] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
   const [displayName, setDisplayName] = useState("User");
+  const [userEmail, setUserEmail] = useState("");
   const [userRole, setUserRole] = useState<"admin" | "user">("user");
   const [subscriptionPlan, setSubscriptionPlan] =
     useState<SubscriptionPlan>("FREE");
@@ -267,6 +271,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
   >([]);
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [notificationsLoading, setNotificationsLoading] = useState(false);
   const [unreadNotificationCount, setUnreadNotificationCount] = useState(0);
   const [toasts, setToasts] = useState<ToastItem[]>([]);
@@ -285,10 +290,12 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
   });
   const searchContainerRef = useRef<HTMLDivElement | null>(null);
   const notificationsContainerRef = useRef<HTMLDivElement | null>(null);
+  const userMenuContainerRef = useRef<HTMLDivElement | null>(null);
   const seenNotificationIdsRef = useRef<Set<string>>(new Set());
   const initializedNotificationSyncRef = useRef(false);
   const toastTimersRef = useRef<Map<string, number>>(new Map());
   const notificationCloseTimerRef = useRef<number | null>(null);
+  const userMenuCloseTimerRef = useRef<number | null>(null);
   const personalDetailsPromptShownRef = useRef(false);
 
   useAuthGuard();
@@ -299,12 +306,14 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
     const syncUser = async () => {
       const user = getAuthUser();
       setDisplayName(user?.full_name || user?.email || "User");
+      setUserEmail(user?.email || "");
       setUserRole(user?.role === "admin" ? "admin" : "user");
       setSubscriptionPlan(user?.subscription_plan || "FREE");
       setSubscriptionStatus(user?.subscription_status || "EXPIRED");
       setNotificationsEnabled(user?.notifications_enabled ?? true);
 
       if (!getAuthToken()) {
+        setUserEmail("");
         setUserRole("user");
         setSubscriptionPlan("FREE");
         setSubscriptionStatus("EXPIRED");
@@ -324,6 +333,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
         if (!active) return;
 
         setDisplayName(profile.full_name || profile.email || "User");
+        setUserEmail(profile.email || "");
         setSubscriptionPlan(profile.subscription_plan || "FREE");
         setSubscriptionStatus(profile.subscription_status || "EXPIRED");
         setNotificationsEnabled(profile.notifications_enabled);
@@ -480,6 +490,12 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
         !notificationsContainerRef.current.contains(target)
       ) {
         setNotificationsOpen(false);
+      }
+      if (
+        userMenuContainerRef.current &&
+        !userMenuContainerRef.current.contains(target)
+      ) {
+        setUserMenuOpen(false);
       }
     };
 
@@ -711,6 +727,10 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
         window.clearTimeout(notificationCloseTimerRef.current);
         notificationCloseTimerRef.current = null;
       }
+      if (userMenuCloseTimerRef.current) {
+        window.clearTimeout(userMenuCloseTimerRef.current);
+        userMenuCloseTimerRef.current = null;
+      }
     };
   }, []);
 
@@ -896,6 +916,19 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
     },
     [router],
   );
+
+  const goToUserTarget = useCallback(
+    (href: string) => {
+      setUserMenuOpen(false);
+      router.push(href);
+    },
+    [router],
+  );
+
+  const openAboutFromMenu = useCallback(() => {
+    setUserMenuOpen(false);
+    openAboutModal();
+  }, []);
 
   const logout = async () => {
     setLoggingOut(true);
@@ -1317,6 +1350,113 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
                         ))}
                       </ul>
                     )}
+                  </div>
+                </div>
+              ) : null}
+            </div>
+            <div
+              ref={userMenuContainerRef}
+              className="relative"
+              onMouseEnter={() => {
+                if (userMenuCloseTimerRef.current) {
+                  window.clearTimeout(userMenuCloseTimerRef.current);
+                  userMenuCloseTimerRef.current = null;
+                }
+                setUserMenuOpen(true);
+              }}
+              onMouseLeave={() => {
+                userMenuCloseTimerRef.current = window.setTimeout(() => {
+                  setUserMenuOpen(false);
+                  userMenuCloseTimerRef.current = null;
+                }, 180);
+              }}
+            >
+              <Button
+                variant="outline"
+                size="icon"
+                onClick={() => setUserMenuOpen((prev) => !prev)}
+                className="h-10 w-10"
+                aria-label="User account menu"
+                aria-haspopup="menu"
+                aria-expanded={userMenuOpen}
+                title={displayName}
+              >
+                <UserCircle2 className="h-5 w-5" />
+              </Button>
+              {userMenuOpen ? (
+                <div
+                  role="menu"
+                  className="absolute right-0 top-[calc(100%+8px)] z-50 w-72 overflow-hidden rounded-md border border-border bg-background shadow-lg"
+                >
+                  <div className="border-b border-border px-3 py-3">
+                    <p className="truncate text-sm font-semibold text-foreground">
+                      {displayName}
+                    </p>
+                    <p className="truncate text-xs text-muted-foreground">
+                      {userEmail || "No email on file"}
+                    </p>
+                  </div>
+                  <div className="py-1">
+                    <button
+                      type="button"
+                      role="menuitem"
+                      className="flex w-full items-center gap-2 px-3 py-2 text-sm text-foreground transition-colors hover:bg-muted"
+                      onClick={() =>
+                        goToUserTarget(userRole === "admin" ? "/admin" : "/dashboard")
+                      }
+                    >
+                      <LayoutDashboard className="h-4 w-4 text-muted-foreground" />
+                      <span>{userRole === "admin" ? "Admin Home" : "Dashboard"}</span>
+                    </button>
+                    {userRole !== "admin" ? (
+                      <button
+                        type="button"
+                        role="menuitem"
+                        className="flex w-full items-center gap-2 px-3 py-2 text-sm text-foreground transition-colors hover:bg-muted"
+                        onClick={() => goToUserTarget("/settings/personal_details")}
+                      >
+                        <UserCircle2 className="h-4 w-4 text-muted-foreground" />
+                        <span>Profile & Personal Details</span>
+                      </button>
+                    ) : null}
+                    <button
+                      type="button"
+                      role="menuitem"
+                      className="flex w-full items-center gap-2 px-3 py-2 text-sm text-foreground transition-colors hover:bg-muted"
+                      onClick={() => goToUserTarget("/settings")}
+                    >
+                      <Settings className="h-4 w-4 text-muted-foreground" />
+                      <span>Settings</span>
+                    </button>
+                    <button
+                      type="button"
+                      role="menuitem"
+                      className="flex w-full items-center gap-2 px-3 py-2 text-sm text-foreground transition-colors hover:bg-muted"
+                      onClick={openAboutFromMenu}
+                    >
+                      <CircleHelp className="h-4 w-4 text-muted-foreground" />
+                      <span>About Us</span>
+                    </button>
+                    <a
+                      role="menuitem"
+                      className="flex w-full items-center gap-2 px-3 py-2 text-sm text-foreground transition-colors hover:bg-muted"
+                      href="mailto:scanmybill@gmail.com"
+                    >
+                      <Mail className="h-4 w-4 text-muted-foreground" />
+                      <span>Contact Support</span>
+                    </a>
+                  </div>
+                  <div className="border-t border-border p-2">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      onClick={logout}
+                      disabled={loggingOut}
+                      className="w-full justify-start text-destructive hover:bg-destructive/10 hover:text-destructive"
+                    >
+                      <LogOut className="h-4 w-4" />
+                      <span>{loggingOut ? "Logging out..." : "Logout"}</span>
+                    </Button>
                   </div>
                 </div>
               ) : null}
