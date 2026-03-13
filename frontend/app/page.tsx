@@ -12,11 +12,9 @@ import {
 } from "lucide-react";
 
 import { DraggableBills } from "@/components/landing/draggable-bills";
+import { LandingHeader } from "@/components/landing/landing-header";
 import { NewsletterForm } from "@/components/landing/newsletter-form";
 import { RazorpayCheckoutButton } from "@/components/landing/razorpay-checkout-button";
-import { InstallAppButton } from "@/components/pwa/install-app-button";
-import { AboutTrigger } from "@/components/about/about-trigger";
-import { ThemeToggle } from "@/components/theme-toggle";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 
@@ -121,51 +119,9 @@ export default function LandingPage() {
 
   return (
     <div className="min-h-screen">
-      <header className="sticky top-0 z-50 border-b border-border/60 bg-background/95 backdrop-blur">
-        <div className="mx-auto flex w-full max-w-7xl items-center justify-between px-4 py-3 sm:px-6 lg:px-8">
-          <Link href="/" className="flex items-center gap-3">
-            <span className="flex h-10 w-10 items-center justify-center rounded-md bg-primary font-[var(--font-space)] text-sm font-bold text-primary-foreground">
-              SMB
-            </span>
-            <span className="font-[var(--font-space)] text-xl font-bold tracking-tight text-primary">
-              ScanMyBill
-            </span>
-          </Link>
-          <nav className="hidden items-center gap-5 text-sm font-medium md:flex">
-            <AboutTrigger label="About Us" />
-            <a href="#features">Features</a>
-            <a href="#pricing">Pricing</a>
-            <a href="#faq">FAQ</a>
-            <a href="#contact">Contact Us</a>
-            <Button asChild size="sm" variant="outline">
-              <Link href="/signin">Log in</Link>
-            </Button>
-            <Button asChild size="sm">
-              <Link href="/signup">Sign up</Link>
-            </Button>
-            <InstallAppButton />
-            <ThemeToggle />
-          </nav>
-          <div className="flex flex-wrap items-center justify-end gap-2 md:hidden">
-            <AboutTrigger
-              label="About"
-              mode="button"
-              buttonVariant="ghost"
-              buttonSize="sm"
-            />
-            <Button asChild size="sm" variant="outline">
-              <Link href="/signin">Log in</Link>
-            </Button>
-            <Button asChild size="sm">
-              <Link href="/signup">Sign up</Link>
-            </Button>
-            <InstallAppButton />
-            <ThemeToggle />
-          </div>
-        </div>
-      </header>
+      <LandingHeader />
 
-      <main>
+      <main className="pt-24">
         <section className="mx-auto grid w-full max-w-7xl gap-8 px-4 pb-16 pt-10 sm:px-6 lg:grid-cols-2 lg:px-8 lg:pt-16">
           <div className="fade-up space-y-6">
             <p className="inline-flex rounded-full bg-secondary px-3 py-1 text-xs font-semibold uppercase tracking-wide text-secondary-foreground">
@@ -201,7 +157,7 @@ export default function LandingPage() {
 
         <section
           id="features"
-          className="mx-auto w-full max-w-7xl px-4 py-10 sm:px-6 lg:px-8"
+          className="mx-auto w-full max-w-7xl scroll-mt-28 px-4 py-10 sm:px-6 lg:px-8"
         >
           <div className="mb-6 flex items-end justify-between">
             <h2 className="font-[var(--font-space)] text-3xl font-semibold">
@@ -235,7 +191,7 @@ export default function LandingPage() {
 
         <section
           id="pricing"
-          className="mx-auto w-full max-w-7xl px-4 py-10 sm:px-6 lg:px-8"
+          className="mx-auto w-full max-w-7xl scroll-mt-28 px-4 py-10 sm:px-6 lg:px-8"
         >
           <Card className="border-teal-200 bg-teal-50/70 dark:border-teal-500/45 dark:bg-teal-500/15">
             <CardContent className="space-y-6 p-6">
@@ -296,7 +252,7 @@ export default function LandingPage() {
 
         <section
           id="faq"
-          className="mx-auto w-full max-w-7xl px-4 py-10 sm:px-6 lg:px-8"
+          className="mx-auto w-full max-w-7xl scroll-mt-28 px-4 py-10 sm:px-6 lg:px-8"
         >
           <Card className="border-sky-200 bg-sky-50/60 dark:border-sky-500/45 dark:bg-sky-500/15">
             <CardContent className="space-y-4 p-6">
@@ -341,7 +297,10 @@ export default function LandingPage() {
         </section>
       </main>
 
-      <footer id="contact" className="border-t border-border/70 bg-card/80">
+      <footer
+        id="contact"
+        className="scroll-mt-28 border-t border-border/70 bg-card/80"
+      >
         <div className="mx-auto grid w-full max-w-7xl gap-6 px-4 py-8 text-sm sm:px-6 md:grid-cols-3 lg:px-8">
           <div>
             <h4 className="font-semibold">Contact</h4>
