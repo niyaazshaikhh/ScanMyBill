@@ -20,6 +20,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
+import { VerticalScrollNumber } from "@/components/ui/vertical-scroll-number";
 import { useAuthGuard } from "@/hooks/useAuthGuard";
 import { apiRequest } from "@/lib/api";
 import { notifyApp } from "@/lib/app-notification";
@@ -781,9 +782,11 @@ export default function DashboardPage() {
               <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                 {card.title}
               </p>
-              <p className="text-2xl font-semibold">
-                Rs {formatAccountingAmount(card.value)}
-              </p>
+              <VerticalScrollNumber
+                value={`Rs ${formatAccountingAmount(card.value)}`}
+                className="text-2xl font-semibold"
+                durationMs={900}
+              />
               {card.title === "GST Payable" ? (
                 <Badge variant={card.value >= 0 ? "default" : "success"}>
                   {card.value >= 0 ? "Payable" : "Credit"}
