@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo } from 'react';
+import { useCallback, useMemo } from 'react';
 
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { formatAccountingAmount, formatAccountingInteger } from '@/lib/number-format';
@@ -10,6 +10,22 @@ type TrendPoint = {
   label: string;
   sales: number;
   purchases: number;
+};
+
+type TrendTooltipPayloadItem = {
+  color?: string;
+  dataKey?: string;
+  name?: string;
+  value?: number | string;
+  payload?: {
+    originalLabel?: string;
+  };
+};
+
+type TrendTooltipProps = {
+  active?: boolean;
+  label?: string | number;
+  payload?: TrendTooltipPayloadItem[];
 };
 
 type PeriodValue = 'monthly' | 'quarterly' | 'semi-annually' | 'annually';
@@ -146,6 +162,86 @@ export function SalesPurchaseBarChart({
     return Math.ceil(withPadding / step) * step;
   }, [chartData]);
 
+  const renderTooltip = useCallback(
+    ({ active, label, payload }: TrendTooltipProps) => {
+      if (!active || !payload?.length) return null;
+
+      const firstPayload = payload[0]?.payload;
+      const originalLabel =
+        typeof firstPayload?.originalLabel === 'string'
+          ? firstPayload.originalLabel
+          : null;
+      const displayLabel =
+        originalLabel && originalLabel !== label
+          ? `${String(label)} (${originalLabel})`
+          : String(label ?? '');
+
+      return (
+        <div
+          className='min-w-[13rem] rounded-md border px-3 py-2'
+          style={{
+            backgroundColor: isDark ? '#1e293b' : '#ffffff',
+            borderColor: isDark ? '#334155' : '#e2e8f0',
+            color: isDark ? '#f1f5f9' : '#0f172a',
+            boxShadow: isDark
+              ? '0 12px 24px rgba(2, 6, 23, 0.45)'
+              : '0 10px 20px rgba(15, 23, 42, 0.12)',
+          }}
+        >
+          <p
+            className='mb-2 text-xs font-semibold tracking-wide'
+            style={{ color: isDark ? '#f1f5f9' : '#0f172a' }}
+          >
+            {displayLabel}
+          </p>
+          <div className='space-y-1.5'>
+            {payload.map((item, index) => {
+              const tone =
+                item.color ||
+                BAR_SERIES.find((series) => series.key === item.dataKey)?.color ||
+                (isDark ? '#cbd5e1' : '#334155');
+              const itemLabel =
+                typeof item.name === 'string'
+                  ? item.name
+                  : item.dataKey === 'sales'
+                    ? 'Sales'
+                    : item.dataKey === 'purchases'
+                      ? 'Purchases'
+                      : 'Amount';
+              const numericValue = Number(item.value ?? 0);
+
+              return (
+                <div
+                  key={`${item.dataKey || itemLabel}-${index}`}
+                  className='flex items-center justify-between gap-3'
+                >
+                  <span
+                    className='flex items-center gap-2 text-xs font-medium sm:text-sm'
+                    style={{ color: isDark ? '#cbd5e1' : '#334155' }}
+                  >
+                    <span
+                      className='inline-block h-2.5 w-2.5 rounded-full'
+                      style={{ backgroundColor: tone }}
+                      aria-hidden='true'
+                    />
+                    {itemLabel}
+                  </span>
+                  <span
+                    className='text-xs font-semibold tabular-nums sm:text-sm'
+                    style={{ color: tone }}
+                  >
+                    Rs {formatAccountingAmount(numericValue)}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      );
+    },
+    [isDark],
+  );
+
   return (
     <div className='w-full space-y-3'>
       <div className='flex flex-wrap items-center gap-3 px-1'>
@@ -180,31 +276,10 @@ export function SalesPurchaseBarChart({
               tickFormatter={(value) => formatCompactAmount(Number(value))}
             />
             <Tooltip
-              formatter={(value) => `Rs ${formatAccountingAmount(Number(value))}`}
-              labelFormatter={(value, payload) => {
-                const first = payload?.[0]?.payload;
-                const originalLabel =
-                  typeof first?.originalLabel === 'string'
-                    ? first.originalLabel
-                    : null;
-                return originalLabel && originalLabel !== value
-                  ? `${value} (${originalLabel})`
-                  : String(value);
-              }}
+              content={renderTooltip}
               cursor={{ fill: isDark ? 'rgba(148, 163, 184, 0.16)' : 'rgba(15, 23, 42, 0.06)' }}
               allowEscapeViewBox={{ x: true, y: true }}
-              wrapperStyle={{ zIndex: 30, outline: 'none' }}
-              contentStyle={{
-                backgroundColor: isDark ? '#1e293b' : '#ffffff',
-                borderColor: isDark ? '#334155' : '#e2e8f0',
-                color: isDark ? '#f1f5f9' : '#0f172a',
-                borderRadius: '0.5rem',
-                boxShadow: isDark
-                  ? '0 12px 24px rgba(2, 6, 23, 0.45)'
-                  : '0 10px 20px rgba(15, 23, 42, 0.12)'
-              }}
-              labelStyle={{ color: isDark ? '#f1f5f9' : '#0f172a' }}
-              itemStyle={{ color: isDark ? '#e2e8f0' : '#0f172a' }}
+              wrapperStyle={{ zIndex: 30, outline: 'none', pointerEvents: 'none' }}
             />
             <Bar dataKey='sales' fill='#ea580c' radius={[6, 6, 0, 0]} activeBar={{ fill: '#ea580c' }} />
             <Bar dataKey='purchases' fill='#0f766e' radius={[6, 6, 0, 0]} activeBar={{ fill: '#0f766e' }} />

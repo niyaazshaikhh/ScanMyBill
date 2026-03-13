@@ -1,8 +1,16 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent } from "react";
-import { Loader2, Plus } from "lucide-react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type DragEvent,
+  type FormEvent,
+} from "react";
+import { Loader2, Plus, Send, Sparkles, X } from "lucide-react";
 
 export const dynamic = "force-dynamic";
 
@@ -87,6 +95,19 @@ type BillUploadApiResponse = {
   debug_trace?: AIDebugTrace | null;
   [key: string]: unknown;
 };
+
+type AIChatMessage = {
+  id: string;
+  role: "assistant" | "user";
+  content: string;
+  createdAt: number;
+};
+
+type DashboardAssistantApiResponse = {
+  answer: string;
+  model: string;
+};
+
 type PersonalDetailsResponse = {
   company_name: string | null;
   gstin_number: string | null;
@@ -129,6 +150,14 @@ const PERSONAL_DETAILS_REQUIRED_KEYS: Array<keyof PersonalDetailsResponse> = [
   "branch",
   "ifsc_code",
 ];
+
+const AI_DEFAULT_PROMPTS = [
+  "✨ Generate Business Summary",
+  "How many invoices this month?",
+] as const;
+
+const AI_WELCOME_MESSAGE =
+  "Hello! I'm ScanMyBill AI Assistant. Ask me about business performance, GST, or invoice trends.";
 
 function getFinancialYearStart(dateString: string) {
   const monthIndex = isoMonthIndex(dateString);
@@ -269,6 +298,7 @@ export default function DashboardPage() {
   const [summary, setSummary] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [invoiceDates, setInvoiceDates] = useState<string[]>([]);
 
   const [uploadState, setUploadState] = useState<BillUploadState>(getBillUploadState());
   const uploading = uploadState.status === "uploading";
@@ -279,8 +309,21 @@ export default function DashboardPage() {
   const [dashboardUserName, setDashboardUserName] = useState("User");
   const [showPersonalDetailsBanner, setShowPersonalDetailsBanner] = useState(false);
   const [isUploadDropActive, setIsUploadDropActive] = useState(false);
+  const [aiChatOpen, setAiChatOpen] = useState(false);
+  const [aiChatThinking, setAiChatThinking] = useState(false);
+  const [aiChatInput, setAiChatInput] = useState("");
+  const [aiModelLabel, setAiModelLabel] = useState("OPENAI_MODEL");
+  const [aiChatMessages, setAiChatMessages] = useState<AIChatMessage[]>([
+    {
+      id: "assistant-welcome",
+      role: "assistant",
+      content: AI_WELCOME_MESSAGE,
+      createdAt: Date.now(),
+    },
+  ]);
   const mainUploadInputRef = useRef<HTMLInputElement | null>(null);
   const quickUploadInputRef = useRef<HTMLInputElement | null>(null);
+  const aiChatEndRef = useRef<HTMLDivElement | null>(null);
 
   const appendDebugEntry = useCallback(
     (entry: {
@@ -300,6 +343,7 @@ export default function DashboardPage() {
   const loadYearOptions = async () => {
     try {
       const response = await apiRequest<InvoiceYearListResponse>("/invoices");
+      setInvoiceDates(response.invoices.map((invoice) => invoice.invoice_date));
       const starts = Array.from(
         new Set(response.invoices.map((invoice) => getFinancialYearStart(invoice.invoice_date))),
       ).sort((a, b) => b - a);
@@ -316,6 +360,7 @@ export default function DashboardPage() {
       }
     } catch (err) {
       // Keep fallback year option if invoices query fails.
+      setInvoiceDates([]);
       setYearOptions([
         {
           value: String(currentFinancialYearStart),
@@ -646,6 +691,131 @@ export default function DashboardPage() {
     [resolveSupportedFile, uploadFile, uploading],
   );
 
+  const buildFallbackAssistantResponse = useCallback(
+    (prompt: string): string => {
+      const normalized = prompt.trim().toLowerCase();
+      const now = new Date();
+      const monthLabel = now.toLocaleString("en-IN", { month: "long", year: "numeric" });
+
+      if (
+        normalized.includes("how many invoices this month")
+        || (normalized.includes("invoice") && normalized.includes("month"))
+      ) {
+        const monthlyInvoiceCount = invoiceDates.filter((dateValue) => {
+          const parsed = new Date(dateValue);
+          if (Number.isNaN(parsed.getTime())) return false;
+          return parsed.getMonth() === now.getMonth() && parsed.getFullYear() === now.getFullYear();
+        }).length;
+
+        return `For ${monthLabel}, you have ${monthlyInvoiceCount} invoice${
+          monthlyInvoiceCount === 1 ? "" : "s"
+        } recorded. Keep uploading daily bills to maintain an accurate month-end snapshot.`;
+      }
+
+      const totalSales = summary?.total_sales ?? 0;
+      const totalPurchases = summary?.total_purchases ?? 0;
+      const gstCollected = summary?.gst_collected ?? 0;
+      const gstPaid = summary?.gst_paid ?? 0;
+      const gstPayable = summary?.gst_payable ?? 0;
+      const latestTrendPoint = (summary?.trend || [])[summary?.trend.length ? summary.trend.length - 1 : 0];
+
+      const trendLine = latestTrendPoint
+        ? `In ${latestTrendPoint.label}, sales are Rs ${formatAccountingAmount(
+            latestTrendPoint.sales,
+          )} and purchases are Rs ${formatAccountingAmount(latestTrendPoint.purchases)}.`
+        : "Trend details are limited right now because recent transaction buckets are still sparse.";
+
+      return `Business summary: Sales Rs ${formatAccountingAmount(totalSales)}, Purchases Rs ${formatAccountingAmount(
+        totalPurchases,
+      )}, GST Collected Rs ${formatAccountingAmount(gstCollected)}, GST Paid Rs ${formatAccountingAmount(
+        gstPaid,
+      )}, and GST Payable Rs ${formatAccountingAmount(gstPayable)}. ${trendLine}`;
+    },
+    [invoiceDates, summary],
+  );
+
+  const sendAIMessage = useCallback(
+    async (rawPrompt: string) => {
+      const prompt = rawPrompt.trim();
+      if (!prompt || aiChatThinking) return;
+
+      const userMessage: AIChatMessage = {
+        id: `user-${Date.now()}`,
+        role: "user",
+        content: prompt,
+        createdAt: Date.now(),
+      };
+      const nextHistory = [...aiChatMessages, userMessage]
+        .slice(-10)
+        .map((item) => ({ role: item.role, content: item.content }));
+      setAiChatMessages((previous) => [...previous, userMessage]);
+      setAiChatInput("");
+      setAiChatThinking(true);
+
+      try {
+        let assistantReply = "";
+        try {
+          const requestedYear = Number(year);
+          const response = await apiRequest<DashboardAssistantApiResponse>("/dashboard/assistant", {
+            method: "POST",
+            body: {
+              message: prompt,
+              period,
+              financial_year_start:
+                Number.isInteger(requestedYear) && requestedYear >= 2000 ? requestedYear : null,
+              history: nextHistory,
+            },
+          });
+          assistantReply = (response.answer || "").trim();
+          if (response.model?.trim()) {
+            setAiModelLabel(response.model.trim());
+          }
+        } catch {
+          // Fallback keeps chat responsive if AI service is temporarily unavailable.
+          assistantReply = buildFallbackAssistantResponse(prompt);
+        }
+
+        if (!assistantReply) {
+          assistantReply = buildFallbackAssistantResponse(prompt);
+        }
+
+        const assistantMessage: AIChatMessage = {
+          id: `assistant-${Date.now()}`,
+          role: "assistant",
+          content: assistantReply,
+          createdAt: Date.now(),
+        };
+        setAiChatMessages((previous) => [...previous, assistantMessage]);
+      } finally {
+        setAiChatThinking(false);
+      }
+    },
+    [aiChatMessages, aiChatThinking, buildFallbackAssistantResponse, period, year],
+  );
+
+  const onSubmitAIChat = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    void sendAIMessage(aiChatInput);
+  };
+
+  const onResetAIChat = () => {
+    setAiChatInput("");
+    setAiChatThinking(false);
+    setAiChatMessages([
+      {
+        id: `assistant-welcome-${Date.now()}`,
+        role: "assistant",
+        content: AI_WELCOME_MESSAGE,
+        createdAt: Date.now(),
+      },
+    ]);
+  };
+
+  useEffect(() => {
+    if (!aiChatOpen) return;
+    aiChatEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+  }, [aiChatMessages, aiChatOpen, aiChatThinking]);
+
   return (
     <div className="space-y-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -901,6 +1071,130 @@ export default function DashboardPage() {
           void uploadFile(selected);
         }}
       />
+      {aiChatOpen ? (
+        <div className="fixed bottom-24 right-6 z-[60] w-[min(24rem,calc(100vw-1.5rem))] overflow-hidden rounded-2xl border border-border bg-background shadow-2xl">
+          <div className="flex items-center justify-between border-b border-border bg-background/95 px-4 py-3 backdrop-blur">
+            <div className="flex items-center gap-2">
+              <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-primary/12 text-primary">
+                <Sparkles className="h-4 w-4" />
+              </span>
+              <div>
+                <p className="text-sm font-semibold text-foreground">AI Assistant</p>
+                <p className="text-[11px] text-muted-foreground">Powered by {aiModelLabel}</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-1">
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8"
+                onClick={onResetAIChat}
+                aria-label="Reset chat"
+                title="Reset chat"
+              >
+                <Sparkles className="h-4 w-4" />
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8"
+                onClick={() => setAiChatOpen(false)}
+                aria-label="Close AI assistant"
+                title="Close"
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+          </div>
+          <div className="max-h-[50vh] space-y-3 overflow-y-auto bg-muted/25 px-3 py-3">
+            {aiChatMessages.map((message) => (
+              <div
+                key={message.id}
+                className={cn(
+                  "max-w-[85%] rounded-xl px-3 py-2 shadow-sm",
+                  message.role === "assistant"
+                    ? "mr-auto border border-border bg-card text-foreground"
+                    : "ml-auto bg-primary text-primary-foreground",
+                )}
+              >
+                <p className="whitespace-pre-line text-sm leading-relaxed">{message.content}</p>
+                <p
+                  className={cn(
+                    "mt-1 text-[10px]",
+                    message.role === "assistant"
+                      ? "text-muted-foreground"
+                      : "text-primary-foreground/80",
+                  )}
+                >
+                  {new Date(message.createdAt).toLocaleTimeString("en-IN", {
+                    hour: "2-digit",
+                    minute: "2-digit",
+                  })}
+                </p>
+              </div>
+            ))}
+            {aiChatThinking ? (
+              <div className="mr-auto max-w-[85%] rounded-xl border border-border bg-card px-3 py-2 text-sm text-muted-foreground shadow-sm">
+                AI is generating a concise answer...
+              </div>
+            ) : null}
+            <div ref={aiChatEndRef} />
+          </div>
+          <div className="space-y-3 border-t border-border bg-background px-3 py-3">
+            <div className="flex flex-wrap gap-2">
+              {AI_DEFAULT_PROMPTS.map((promptOption) => (
+                <button
+                  key={promptOption}
+                  type="button"
+                  onClick={() => void sendAIMessage(promptOption)}
+                  disabled={aiChatThinking}
+                  className="rounded-full border border-border bg-background px-3 py-1.5 text-xs font-medium text-foreground transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {promptOption}
+                </button>
+              ))}
+            </div>
+            <form className="flex items-center gap-2" onSubmit={onSubmitAIChat}>
+              <Input
+                value={aiChatInput}
+                onChange={(event) => setAiChatInput(event.target.value)}
+                placeholder="Ask AI about your dashboard insights..."
+                disabled={aiChatThinking}
+              />
+              <Button
+                type="submit"
+                size="icon"
+                disabled={aiChatThinking || !aiChatInput.trim()}
+                aria-label="Send AI message"
+                title="Send"
+              >
+                {aiChatThinking ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Send className="h-4 w-4" />
+                )}
+              </Button>
+            </form>
+          </div>
+        </div>
+      ) : null}
+      <Button
+        type="button"
+        onClick={() => setAiChatOpen((previous) => !previous)}
+        className="fixed bottom-24 right-6 z-50 h-12 w-12 rounded-full bg-sky-600 p-0 text-white shadow-lg hover:bg-sky-500 focus-visible:ring-sky-500"
+        aria-label={aiChatOpen ? "Close AI Assistant chat" : "Open AI Assistant chat"}
+        title="AI Assistant"
+      >
+        {!aiChatOpen ? (
+          <span
+            className="absolute inset-0 rounded-full bg-sky-400/60 animate-ping"
+            aria-hidden="true"
+          />
+        ) : null}
+        <Sparkles className="relative h-5 w-5" />
+      </Button>
       <Button
         type="button"
         onClick={() => {

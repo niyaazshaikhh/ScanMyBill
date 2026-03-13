@@ -72,6 +72,7 @@ export default function ClientAnalyticsPage() {
   const [period, setPeriod] = useState('quarterly');
   const [year, setYear] = useState('');
   const [selectedFolder, setSelectedFolder] = useState('Q1');
+  const [revenueSortOrder, setRevenueSortOrder] = useState<'asc' | 'desc'>('desc');
   const [clients, setClients] = useState<ClientMaster[]>([]);
   const [salesInvoices, setSalesInvoices] = useState<SalesInvoice[]>([]);
   const [loading, setLoading] = useState(true);
@@ -189,9 +190,24 @@ export default function ClientAnalyticsPage() {
           sales_revenue: stats.revenue
         };
       })
-      .filter((row) => row.sales_bills > 0)
-      .sort((a, b) => b.sales_revenue - a.sales_revenue);
+      .filter((row) => row.sales_bills > 0);
   }, [clients, folderInvoices]);
+
+  const sortedAnalyticsRows = useMemo(() => {
+    const rows = [...analyticsRows];
+    rows.sort((left, right) =>
+      revenueSortOrder === 'asc'
+        ? left.sales_revenue - right.sales_revenue
+        : right.sales_revenue - left.sales_revenue
+    );
+    return rows;
+  }, [analyticsRows, revenueSortOrder]);
+
+  const revenueSortTriangle = revenueSortOrder === 'asc' ? '▴' : '▾';
+
+  const onToggleRevenueSort = () => {
+    setRevenueSortOrder((previous) => (previous === 'asc' ? 'desc' : 'asc'));
+  };
 
   return (
     <div className='space-y-5'>
@@ -273,18 +289,29 @@ export default function ClientAnalyticsPage() {
                   <TableHead>Client</TableHead>
                   <TableHead>GST Number</TableHead>
                   <TableHead>Sales Bills</TableHead>
-                  <TableHead className='text-right'>Sales Revenue</TableHead>
+                  <TableHead className='text-right'>
+                    <button
+                      type='button'
+                      onClick={onToggleRevenueSort}
+                      className='inline-flex w-full items-center justify-end gap-1 rounded px-1 text-right transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring'
+                      aria-label={`Sort sales revenue ${revenueSortOrder === 'asc' ? 'descending' : 'ascending'}`}
+                      title={`Sort revenue ${revenueSortOrder === 'asc' ? 'descending' : 'ascending'}`}
+                    >
+                      <span>Sales Revenue</span>
+                      <span className='text-xs text-muted-foreground'>{revenueSortTriangle}</span>
+                    </button>
+                  </TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {analyticsRows.length === 0 ? (
+                {sortedAnalyticsRows.length === 0 ? (
                   <TableRow>
                     <TableCell colSpan={4} className='text-center text-muted-foreground'>
                       No sales analytics for this folder.
                     </TableCell>
                   </TableRow>
                 ) : (
-                  analyticsRows.map((row) => (
+                  sortedAnalyticsRows.map((row) => (
                     <TableRow key={row.id}>
                       <TableCell className='font-medium'>{row.name}</TableCell>
                       <TableCell>{row.gst_number || 'N/A'}</TableCell>

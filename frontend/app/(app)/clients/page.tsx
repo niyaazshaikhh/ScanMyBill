@@ -1,7 +1,7 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 
 export const dynamic = "force-dynamic";
 
@@ -53,6 +53,7 @@ export default function ClientsPage() {
   const [clients, setClients] = useState<ClientRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
 
   const [showForm, setShowForm] = useState(false);
   const [name, setName] = useState('');
@@ -279,6 +280,21 @@ export default function ClientsPage() {
     void deleteClient(targetClientId);
   };
 
+  const filteredClients = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase();
+    if (!query) return clients;
+
+    return clients.filter((client) => {
+      return (
+        client.name.toLowerCase().includes(query)
+        || (client.gst_number || '').toLowerCase().includes(query)
+        || (client.email || '').toLowerCase().includes(query)
+        || (client.address || '').toLowerCase().includes(query)
+        || (client.state_name || '').toLowerCase().includes(query)
+      );
+    });
+  }, [clients, searchQuery]);
+
   return (
     <div className='space-y-5'>
       <div className='flex items-center justify-between'>
@@ -390,11 +406,26 @@ export default function ClientsPage() {
 
       <Card className='bg-card/85'>
         <CardHeader>
-          <CardTitle>Client Master List</CardTitle>
+          <div className='flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between'>
+            <CardTitle>Client Master List</CardTitle>
+            <div className='w-full sm:max-w-sm'>
+              <Input
+                value={searchQuery}
+                onChange={(event) => setSearchQuery(event.target.value)}
+                placeholder='Search by client, GST, email, address...'
+                aria-label='Search clients'
+              />
+            </div>
+          </div>
         </CardHeader>
         <CardContent>
           {error ? <p className='text-sm text-destructive'>{error}</p> : null}
           {loading ? <p className='text-sm text-muted-foreground'>Loading clients...</p> : null}
+          {!loading && !error ? (
+            <p className='mb-3 text-xs text-muted-foreground'>
+              Showing {filteredClients.length} of {clients.length} clients
+            </p>
+          ) : null}
           {!loading ? (
             <Table>
               <TableHeader>
@@ -405,14 +436,16 @@ export default function ClientsPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {clients.length === 0 ? (
+                {filteredClients.length === 0 ? (
                   <TableRow>
                     <TableCell colSpan={3} className='text-center text-muted-foreground'>
-                      No clients added yet.
+                      {clients.length === 0
+                        ? 'No clients added yet.'
+                        : 'No clients match your search.'}
                     </TableCell>
                   </TableRow>
                 ) : (
-                  clients.map((client) => (
+                  filteredClients.map((client) => (
                     <TableRow key={client.id}>
                       <TableCell className='font-medium'>{client.name}</TableCell>
                       <TableCell>{client.gst_number || 'N/A'}</TableCell>
