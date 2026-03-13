@@ -22,6 +22,7 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { SubscriptionBadge } from "@/components/SubscriptionBadge";
+import { ThemeToggle } from "@/components/theme-toggle";
 import { Button } from "@/components/ui/button";
 import { PopupWindow } from "@/components/ui/popup-window";
 import { apiRequest } from "@/lib/api";
@@ -928,7 +929,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
     <div className="flex h-[100dvh] overflow-hidden">
       <aside
         className={cn(
-          "fixed inset-y-0 left-0 z-40 flex w-64 min-h-0 flex-col border-r border-border bg-white/95 p-4 transition-transform lg:fixed lg:top-0 lg:h-[100dvh] lg:translate-x-0",
+          "fixed inset-y-0 left-0 z-40 flex w-64 min-h-0 flex-col border-r border-border bg-background/95 p-4 transition-transform lg:fixed lg:top-0 lg:h-[100dvh] lg:translate-x-0",
           open ? "translate-x-0" : "-translate-x-full",
           collapsed && "lg:w-20",
         )}
@@ -1191,6 +1192,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
                 </div>
               </div>
             </div>
+            <ThemeToggle />
             <div
               ref={notificationsContainerRef}
               className="relative"
@@ -1345,8 +1347,8 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
             key={toast.id}
             className={cn(
               "pointer-events-auto rounded-md border shadow-lg",
-              toast.tone === "success" && "border-emerald-300 bg-emerald-50",
-              toast.tone === "error" && "border-red-300 bg-red-50",
+              toast.tone === "success" && "border-emerald-500/40 bg-emerald-500/10",
+              toast.tone === "error" && "border-red-500/40 bg-red-500/10",
               toast.tone === "info" && "border-border bg-background",
             )}
           >
@@ -1356,7 +1358,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
                   className={cn(
                     "text-sm font-semibold",
                     toast.tone === "success"
-                      ? "text-emerald-900"
+                      ? "text-emerald-700 dark:text-emerald-300"
                       : "text-foreground",
                   )}
                 >
@@ -1366,7 +1368,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
                   className={cn(
                     "text-xs",
                     toast.tone === "success"
-                      ? "text-emerald-800"
+                      ? "text-emerald-700/90 dark:text-emerald-200"
                       : "text-muted-foreground",
                   )}
                 >
@@ -1379,7 +1381,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
                 className={cn(
                   "rounded p-1 hover:text-foreground",
                   toast.tone === "success"
-                    ? "text-emerald-700 hover:bg-emerald-100"
+                    ? "text-emerald-700 hover:bg-emerald-500/15 dark:text-emerald-300"
                     : "text-muted-foreground hover:bg-muted",
                 )}
                 aria-label="Close notification"

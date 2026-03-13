@@ -1,4 +1,4 @@
-﻿import type { Metadata } from "next";
+import type { Metadata } from "next";
 import Link from "next/link";
 import {
   BarChart3,
@@ -15,6 +15,7 @@ import { DraggableBills } from "@/components/landing/draggable-bills";
 import { NewsletterForm } from "@/components/landing/newsletter-form";
 import { RazorpayCheckoutButton } from "@/components/landing/razorpay-checkout-button";
 import { InstallAppButton } from "@/components/pwa/install-app-button";
+import { ThemeToggle } from "@/components/theme-toggle";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 
@@ -79,7 +80,7 @@ const pricingHighlights = [
     name: "Standard",
     price: "Rs 1 / month",
     description: "Good for one person who wants simple bill and tax tracking.",
-    accent: "border-slate-200 bg-white",
+    accent: "border-slate-200 bg-card dark:border-slate-700",
     points: [
       "Use Dashboard, Invoices, and Settings",
       "Upload bills and keep records in one place",
@@ -90,7 +91,7 @@ const pricingHighlights = [
     price: "Rs 2 / month",
     description:
       "Best for small teams that want better reports and faster daily work.",
-    accent: "border-orange-300 bg-orange-50/40",
+    accent: "border-orange-300 bg-orange-50/40 dark:border-orange-500/50 dark:bg-orange-500/15",
     points: [
       "Everything in Standard plan",
       "Includes Client Analytics",
@@ -102,7 +103,7 @@ const pricingHighlights = [
     name: "Business",
     price: "Rs 3 / month",
     description: "Best for busy businesses that need every section of the app.",
-    accent: "border-teal-300 bg-teal-50/40",
+    accent: "border-teal-300 bg-teal-50/40 dark:border-teal-500/50 dark:bg-teal-500/15",
     points: [
       "Access to all main routes",
       "Best for full billing workflow",
@@ -142,6 +143,7 @@ export default function LandingPage() {
               <Link href="/signup">Sign up</Link>
             </Button>
             <InstallAppButton />
+            <ThemeToggle />
           </nav>
           <div className="flex flex-wrap items-center justify-end gap-2 md:hidden">
             <Button asChild size="sm" variant="ghost">
@@ -154,6 +156,7 @@ export default function LandingPage() {
               <Link href="/signup">Sign up</Link>
             </Button>
             <InstallAppButton />
+            <ThemeToggle />
           </div>
         </div>
       </header>
@@ -173,13 +176,13 @@ export default function LandingPage() {
               workflows.
             </p>
             <div className="flex flex-wrap gap-2 text-xs font-medium text-foreground/80">
-              <span className="rounded-full border border-orange-300 bg-white/85 px-3 py-1">
+              <span className="rounded-full border border-orange-300 bg-card/85 px-3 py-1">
                 MSME-first workflows
               </span>
-              <span className="rounded-full border border-sky-300 bg-white/85 px-3 py-1">
+              <span className="rounded-full border border-sky-300 bg-card/85 px-3 py-1">
                 AI field extraction
               </span>
-              <span className="rounded-full border border-emerald-300 bg-white/85 px-3 py-1">
+              <span className="rounded-full border border-emerald-300 bg-card/85 px-3 py-1">
                 GST-ready exports
               </span>
             </div>
@@ -208,7 +211,7 @@ export default function LandingPage() {
             {features.map((feature) => (
               <Card
                 key={feature.title}
-                className="border-orange-200/70 bg-white/75"
+                className="border-orange-200/70 bg-card/75 dark:border-slate-700"
               >
                 <CardContent className="space-y-2 p-5">
                   <div className="flex items-center gap-2">
@@ -230,7 +233,7 @@ export default function LandingPage() {
           id="pricing"
           className="mx-auto w-full max-w-7xl px-4 py-10 sm:px-6 lg:px-8"
         >
-          <Card className="border-teal-200 bg-teal-50/70">
+          <Card className="border-teal-200 bg-teal-50/70 dark:border-teal-500/45 dark:bg-teal-500/15">
             <CardContent className="space-y-6 p-6">
               <div>
                 <h3 className="font-[var(--font-space)] text-2xl font-semibold">
@@ -291,7 +294,7 @@ export default function LandingPage() {
           id="faq"
           className="mx-auto w-full max-w-7xl px-4 py-10 sm:px-6 lg:px-8"
         >
-          <Card className="border-sky-200 bg-sky-50/60">
+          <Card className="border-sky-200 bg-sky-50/60 dark:border-sky-500/45 dark:bg-sky-500/15">
             <CardContent className="space-y-4 p-6">
               <h3 className="font-[var(--font-space)] text-2xl font-semibold">
                 Frequently Asked Questions
@@ -300,7 +303,7 @@ export default function LandingPage() {
                 {faqs.map((faq) => (
                   <details
                     key={faq.question}
-                    className="group rounded-md border border-sky-200 bg-white/80"
+                    className="group rounded-md border border-sky-200 bg-card/80 dark:border-slate-700"
                   >
                     <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 text-sm font-semibold">
                       {faq.question}
@@ -319,7 +322,7 @@ export default function LandingPage() {
         </section>
 
         <section className="mx-auto w-full max-w-7xl px-4 py-10 sm:px-6 lg:px-8">
-          <Card className="border-amber-300 bg-amber-100/70">
+          <Card className="border-amber-300 bg-amber-100/70 dark:border-amber-500/45 dark:bg-amber-500/15">
             <CardContent className="space-y-3 p-6">
               <h3 className="font-[var(--font-space)] text-2xl font-semibold">
                 Newsletter Signup
@@ -334,7 +337,7 @@ export default function LandingPage() {
         </section>
       </main>
 
-      <footer id="contact" className="border-t border-border/70 bg-white/80">
+      <footer id="contact" className="border-t border-border/70 bg-card/80">
         <div className="mx-auto grid w-full max-w-7xl gap-6 px-4 py-8 text-sm sm:px-6 md:grid-cols-3 lg:px-8">
           <div>
             <h4 className="font-semibold">Contact</h4>
@@ -355,7 +358,7 @@ export default function LandingPage() {
             <p className="mt-1 text-muted-foreground">Built by NIYAZ SHAIKH</p>
             <div className="mt-3 flex flex-wrap gap-2">
               <a
-                className="inline-flex items-center gap-2 rounded-md border border-border bg-white px-3 py-1.5 text-xs font-medium text-primary hover:bg-muted"
+                className="inline-flex items-center gap-2 rounded-md border border-border bg-card px-3 py-1.5 text-xs font-medium text-primary hover:bg-muted"
                 href="https://x.com/niyaazshaikhh"
                 target="_blank"
                 rel="noopener noreferrer"
@@ -363,7 +366,7 @@ export default function LandingPage() {
                 <Twitter className="h-3.5 w-3.5" />X
               </a>
               <a
-                className="inline-flex items-center gap-2 rounded-md border border-border bg-white px-3 py-1.5 text-xs font-medium text-primary hover:bg-muted"
+                className="inline-flex items-center gap-2 rounded-md border border-border bg-card px-3 py-1.5 text-xs font-medium text-primary hover:bg-muted"
                 href="https://www.linkedin.com/in/niyaazshaikhh/"
                 target="_blank"
                 rel="noopener noreferrer"
@@ -372,7 +375,7 @@ export default function LandingPage() {
                 LinkedIn
               </a>
               <a
-                className="inline-flex items-center gap-2 rounded-md border border-border bg-white px-3 py-1.5 text-xs font-medium text-primary hover:bg-muted"
+                className="inline-flex items-center gap-2 rounded-md border border-border bg-card px-3 py-1.5 text-xs font-medium text-primary hover:bg-muted"
                 href="https://www.instagram.com/whyniyaaz/"
                 target="_blank"
                 rel="noopener noreferrer"
@@ -413,3 +416,4 @@ export default function LandingPage() {
     </div>
   );
 }
+

@@ -80,7 +80,7 @@ export default function ResetPasswordPage() {
   };
 
   return (
-    <Card className='border-teal-200 bg-white/90'>
+    <Card className='border-teal-200 bg-card/90 dark:border-slate-700'>
       <CardHeader>
         <CardTitle className='font-[var(--font-space)] text-2xl'>Reset Password</CardTitle>
         <CardDescription>Set a new password for your account.</CardDescription>
@@ -115,7 +115,7 @@ export default function ResetPasswordPage() {
             />
           </div>
           {error ? <p className='text-sm text-destructive'>{error}</p> : null}
-          {success ? <p className='text-sm text-green-700'>{success}</p> : null}
+          {success ? <p className='text-sm text-green-700 dark:text-green-300'>{success}</p> : null}
           <Button className='w-full' type='submit' disabled={loading}>
             {loading ? 'Updating password...' : 'Update password'}
           </Button>
@@ -131,3 +131,6 @@ export default function ResetPasswordPage() {
     </Card>
   );
 }
+
+
+

@@ -101,7 +101,7 @@ export default function AdminSignInPage() {
   };
 
   return (
-    <Card className='border-slate-300 bg-white/95'>
+    <Card className='border-slate-300 bg-card/95 dark:border-slate-700'>
       <CardHeader>
         <CardTitle className='font-[var(--font-space)] text-2xl'>Admin Login</CardTitle>
         <CardDescription>Sign in to manage user accounts and access control.</CardDescription>
@@ -152,3 +152,4 @@ export default function AdminSignInPage() {
     </Card>
   );
 }
+

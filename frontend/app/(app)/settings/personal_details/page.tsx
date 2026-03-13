@@ -237,7 +237,7 @@ export default function PersonalDetailsPage() {
         </p>
       </div>
 
-      <Card className='bg-white/85'>
+      <Card className='bg-card/85'>
         <CardHeader>
           <CardTitle>Business Identity</CardTitle>
         </CardHeader>
@@ -529,3 +529,4 @@ export default function PersonalDetailsPage() {
     </div>
   );
 }
+

@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -61,7 +61,7 @@ export default function SignInPage() {
   };
 
   return (
-    <Card className='relative border-orange-200 bg-white/90'>
+    <Card className='relative border-orange-200 bg-card/90 dark:border-slate-700'>
       <Button asChild type='button' variant='ghost' size='icon' className='absolute right-3 top-3 h-8 w-8' aria-label='Close and go to home'>
         <Link href='/'>
           <X className='h-4 w-4' />
@@ -152,4 +152,7 @@ export default function SignInPage() {
     </Card>
   );
 }
+
+
+
 

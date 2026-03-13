@@ -292,7 +292,7 @@ export default function ClientsPage() {
       </div>
 
       {showForm ? (
-        <Card className='border-teal-200 bg-white/90'>
+        <Card className='border-teal-200 bg-card/90 dark:border-slate-700'>
           <CardHeader>
             <CardTitle>{editingClientId ? 'Edit Client' : 'Add Client'}</CardTitle>
           </CardHeader>
@@ -381,14 +381,14 @@ export default function ClientsPage() {
       ) : null}
 
       {actionMessage ? (
-        <Card className='bg-white/85'>
+        <Card className='bg-card/85'>
           <CardContent className='p-4'>
             <p className='text-sm text-muted-foreground'>{actionMessage}</p>
           </CardContent>
         </Card>
       ) : null}
 
-      <Card className='bg-white/85'>
+      <Card className='bg-card/85'>
         <CardHeader>
           <CardTitle>Client Master List</CardTitle>
         </CardHeader>
@@ -463,3 +463,5 @@ export default function ClientsPage() {
     </div>
   );
 }
+
+

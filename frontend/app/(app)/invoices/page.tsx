@@ -413,7 +413,7 @@ export default function InvoicesPage() {
         </div>
       </div>
 
-      <Card className='bg-white/85'>
+      <Card className='bg-card/85'>
         <CardHeader>
           <CardTitle>Folders</CardTitle>
         </CardHeader>
@@ -446,7 +446,7 @@ export default function InvoicesPage() {
         </CardContent>
       </Card>
 
-      <Card className='bg-white/85'>
+      <Card className='bg-card/85'>
         <CardHeader>
           <CardTitle>
             {selectedFolder} <Badge variant='secondary'>{invoiceType}</Badge>
@@ -611,3 +611,4 @@ export default function InvoicesPage() {
     </div>
   );
 }
+

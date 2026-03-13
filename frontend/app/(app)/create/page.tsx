@@ -505,7 +505,7 @@ export default function CreateInvoicePage() {
         </div>
       </div>
 
-      <Card className="bg-white/85">
+      <Card className="bg-card/85">
         <CardHeader>
           <CardTitle>Invoice Builder</CardTitle>
         </CardHeader>
@@ -813,3 +813,4 @@ export default function CreateInvoicePage() {
     </div>
   );
 }
+

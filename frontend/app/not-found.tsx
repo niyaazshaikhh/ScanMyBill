@@ -1,4 +1,4 @@
-﻿import Link from 'next/link';
+import Link from 'next/link';
 
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -11,9 +11,9 @@ export default function NotFound() {
         <div className='absolute -bottom-20 -right-16 h-72 w-72 rounded-full bg-teal-300/30 blur-3xl' />
       </div>
 
-      <Card className='hero-grid relative w-full max-w-2xl border-orange-300/70 bg-white/85 shadow-xl backdrop-blur'>
+      <Card className='hero-grid relative w-full max-w-2xl border-orange-300/70 bg-card/85 shadow-xl backdrop-blur dark:border-slate-700'>
         <CardContent className='space-y-6 p-8 text-center sm:p-10'>
-          <p className='inline-flex rounded-full border border-orange-300 bg-orange-50 px-3 py-1 text-xs font-semibold uppercase tracking-wider text-orange-700'>
+          <p className='inline-flex rounded-full border border-orange-300 bg-orange-50 px-3 py-1 text-xs font-semibold uppercase tracking-wider text-orange-700 dark:border-orange-500/50 dark:bg-orange-500/15 dark:text-orange-200'>
             Error 404
           </p>
 
@@ -47,4 +47,5 @@ export default function NotFound() {
     </main>
   );
 }
+
 

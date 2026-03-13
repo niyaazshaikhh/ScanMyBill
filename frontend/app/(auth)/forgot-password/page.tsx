@@ -41,7 +41,7 @@ export default function ForgotPasswordPage() {
   };
 
   return (
-    <Card className='border-orange-200 bg-white/90'>
+    <Card className='border-orange-200 bg-card/90 dark:border-slate-700'>
       <CardHeader>
         <CardTitle className='font-[var(--font-space)] text-2xl'>Forgot Password</CardTitle>
         <CardDescription>Enter your account email to generate a reset link.</CardDescription>
@@ -60,7 +60,7 @@ export default function ForgotPasswordPage() {
             />
           </div>
           {error ? <p className='text-sm text-destructive'>{error}</p> : null}
-          {message ? <p className='text-sm text-green-700'>{message}</p> : null}
+          {message ? <p className='text-sm text-green-700 dark:text-green-300'>{message}</p> : null}
           <Button className='w-full' type='submit' disabled={loading}>
             {loading ? 'Generating reset link...' : 'Send reset link'}
           </Button>
@@ -76,3 +76,6 @@ export default function ForgotPasswordPage() {
     </Card>
   );
 }
+
+
+

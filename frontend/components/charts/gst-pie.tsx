@@ -2,6 +2,7 @@
 
 import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from 'recharts';
 import { formatAccountingAmount } from '@/lib/number-format';
+import { useTheme } from '@/hooks/useTheme';
 
 type GstPoint = {
   name: string;
@@ -11,6 +12,8 @@ type GstPoint = {
 const COLORS = ['#f97316', '#0d9488', '#be123c'];
 
 export function GstPieChart({ data }: { data: GstPoint[] }) {
+  const { currentTheme } = useTheme();
+  const isDark = currentTheme === 'dark';
   const total = data.reduce((sum, item) => sum + Number(item.value || 0), 0);
 
   return (
@@ -32,6 +35,13 @@ export function GstPieChart({ data }: { data: GstPoint[] }) {
             </Pie>
             <Tooltip
               formatter={(value) => `Rs ${formatAccountingAmount(Number(value))}`}
+              contentStyle={{
+                backgroundColor: isDark ? '#1e293b' : '#ffffff',
+                borderColor: isDark ? '#334155' : '#e2e8f0',
+                color: isDark ? '#f1f5f9' : '#0f172a',
+                borderRadius: '0.5rem'
+              }}
+              labelStyle={{ color: isDark ? '#f1f5f9' : '#0f172a' }}
             />
           </PieChart>
         </ResponsiveContainer>

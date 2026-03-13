@@ -60,15 +60,16 @@ export function NewsletterForm() {
         type='email'
         required
         placeholder='you@company.com'
-        className='w-full bg-white sm:max-w-sm'
+        className='w-full bg-card sm:max-w-sm'
         value={email}
         onChange={(event) => setEmail(event.target.value)}
       />
       <Button type='submit' disabled={loading}>
         {loading ? 'Subscribing...' : 'Subscribe'}
       </Button>
-      {successMessage ? <p className='w-full text-sm text-green-700'>{successMessage}</p> : null}
+      {successMessage ? <p className='w-full text-sm text-green-700 dark:text-green-300'>{successMessage}</p> : null}
       {errorMessage ? <p className='w-full text-sm text-destructive'>{errorMessage}</p> : null}
     </form>
   );
 }
+

@@ -61,7 +61,7 @@ export default function SignUpPage() {
   };
 
   return (
-    <Card className='relative border-teal-200 bg-white/90'>
+    <Card className='relative border-teal-200 bg-card/90 dark:border-slate-700'>
       <Button asChild type='button' variant='ghost' size='icon' className='absolute right-3 top-3 h-8 w-8' aria-label='Close and go to home'>
         <Link href='/'>
           <X className='h-4 w-4' />
@@ -155,3 +155,6 @@ export default function SignUpPage() {
     </Card>
   );
 }
+
+
+

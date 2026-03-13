@@ -3,10 +3,10 @@ import { cn } from '@/lib/utils';
 export type SubscriptionPlan = 'FREE' | 'STANDARD' | 'PRO' | 'BUSINESS';
 
 const planStyles: Record<SubscriptionPlan, string> = {
-  FREE: 'bg-gray-200 text-gray-700',
-  STANDARD: 'bg-blue-100 text-blue-700',
-  PRO: 'bg-purple-100 text-purple-700',
-  BUSINESS: 'bg-orange-100 text-orange-700'
+  FREE: 'bg-slate-200 text-slate-700 dark:bg-slate-700 dark:text-slate-100',
+  STANDARD: 'bg-blue-100 text-blue-700 dark:bg-blue-500/20 dark:text-blue-200',
+  PRO: 'bg-violet-100 text-violet-700 dark:bg-violet-500/20 dark:text-violet-200',
+  BUSINESS: 'bg-orange-100 text-orange-700 dark:bg-orange-500/20 dark:text-orange-200'
 };
 
 const planLabels: Record<SubscriptionPlan, string> = {

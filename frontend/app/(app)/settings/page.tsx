@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -280,7 +280,7 @@ export default function SettingsPage() {
         Settings
       </h2>
 
-      <Card className="bg-white/85">
+      <Card className="bg-card/85">
         <CardHeader className="space-y-1 p-4 pb-2">
           <CardTitle className="text-base">Account and Access</CardTitle>
         </CardHeader>
@@ -301,7 +301,7 @@ export default function SettingsPage() {
         </CardContent>
       </Card>
 
-      <Card className="bg-white/85">
+      <Card className="bg-card/85">
         <CardHeader className="flex flex-row items-center justify-between space-y-0 p-4 pb-2">
           <CardTitle className="text-base">Subscription</CardTitle>
           <Button
@@ -390,12 +390,12 @@ export default function SettingsPage() {
 
           {configError ? <p className="text-sm text-destructive">{configError}</p> : null}
           {actionError ? <p className="text-sm text-destructive">{actionError}</p> : null}
-          {actionMessage ? <p className="text-sm text-emerald-700">{actionMessage}</p> : null}
+          {actionMessage ? <p className="text-sm text-emerald-700 dark:text-emerald-300">{actionMessage}</p> : null}
           </CardContent>
         ) : null}
       </Card>
 
-      <Card className="bg-white/85">
+      <Card className="bg-card/85">
         <CardHeader className="space-y-1 p-4 pb-2">
           <CardTitle className="text-base">Business Setup</CardTitle>
         </CardHeader>
@@ -415,7 +415,7 @@ export default function SettingsPage() {
         </CardContent>
       </Card>
 
-      <Card className="bg-white/85">
+      <Card className="bg-card/85">
         <CardHeader className="space-y-1 p-4 pb-2">
           <CardTitle className="text-base">Developer Tools</CardTitle>
         </CardHeader>
@@ -439,7 +439,7 @@ export default function SettingsPage() {
         </CardContent>
       </Card>
 
-      <Card className="bg-white/85">
+      <Card className="bg-card/85">
         <CardHeader className="space-y-1 p-4 pb-2">
           <CardTitle className="text-base">Notification Preferences</CardTitle>
         </CardHeader>
@@ -464,7 +464,7 @@ export default function SettingsPage() {
         </CardContent>
       </Card>
 
-      <Card className="bg-white/85">
+      <Card className="bg-card/85">
         <CardHeader className="space-y-1 p-4 pb-2">
           <CardTitle className="text-base">Contact & Help</CardTitle>
         </CardHeader>
@@ -559,4 +559,5 @@ export default function SettingsPage() {
     </div>
   );
 }
+
 

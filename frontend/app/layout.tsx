@@ -5,6 +5,7 @@ import '@/app/globals.css';
 import { PWARegister } from '@/components/pwa/pwa-register';
 import { CustomCursor } from '@/components/ui/custom-cursor';
 import { Providers } from '@/components/providers';
+import { DEFAULT_THEME, THEME_STORAGE_KEY } from '@/lib/theme';
 
 const manrope = Manrope({
   subsets: ['latin'],
@@ -15,6 +16,8 @@ const spaceGrotesk = Space_Grotesk({
   subsets: ['latin'],
   variable: '--font-space'
 });
+
+const themeBootScript = `(function(){try{var t=localStorage.getItem('${THEME_STORAGE_KEY}');var n=t==='dark'?'dark':'${DEFAULT_THEME}';var r=document.documentElement;r.classList.toggle('dark',n==='dark');r.setAttribute('data-theme',n);}catch(e){}})();`;
 
 export const metadata: Metadata = {
   metadataBase: new URL(process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'),
@@ -70,8 +73,13 @@ export const viewport: Viewport = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang='en'>
-      <body className={`${manrope.variable} ${spaceGrotesk.variable} font-[var(--font-manrope)]`}>
+    <html lang='en' suppressHydrationWarning>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: themeBootScript }} />
+      </head>
+      <body
+        className={`${manrope.variable} ${spaceGrotesk.variable} font-[var(--font-manrope)] antialiased`}
+      >
         <Providers>
           <PWARegister />
           <CustomCursor />

@@ -1,4 +1,4 @@
-﻿import Link from "next/link";
+import Link from "next/link";
 import { X } from "lucide-react";
 
 import { PricingPlanCards } from "@/components/landing/pricing-plan-cards";
@@ -12,7 +12,7 @@ export const metadata = {
 export default function PricingPage() {
   return (
     <main className="mx-auto max-w-4xl px-4 py-14 sm:px-6">
-      <Card className="relative border-teal-200 bg-white/90">
+      <Card className="relative border-teal-200 bg-card/90 dark:border-slate-700">
         <Button
           asChild
           type="button"
@@ -47,4 +47,7 @@ export default function PricingPage() {
     </main>
   );
 }
+
+
+
 

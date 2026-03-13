@@ -214,7 +214,7 @@ export default function HsnSacMasterListPage() {
         </Button>
       </div>
 
-      <Card className="bg-white/85">
+      <Card className="bg-card/85">
         <CardHeader>
           <CardTitle>{editingId ? "Edit Entry" : "Add Entry"}</CardTitle>
         </CardHeader>
@@ -290,7 +290,7 @@ export default function HsnSacMasterListPage() {
         </CardContent>
       </Card>
 
-      <Card className="bg-white/85">
+      <Card className="bg-card/85">
         <CardHeader>
           <CardTitle>Saved Entries</CardTitle>
         </CardHeader>
@@ -364,3 +364,4 @@ export default function HsnSacMasterListPage() {
     </div>
   );
 }
+

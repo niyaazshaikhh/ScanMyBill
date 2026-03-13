@@ -4,6 +4,7 @@ import { useMemo } from 'react';
 
 import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { formatAccountingAmount, formatAccountingInteger } from '@/lib/number-format';
+import { useTheme } from '@/hooks/useTheme';
 
 type TrendPoint = {
   label: string;
@@ -51,6 +52,9 @@ function nextReadableStep(value: number): number {
 }
 
 export function SalesPurchaseLineChart({ data }: { data: TrendPoint[] }) {
+  const { currentTheme } = useTheme();
+  const isDark = currentTheme === 'dark';
+
   const yAxisMax = useMemo(() => {
     const maxValue = data.reduce((max, point) => {
       return Math.max(max, Number(point.sales || 0), Number(point.purchases || 0));
@@ -79,15 +83,32 @@ export function SalesPurchaseLineChart({ data }: { data: TrendPoint[] }) {
       <div className='h-72 w-full sm:h-80'>
         <ResponsiveContainer width='100%' height='100%'>
           <LineChart data={data}>
-            <CartesianGrid strokeDasharray='3 3' stroke='#e7dcca' />
-            <XAxis dataKey='label' />
+            <CartesianGrid strokeDasharray='3 3' stroke={isDark ? '#334155' : '#e7dcca'} />
+            <XAxis
+              dataKey='label'
+              tick={{ fill: isDark ? '#cbd5e1' : '#475569' }}
+              axisLine={{ stroke: isDark ? '#475569' : '#cbd5e1' }}
+              tickLine={{ stroke: isDark ? '#475569' : '#cbd5e1' }}
+            />
             <YAxis
               width={74}
               domain={[0, yAxisMax]}
               tickCount={6}
+              tick={{ fill: isDark ? '#cbd5e1' : '#475569' }}
+              axisLine={{ stroke: isDark ? '#475569' : '#cbd5e1' }}
+              tickLine={{ stroke: isDark ? '#475569' : '#cbd5e1' }}
               tickFormatter={(value) => formatCompactAmount(Number(value))}
             />
-            <Tooltip formatter={(value) => `Rs ${formatAccountingAmount(Number(value))}`} />
+            <Tooltip
+              formatter={(value) => `Rs ${formatAccountingAmount(Number(value))}`}
+              contentStyle={{
+                backgroundColor: isDark ? '#1e293b' : '#ffffff',
+                borderColor: isDark ? '#334155' : '#e2e8f0',
+                color: isDark ? '#f1f5f9' : '#0f172a',
+                borderRadius: '0.5rem'
+              }}
+              labelStyle={{ color: isDark ? '#f1f5f9' : '#0f172a' }}
+            />
             <Line type='monotone' dataKey='sales' stroke='#ea580c' strokeWidth={2.5} />
             <Line type='monotone' dataKey='purchases' stroke='#0f766e' strokeWidth={2.5} />
           </LineChart>

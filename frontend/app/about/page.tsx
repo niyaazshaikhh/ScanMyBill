@@ -1,4 +1,4 @@
-﻿import type { Metadata } from "next";
+import type { Metadata } from "next";
 import Link from "next/link";
 import { Instagram, Linkedin, Twitter } from "lucide-react";
 
@@ -46,7 +46,7 @@ export default function AboutPage() {
         </Link>
       </div>
 
-      <Card className="border-orange-200 bg-white/85">
+      <Card className="border-orange-200 bg-card/85 dark:border-slate-700">
         <CardHeader>
           <CardTitle className="font-[var(--font-space)] text-2xl">
             Developer
@@ -67,7 +67,7 @@ export default function AboutPage() {
               return (
                 <a
                   key={link.name}
-                  className="inline-flex items-center gap-2 rounded-md border border-border bg-white px-3 py-2 text-sm font-medium text-primary hover:bg-muted"
+                  className="inline-flex items-center gap-2 rounded-md border border-border bg-card px-3 py-2 text-sm font-medium text-primary hover:bg-muted"
                   href={link.href}
                   target="_blank"
                   rel="noreferrer"
@@ -83,3 +83,6 @@ export default function AboutPage() {
     </main>
   );
 }
+
+
+

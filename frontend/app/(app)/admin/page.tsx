@@ -136,7 +136,7 @@ export default function AdminPage() {
       </div>
 
       <div className='grid gap-2 md:grid-cols-3'>
-        <Card className='bg-white/90'>
+        <Card className='bg-card/90'>
           <CardHeader className='pb-1 pt-4'>
             <CardTitle className='text-sm'>Total Users</CardTitle>
           </CardHeader>
@@ -144,7 +144,7 @@ export default function AdminPage() {
             <p className='text-xl font-semibold'>{totalUsers}</p>
           </CardContent>
         </Card>
-        <Card className='bg-white/90'>
+        <Card className='bg-card/90'>
           <CardHeader className='pb-1 pt-4'>
             <CardTitle className='text-sm'>Active Users</CardTitle>
           </CardHeader>
@@ -152,7 +152,7 @@ export default function AdminPage() {
             <p className='text-xl font-semibold'>{activeUsers}</p>
           </CardContent>
         </Card>
-        <Card className='bg-white/90'>
+        <Card className='bg-card/90'>
           <CardHeader className='pb-1 pt-4'>
             <CardTitle className='text-sm'>Admin Users</CardTitle>
           </CardHeader>
@@ -162,7 +162,7 @@ export default function AdminPage() {
         </Card>
       </div>
 
-      <Card className='bg-white/90'>
+      <Card className='bg-card/90'>
         <CardHeader className='space-y-3'>
           <CardTitle>User Management</CardTitle>
           <div className='flex flex-col gap-2 sm:flex-row'>
@@ -302,3 +302,4 @@ export default function AdminPage() {
     </div>
   );
 }
+

@@ -224,7 +224,7 @@ export default function ClientAnalyticsPage() {
         </div>
       </div>
 
-      <Card className='bg-white/85'>
+      <Card className='bg-card/85'>
         <CardHeader>
           <CardTitle>Folders</CardTitle>
         </CardHeader>
@@ -257,7 +257,7 @@ export default function ClientAnalyticsPage() {
         </CardContent>
       </Card>
 
-      <Card className='bg-white/85'>
+      <Card className='bg-card/85'>
         <CardHeader>
           <CardTitle>
             {selectedFolder} Sales by Client
@@ -301,3 +301,4 @@ export default function ClientAnalyticsPage() {
     </div>
   );
 }
+

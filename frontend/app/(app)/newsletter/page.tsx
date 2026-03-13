@@ -327,7 +327,7 @@ export default function NewsletterPage() {
         </p>
       </div>
 
-      <Card className='bg-white/90'>
+      <Card className='bg-card/90'>
         <CardHeader>
           <CardTitle>Compose Email and Send in-app Notification</CardTitle>
         </CardHeader>
@@ -383,7 +383,7 @@ export default function NewsletterPage() {
         </CardContent>
       </Card>
 
-      <Card className='bg-white/90'>
+      <Card className='bg-card/90'>
         <CardHeader className='flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between'>
           <CardTitle>Newsletter Subscribers</CardTitle>
           <div className='relative w-full sm:w-72'>
@@ -443,7 +443,7 @@ export default function NewsletterPage() {
                         </TableCell>
                         <TableCell className='font-medium'>{subscriber.email}</TableCell>
                         <TableCell>
-                          <span className={subscriber.is_active ? 'text-emerald-700' : 'text-muted-foreground'}>
+                          <span className={subscriber.is_active ? 'text-emerald-700 dark:text-emerald-300' : 'text-muted-foreground'}>
                             {subscriber.is_active ? 'Active' : 'Inactive'}
                           </span>
                         </TableCell>
@@ -468,7 +468,7 @@ export default function NewsletterPage() {
         </CardContent>
       </Card>
 
-      <Card className='bg-white/90'>
+      <Card className='bg-card/90'>
         <CardHeader className='flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between'>
           <CardTitle>Users</CardTitle>
           <div className='relative w-full sm:w-72'>
@@ -530,12 +530,12 @@ export default function NewsletterPage() {
                         <TableCell className='font-medium'>{user.full_name || user.role}</TableCell>
                         <TableCell>{user.email}</TableCell>
                         <TableCell>
-                          <span className={user.notifications_enabled ? 'text-emerald-700' : 'text-amber-700'}>
+                          <span className={user.notifications_enabled ? 'text-emerald-700 dark:text-emerald-300' : 'text-amber-700 dark:text-amber-300'}>
                             {user.notifications_enabled ? 'Enabled' : 'Disabled'}
                           </span>
                         </TableCell>
                         <TableCell>
-                          <span className={user.is_active ? 'text-emerald-700' : 'text-muted-foreground'}>
+                          <span className={user.is_active ? 'text-emerald-700 dark:text-emerald-300' : 'text-muted-foreground'}>
                             {user.is_active ? 'Active' : 'Inactive'}
                           </span>
                         </TableCell>
@@ -565,3 +565,4 @@ export default function NewsletterPage() {
     </div>
   );
 }
+

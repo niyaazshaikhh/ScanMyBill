@@ -364,7 +364,7 @@ export default function DeliveryChallanInvoicesPage() {
         </div>
       </div>
 
-      <Card className='bg-white/85'>
+      <Card className='bg-card/85'>
         <CardHeader>
           <CardTitle>Folders</CardTitle>
         </CardHeader>
@@ -397,7 +397,7 @@ export default function DeliveryChallanInvoicesPage() {
         </CardContent>
       </Card>
 
-      <Card className='bg-white/85'>
+      <Card className='bg-card/85'>
         <CardHeader>
           <CardTitle>{selectedFolder}</CardTitle>
         </CardHeader>
@@ -576,3 +576,4 @@ export default function DeliveryChallanInvoicesPage() {
     </div>
   );
 }
+

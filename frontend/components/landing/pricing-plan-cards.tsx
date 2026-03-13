@@ -36,7 +36,7 @@ const planCards: Array<{
     name: 'Standard',
     priceLabel: 'Rs 1 / month',
     description: 'Great for solo MSME operators who want AI-assisted bill work.',
-    accentClass: 'border-slate-200 bg-white/95',
+    accentClass: 'border-slate-200 bg-card/95 dark:border-slate-700',
     icon: Leaf,
     points: [
       'Use Dashboard, Invoices, and Settings',
@@ -48,7 +48,7 @@ const planCards: Array<{
     name: 'Pro',
     priceLabel: 'Rs 2 / month',
     description: 'Best for growing MSME teams handling more clients.',
-    accentClass: 'border-orange-300 bg-orange-50/40',
+    accentClass: 'border-orange-300 bg-orange-50/40 dark:border-orange-500/50 dark:bg-orange-500/15',
     icon: Sparkles,
     points: [
       'Everything in Standard plan',
@@ -62,7 +62,7 @@ const planCards: Array<{
     name: 'Business',
     priceLabel: 'Rs 3 / month',
     description: 'Best for high-volume Indian MSMEs that need full access.',
-    accentClass: 'border-teal-300 bg-teal-50/40',
+    accentClass: 'border-teal-300 bg-teal-50/40 dark:border-teal-500/50 dark:bg-teal-500/15',
     icon: Crown,
     points: [
       'Access to all main routes',
@@ -204,3 +204,4 @@ export function PricingPlanCards() {
     </div>
   );
 }
+

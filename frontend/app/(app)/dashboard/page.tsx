@@ -596,12 +596,12 @@ export default function DashboardPage() {
       </div>
 
       {showPersonalDetailsBanner ? (
-        <p className="text-sm font-medium text-red-600">
+        <p className="text-sm font-medium text-red-600 dark:text-red-300">
           ⚠️ {dashboardUserName} has not set up their Business Setup profile.
           Please{" "}
           <Link
             href="/settings/personal_details"
-            className="font-semibold text-red-700 underline underline-offset-2 hover:text-red-800"
+            className="font-semibold text-red-700 underline underline-offset-2 hover:text-red-800 dark:text-red-200 dark:hover:text-red-100"
           >
             click here
           </Link>{" "}
@@ -609,7 +609,7 @@ export default function DashboardPage() {
         </p>
       ) : null}
 
-      <Card className="border-amber-300/80 bg-amber-50/70">
+      <Card className="border-amber-300/80 bg-amber-50/70 dark:border-amber-500/45 dark:bg-amber-500/15">
         <CardHeader>
           <CardTitle>Bill Processing Flow</CardTitle>
           <CardDescription>
@@ -656,7 +656,7 @@ export default function DashboardPage() {
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
         {cards.map((card) => (
-          <Card key={card.title} className="bg-white/85">
+          <Card key={card.title} className="bg-card/85">
             <CardContent className="space-y-2 p-5">
               <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                 {card.title}
@@ -675,7 +675,7 @@ export default function DashboardPage() {
       </div>
 
       <div className="grid gap-4 lg:grid-cols-2">
-        <Card className="bg-white/85">
+        <Card className="bg-card/85">
           <CardHeader>
             <CardTitle>Sales vs Purchases</CardTitle>
           </CardHeader>
@@ -684,7 +684,7 @@ export default function DashboardPage() {
           </CardContent>
         </Card>
 
-        <Card className="bg-white/85">
+        <Card className="bg-card/85">
           <CardHeader>
             <CardTitle>GST Summary</CardTitle>
           </CardHeader>
@@ -695,7 +695,7 @@ export default function DashboardPage() {
       </div>
 
       {debugModeEnabled ? (
-        <Card className="bg-white/85">
+        <Card className="bg-card/85">
           <CardHeader>
             <div className="flex items-center justify-between gap-3">
               <div>
@@ -729,12 +729,12 @@ export default function DashboardPage() {
                         variant="outline"
                         className={
                           entry.level === "error"
-                            ? "border-red-200 bg-red-50 text-red-700"
+                            ? "border-red-200 bg-red-50 text-red-700 dark:border-red-500/40 dark:bg-red-500/15 dark:text-red-200"
                             : entry.level === "warning"
-                              ? "border-amber-200 bg-amber-50 text-amber-700"
+                              ? "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-500/40 dark:bg-amber-500/15 dark:text-amber-200"
                               : entry.level === "success"
-                                ? "border-emerald-200 bg-emerald-50 text-emerald-700"
-                                : "border-slate-200 bg-slate-50 text-slate-700"
+                                ? "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-500/40 dark:bg-emerald-500/15 dark:text-emerald-200"
+                                : "border-slate-200 bg-slate-50 text-slate-700 dark:border-slate-600 dark:bg-slate-700/20 dark:text-slate-200"
                         }
                       >
                         {entry.level.toUpperCase()}
@@ -806,3 +806,4 @@ export default function DashboardPage() {
     </div>
   );
 }
+
