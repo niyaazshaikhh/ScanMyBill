@@ -2,7 +2,19 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Bell, BellOff, ChevronDown, ChevronRight, Eye, EyeOff, X } from "lucide-react";
+import {
+  Bell,
+  BellOff,
+  ChevronDown,
+  ChevronRight,
+  CircleHelp,
+  CreditCard,
+  Eye,
+  EyeOff,
+  UserCircle2,
+  Wrench,
+  X,
+} from "lucide-react";
 
 export const dynamic = "force-dynamic";
 
@@ -10,7 +22,7 @@ import { RazorpayCheckoutButton } from "@/components/landing/razorpay-checkout-b
 import { SubscriptionBadge } from "@/components/SubscriptionBadge";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { PopupWindow } from "@/components/ui/popup-window";
 import { useAuthGuard } from "@/hooks/useAuthGuard";
 import { apiRequest } from "@/lib/api";
@@ -276,222 +288,307 @@ export default function SettingsPage() {
   };
 
   return (
-    <div className="space-y-4">
-      <h2 className="font-[var(--font-space)] text-2xl font-semibold">
-        Settings
-      </h2>
-
-      <Card className="bg-card/85">
-        <CardHeader className="space-y-1 p-4 pb-2">
-          <CardTitle className="text-base">Account and Access</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-1.5 p-4 pt-0 text-sm">
-          <p>
-            <span className="font-medium">Name:</span> {loadingUser ? "Loading..." : user?.full_name || "-"}
-          </p>
-          <p>
-            <span className="font-medium">Email:</span> {loadingUser ? "Loading..." : user?.email || "-"}
-          </p>
-          <p>
-            <span className="font-medium">Role:</span>{" "}
-            <Badge variant="secondary">{loadingUser ? "..." : user?.role || "user"}</Badge>
-          </p>
-          <p>
-            <span className="font-medium">Joined:</span> {formatDate(user?.created_at)}
-          </p>
-        </CardContent>
-      </Card>
-
-      <Card className="bg-card/85">
-        <CardHeader className="flex flex-row items-center justify-between space-y-0 p-4 pb-2">
-          <CardTitle className="text-base">Subscription</CardTitle>
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            onClick={() => setSubscriptionExpanded((prev) => !prev)}
-            className="h-8 gap-1 px-2"
-            aria-expanded={subscriptionExpanded}
-            aria-label={subscriptionExpanded ? "Collapse subscription card" : "Expand subscription card"}
-          >
-            {subscriptionExpanded ? "Collapse" : "Expand"}
-            <ChevronDown className={`h-4 w-4 transition-transform ${subscriptionExpanded ? "rotate-180" : ""}`} />
-          </Button>
-        </CardHeader>
-        {subscriptionExpanded ? (
-          <CardContent className="space-y-3 p-4 pt-0">
-          <div className="grid gap-2 rounded-md border border-border bg-background/70 p-2.5 text-sm md:grid-cols-2">
-            <p className="flex items-center gap-2">
-              <span className="font-medium">Current Plan:</span>
-              <SubscriptionBadge plan={currentPlan} />
+    <div className="space-y-6">
+      <section className="rounded-xl border border-border bg-card/85 p-5">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+          <div className="space-y-1">
+            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              Workspace Settings
             </p>
-            <p className="flex items-center gap-2">
-              <span className="font-medium">Status:</span>
-              <Badge variant={statusBadgeVariant(user?.subscription_status)}>
-                {user?.subscription_status || "-"}
-              </Badge>
-            </p>
-            <p>
-              <span className="font-medium">Started On:</span>{" "}
-              {formatDate(user?.subscription_started_at)}
-            </p>
-            <p>
-              <span className="font-medium">Expires On:</span>{" "}
-              {formatDate(user?.subscription_expires_at)}
+            <h2 className="font-[var(--font-space)] text-2xl font-semibold">
+              Settings
+            </h2>
+            <p className="text-sm text-muted-foreground">
+              Manage account access, subscriptions, notifications, and support from one place.
             </p>
           </div>
-
-          <div className="grid gap-2.5 lg:grid-cols-3">
-            <div className="space-y-1.5 rounded-md border border-border bg-background/70 p-2.5 lg:col-span-2">
-              <p className="text-sm font-medium">Upgrade</p>
-              <p className="text-xs text-muted-foreground">
-                Move to a higher plan with immediate checkout.
+          <div className="grid gap-2 sm:grid-cols-2">
+            <div className="rounded-md border border-border bg-background/70 px-3 py-2">
+              <p className="text-[11px] uppercase tracking-wide text-muted-foreground">
+                Current Plan
               </p>
-              <RazorpayCheckoutButton
-                className="w-full"
-                showPlanSelector
-                buttonLabel="Upgrade Plan"
-                successRedirectPath={null}
-                onSuccess={handleCheckoutSuccess}
-                disabled={!hasHigherPlan}
-              />
-              {!hasHigherPlan ? (
-                <p className="text-xs text-muted-foreground">
-                  No higher plan is configured at the moment.
-                </p>
-              ) : null}
-            </div>
-
-            <div className="grid gap-2.5">
-              <div className="space-y-1.5 rounded-md border border-border bg-background/70 p-2.5">
-                <p className="text-sm font-medium">Renew</p>
-                <RazorpayCheckoutButton
-                  className="w-full"
-                  buttonLabel="Renew Current Plan"
-                  defaultPlanId={currentPlanId || undefined}
-                  successRedirectPath={null}
-                  onSuccess={handleCheckoutSuccess}
-                  disabled={!canRenew}
-                />
+              <div className="mt-1">
+                <SubscriptionBadge plan={currentPlan} />
               </div>
+            </div>
+            <div className="rounded-md border border-border bg-background/70 px-3 py-2">
+              <p className="text-[11px] uppercase tracking-wide text-muted-foreground">
+                Role
+              </p>
+              <div className="mt-1">
+                <Badge variant="secondary">
+                  {loadingUser ? "..." : user?.role || "user"}
+                </Badge>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
 
-              <div className="space-y-1.5 rounded-md border border-border bg-background/70 p-2.5">
-                <p className="text-sm font-medium">Cancel</p>
+      {actionError ? (
+        <div className="rounded-md border border-destructive/35 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+          {actionError}
+        </div>
+      ) : null}
+      {actionMessage ? (
+        <div className="rounded-md border border-emerald-500/35 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-700 dark:text-emerald-300">
+          {actionMessage}
+        </div>
+      ) : null}
+
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,1.65fr)_minmax(0,1fr)]">
+        <div className="space-y-4">
+          <Card className="bg-card/85">
+            <CardHeader className="p-5 pb-3">
+              <CardTitle className="flex items-center gap-2 text-base">
+                <UserCircle2 className="h-4 w-4 text-primary" />
+                Account and Access
+              </CardTitle>
+              <CardDescription>
+                Primary identity information tied to this workspace.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="grid gap-3 p-5 pt-0 sm:grid-cols-2">
+              <div className="rounded-md border border-border bg-background/70 px-3 py-2.5">
+                <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Full Name</p>
+                <p className="mt-1 text-sm font-medium">{loadingUser ? "Loading..." : user?.full_name || "-"}</p>
+              </div>
+              <div className="rounded-md border border-border bg-background/70 px-3 py-2.5">
+                <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Email</p>
+                <p className="mt-1 text-sm font-medium break-all">{loadingUser ? "Loading..." : user?.email || "-"}</p>
+              </div>
+              <div className="rounded-md border border-border bg-background/70 px-3 py-2.5">
+                <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Joined</p>
+                <p className="mt-1 text-sm font-medium">{formatDate(user?.created_at)}</p>
+              </div>
+              <div className="rounded-md border border-border bg-background/70 px-3 py-2.5">
+                <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Access Role</p>
+                <div className="mt-1">
+                  <Badge variant="secondary">{loadingUser ? "..." : user?.role || "user"}</Badge>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="bg-card/85">
+            <CardHeader className="p-5 pb-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <CardTitle className="flex items-center gap-2 text-base">
+                    <CreditCard className="h-4 w-4 text-primary" />
+                    Subscription
+                  </CardTitle>
+                  <CardDescription>
+                    Review plan status and manage renewal, upgrade, or cancellation.
+                  </CardDescription>
+                </div>
                 <Button
-                  className="w-full"
-                  variant="destructive"
-                  onClick={() => setCancelConfirmOpen(true)}
-                  disabled={!canCancel || cancelLoading}
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setSubscriptionExpanded((prev) => !prev)}
+                  className="h-8 gap-1 px-2"
+                  aria-expanded={subscriptionExpanded}
+                  aria-label={subscriptionExpanded ? "Collapse subscription actions" : "Expand subscription actions"}
                 >
-                  {cancelLoading ? "Cancelling..." : "Cancel Subscription"}
+                  {subscriptionExpanded ? "Hide actions" : "Show actions"}
+                  <ChevronDown className={`h-4 w-4 transition-transform ${subscriptionExpanded ? "rotate-180" : ""}`} />
                 </Button>
               </div>
-            </div>
-          </div>
+            </CardHeader>
+            <CardContent className="space-y-4 p-5 pt-0">
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="rounded-md border border-border bg-background/70 px-3 py-2.5">
+                  <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Current Plan</p>
+                  <div className="mt-1">
+                    <SubscriptionBadge plan={currentPlan} />
+                  </div>
+                </div>
+                <div className="rounded-md border border-border bg-background/70 px-3 py-2.5">
+                  <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Status</p>
+                  <div className="mt-1">
+                    <Badge variant={statusBadgeVariant(user?.subscription_status)}>
+                      {user?.subscription_status || "-"}
+                    </Badge>
+                  </div>
+                </div>
+                <div className="rounded-md border border-border bg-background/70 px-3 py-2.5">
+                  <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Started On</p>
+                  <p className="mt-1 text-sm font-medium">{formatDate(user?.subscription_started_at)}</p>
+                </div>
+                <div className="rounded-md border border-border bg-background/70 px-3 py-2.5">
+                  <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Expires On</p>
+                  <p className="mt-1 text-sm font-medium">{formatDate(user?.subscription_expires_at)}</p>
+                </div>
+              </div>
 
-          {configError ? <p className="text-sm text-destructive">{configError}</p> : null}
-          {actionError ? <p className="text-sm text-destructive">{actionError}</p> : null}
-          {actionMessage ? <p className="text-sm text-emerald-700 dark:text-emerald-300">{actionMessage}</p> : null}
-          </CardContent>
-        ) : null}
-      </Card>
+              {subscriptionExpanded ? (
+                <div className="grid gap-3 lg:grid-cols-[2fr_1fr]">
+                  <div className="space-y-2 rounded-md border border-border bg-background/70 p-3">
+                    <p className="text-sm font-medium">Upgrade Plan</p>
+                    <p className="text-xs text-muted-foreground">
+                      Move to a higher plan with immediate checkout.
+                    </p>
+                    <RazorpayCheckoutButton
+                      className="w-full"
+                      showPlanSelector
+                      buttonLabel="Upgrade Plan"
+                      successRedirectPath={null}
+                      onSuccess={handleCheckoutSuccess}
+                      disabled={!hasHigherPlan}
+                    />
+                    {!hasHigherPlan ? (
+                      <p className="text-xs text-muted-foreground">
+                        No higher plan is configured at the moment.
+                      </p>
+                    ) : null}
+                  </div>
 
-      <Card className="bg-card/85">
-        <CardHeader className="space-y-1 p-4 pb-2">
-          <CardTitle className="text-base">Business Setup</CardTitle>
-        </CardHeader>
-        <CardContent className="p-4 pt-0">
-          <Link
-            href="/settings/personal_details"
-            className="flex items-center justify-between rounded-md border border-border bg-background px-3 py-2.5 transition hover:bg-muted"
-          >
-            <div>
-              <p className="text-sm font-medium">Personal Details</p>
-              <p className="text-xs text-muted-foreground">
-                Add Company Name and GST/IN to improve bill type identification.
-              </p>
-            </div>
-            <ChevronRight className="h-4 w-4 text-muted-foreground" />
-          </Link>
-        </CardContent>
-      </Card>
+                  <div className="grid gap-3">
+                    <div className="space-y-2 rounded-md border border-border bg-background/70 p-3">
+                      <p className="text-sm font-medium">Renew Current Plan</p>
+                      <RazorpayCheckoutButton
+                        className="w-full"
+                        buttonLabel="Renew Current Plan"
+                        defaultPlanId={currentPlanId || undefined}
+                        successRedirectPath={null}
+                        onSuccess={handleCheckoutSuccess}
+                        disabled={!canRenew}
+                      />
+                    </div>
 
-      <Card className="bg-card/85">
-        <CardHeader className="space-y-1 p-4 pb-2">
-          <CardTitle className="text-base">Developer Tools</CardTitle>
-        </CardHeader>
-        <CardContent className="flex items-center justify-between gap-2.5 p-4 pt-0">
-          <p className="text-sm text-muted-foreground">
-            Toggle Debug Console visibility on the dashboard upload flow.
-          </p>
-          <Button
-            type="button"
-            variant="outline"
-            onClick={handleToggleDebugMode}
-            className="shrink-0"
-          >
-            {debugModeEnabled ? (
-              <Eye className="h-4 w-4" />
-            ) : (
-              <EyeOff className="h-4 w-4" />
-            )}
-            Debugging mode {debugModeEnabled ? "On" : "Off"}
-          </Button>
-        </CardContent>
-      </Card>
+                    <div className="space-y-2 rounded-md border border-border bg-background/70 p-3">
+                      <p className="text-sm font-medium">Cancel Subscription</p>
+                      <Button
+                        className="w-full"
+                        variant="destructive"
+                        onClick={() => setCancelConfirmOpen(true)}
+                        disabled={!canCancel || cancelLoading}
+                      >
+                        {cancelLoading ? "Cancelling..." : "Cancel Subscription"}
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              ) : null}
 
-      <Card className="bg-card/85">
-        <CardHeader className="space-y-1 p-4 pb-2">
-          <CardTitle className="text-base">Notification Preferences</CardTitle>
-        </CardHeader>
-        <CardContent className="flex items-center justify-between gap-2.5 p-4 pt-0">
-          <p className="text-sm text-muted-foreground">
-            Turn pop-up notifications on or off for this account.
-          </p>
-          <Button
-            type="button"
-            variant="outline"
-            onClick={() => void handleToggleNotifications()}
-            disabled={notificationUpdating || loadingUser || !user}
-            className="shrink-0"
-          >
-            {user?.notifications_enabled ? (
-              <Bell className="h-4 w-4" />
-            ) : (
-              <BellOff className="h-4 w-4" />
-            )}
-            Notifications {user?.notifications_enabled ? "On" : "Off"}
-          </Button>
-        </CardContent>
-      </Card>
+              {configError ? <p className="text-sm text-destructive">{configError}</p> : null}
+            </CardContent>
+          </Card>
 
-      <Card className="bg-card/85">
-        <CardHeader className="space-y-1 p-4 pb-2">
-          <CardTitle className="text-base">Contact & Help</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-2.5 p-4 pt-0 text-sm">
-          <p className="text-muted-foreground">
-            Need help with billing, subscriptions, or account setup?
-          </p>
-          <p>
-            <span className="font-medium">Support Email:</span>{" "}
-            <a
-              className="text-primary hover:underline"
-              href="mailto:scanmybill@gmail.com?subject=ScanMyBill%20Support%20Request"
-            >
-              scanmybill@gmail.com
-            </a>
-          </p>
-          <button
-            type="button"
-            onClick={() => setHelpOpen(true)}
-            className="inline-flex w-full items-center justify-between rounded-md border border-border bg-background px-3 py-2.5 text-left transition hover:bg-muted"
-          >
-            <span className="text-sm font-medium">Help, FAQ and About</span>
-            <ChevronRight className="h-4 w-4 text-muted-foreground" />
-          </button>
-        </CardContent>
-      </Card>
+          <Card className="bg-card/85">
+            <CardHeader className="p-5 pb-3">
+              <CardTitle className="text-base">Business Setup</CardTitle>
+              <CardDescription>
+                Keep company and GST details updated for better document intelligence.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="p-5 pt-0">
+              <Link
+                href="/settings/personal_details"
+                className="flex items-center justify-between rounded-md border border-border bg-background px-3 py-3 transition hover:bg-muted"
+              >
+                <div>
+                  <p className="text-sm font-medium">Personal Details</p>
+                  <p className="text-xs text-muted-foreground">
+                    Add company profile, GST details, and banking information.
+                  </p>
+                </div>
+                <ChevronRight className="h-4 w-4 text-muted-foreground" />
+              </Link>
+            </CardContent>
+          </Card>
+        </div>
+
+        <div className="space-y-4">
+          <Card className="bg-card/85">
+            <CardHeader className="p-5 pb-3">
+              <CardTitle className="text-base">Preferences</CardTitle>
+              <CardDescription>
+                Control workspace behavior and diagnostics.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3 p-5 pt-0">
+              <div className="flex items-start justify-between gap-3 rounded-md border border-border bg-background/70 p-3">
+                <div>
+                  <p className="text-sm font-medium">Notifications</p>
+                  <p className="text-xs text-muted-foreground">
+                    Turn app notifications on or off for this account.
+                  </p>
+                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => void handleToggleNotifications()}
+                  disabled={notificationUpdating || loadingUser || !user}
+                  className="shrink-0"
+                >
+                  {user?.notifications_enabled ? (
+                    <Bell className="h-4 w-4" />
+                  ) : (
+                    <BellOff className="h-4 w-4" />
+                  )}
+                  {user?.notifications_enabled ? "On" : "Off"}
+                </Button>
+              </div>
+
+              <div className="flex items-start justify-between gap-3 rounded-md border border-border bg-background/70 p-3">
+                <div>
+                  <p className="text-sm font-medium">Debug Console</p>
+                  <p className="text-xs text-muted-foreground">
+                    Enable diagnostics for dashboard upload flow.
+                  </p>
+                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={handleToggleDebugMode}
+                  className="shrink-0"
+                >
+                  {debugModeEnabled ? (
+                    <Eye className="h-4 w-4" />
+                  ) : (
+                    <EyeOff className="h-4 w-4" />
+                  )}
+                  {debugModeEnabled ? "Enabled" : "Disabled"}
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="bg-card/85">
+            <CardHeader className="p-5 pb-3">
+              <CardTitle className="flex items-center gap-2 text-base">
+                <CircleHelp className="h-4 w-4 text-primary" />
+                Support and Help
+              </CardTitle>
+              <CardDescription>
+                Reach support or open quick help without leaving this page.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3 p-5 pt-0">
+              <a
+                className="block rounded-md border border-border bg-background px-3 py-2.5 text-sm transition hover:bg-muted"
+                href="mailto:scanmybill@gmail.com?subject=ScanMyBill%20Support%20Request"
+              >
+                <span className="text-xs uppercase tracking-wide text-muted-foreground">Support Email</span>
+                <p className="mt-1 font-medium text-primary">scanmybill@gmail.com</p>
+              </a>
+              <button
+                type="button"
+                onClick={() => setHelpOpen(true)}
+                className="inline-flex w-full items-center justify-between rounded-md border border-border bg-background px-3 py-2.5 text-left text-sm transition hover:bg-muted"
+              >
+                <span className="flex items-center gap-2 font-medium">
+                  <Wrench className="h-4 w-4 text-muted-foreground" />
+                  Help, FAQ and About
+                </span>
+                <ChevronRight className="h-4 w-4 text-muted-foreground" />
+              </button>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
 
       {helpOpen ? (
         <div
