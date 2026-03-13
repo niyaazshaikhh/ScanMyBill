@@ -1,8 +1,9 @@
 'use client';
 
 import { useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 
-import { getAuthToken, logoutToLanding } from '@/lib/auth';
+import { clearAuthSession, getAuthToken } from '@/lib/auth';
 
 const IDLE_ACTIVITY_KEY = 'scanmybill_last_activity_at';
 const DEFAULT_IDLE_MINUTES = 30;
@@ -21,10 +22,16 @@ function getIdleTimeoutMs() {
 }
 
 export function useAuthGuard() {
+  const router = useRouter();
+
   useEffect(() => {
     let idleTimeoutId: ReturnType<typeof setTimeout> | undefined;
     let lastActivityWriteAt = 0;
     const idleTimeoutMs = getIdleTimeoutMs();
+    const logoutToLanding = () => {
+      clearAuthSession();
+      router.replace('/');
+    };
 
     const scheduleIdleLogout = () => {
       if (!getAuthToken()) {
@@ -98,5 +105,5 @@ export function useAuthGuard() {
       });
       window.removeEventListener('storage', onStorage);
     };
-  }, []);
+  }, [router]);
 }

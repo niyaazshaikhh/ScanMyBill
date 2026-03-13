@@ -515,14 +515,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
     (path: "/" | "/signin") => {
       clearAuthSession();
       setSessionTimeoutOpen(false);
-      if (typeof window !== "undefined") {
-        window.history.pushState(null, "", path);
-      }
       router.replace(path);
-      router.refresh();
-      if (typeof window !== "undefined") {
-        window.location.replace(path);
-      }
     },
     [router],
   );
@@ -912,15 +905,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
       // Always clear local auth state even if revoke call fails.
     } finally {
       clearAuthSession();
-      if (typeof window !== "undefined") {
-        localStorage.removeItem("scanmybill_token");
-        window.history.pushState(null, "", "/signin");
-      }
       router.replace("/signin");
-      router.refresh();
-      if (typeof window !== "undefined") {
-        window.location.replace("/signin");
-      }
       setLoggingOut(false);
     }
   };

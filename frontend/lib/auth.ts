@@ -123,6 +123,7 @@ export function logoutToLanding() {
   if (typeof window === 'undefined') return;
   clearAuthSession();
   if (window.location.pathname !== '/') {
-    window.location.replace('/');
+    window.history.replaceState(null, '', '/');
+    window.dispatchEvent(new PopStateEvent('popstate'));
   }
 }

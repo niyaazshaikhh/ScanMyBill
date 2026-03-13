@@ -1,6 +1,7 @@
 ﻿'use client';
 
 import { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
 
 import { Button } from '@/components/ui/button';
 import { PopupWindow } from '@/components/ui/popup-window';
@@ -74,6 +75,7 @@ export function RazorpayCheckoutButton({
   onSuccess,
   disabled = false,
 }: RazorpayCheckoutButtonProps) {
+  const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [plans, setPlans] = useState<RazorpayPlanOption[]>([]);
   const [selectedPlanId, setSelectedPlanId] = useState(defaultPlanId || '');
@@ -104,7 +106,7 @@ export function RazorpayCheckoutButton({
     return () => {
       active = false;
     };
-  }, [showPlanSelector, defaultPlanId]);
+  }, [defaultPlanId, showPlanSelector]);
 
   const launch = async () => {
     if (loading) return;
@@ -113,7 +115,8 @@ export function RazorpayCheckoutButton({
     try {
       const token = getAuthToken();
       if (!token) {
-        window.location.href = '/signin?next=/pricing';
+        setLoading(false);
+        router.push('/signin?next=/pricing');
         return;
       }
 
@@ -167,7 +170,12 @@ export function RazorpayCheckoutButton({
               await onSuccess();
             }
             if (successRedirectPath) {
-              window.location.href = successRedirectPath;
+              if (/^https?:\/\//i.test(successRedirectPath)) {
+                window.location.href = successRedirectPath;
+                return;
+              }
+              router.push(successRedirectPath);
+              setLoading(false);
               return;
             }
             setLoading(false);
