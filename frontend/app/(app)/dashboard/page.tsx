@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent } from "react";
 import { Loader2, Plus } from "lucide-react";
 
 export const dynamic = "force-dynamic";
@@ -23,6 +23,7 @@ import { Select } from "@/components/ui/select";
 import { useAuthGuard } from "@/hooks/useAuthGuard";
 import { apiRequest } from "@/lib/api";
 import { notifyApp } from "@/lib/app-notification";
+import { showAppErrorPopup, showAppInfoPopup } from "@/lib/app-popup";
 import { getAuthUser } from "@/lib/auth";
 import {
   getBillUploadState,
@@ -43,6 +44,7 @@ import {
   type DashboardDebugConsoleRecord,
 } from "@/lib/debugging";
 import { formatAccountingAmount } from "@/lib/number-format";
+import { cn } from "@/lib/utils";
 
 type DashboardData = {
   total_sales: number;
@@ -99,6 +101,18 @@ type PersonalDetailsResponse = {
 };
 
 const periodOptions = ["monthly", "quarterly", "semi-annually", "annually"];
+const SUPPORTED_UPLOAD_FORMAT_LABEL = "JPEG/PNG/PDF/DOCX/XLSX/CSV";
+const SUPPORTED_UPLOAD_EXTENSIONS = new Set(["jpeg", "jpg", "png", "pdf", "docx", "xlsx", "csv"]);
+const SUPPORTED_UPLOAD_MIME_TYPES = new Set([
+  "image/jpeg",
+  "image/png",
+  "application/pdf",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  "text/csv",
+  "application/csv",
+  "application/vnd.ms-excel",
+]);
 const PERSONAL_DETAILS_REQUIRED_KEYS: Array<keyof PersonalDetailsResponse> = [
   "company_name",
   "gstin_number",
@@ -121,6 +135,21 @@ function getFinancialYearStart(dateString: string) {
 
 function toFinancialYearLabel(startYear: number) {
   return `F.Y ${startYear}-${startYear + 1}`;
+}
+
+function extractFileExtension(fileName: string): string {
+  const trimmed = fileName.trim();
+  const dotIndex = trimmed.lastIndexOf(".");
+  if (dotIndex < 0) return "";
+  return trimmed.slice(dotIndex + 1).toLowerCase();
+}
+
+function isSupportedUploadFile(selectedFile: File): boolean {
+  const extension = extractFileExtension(selectedFile.name);
+  if (SUPPORTED_UPLOAD_EXTENSIONS.has(extension)) return true;
+
+  const mimeType = (selectedFile.type || "").toLowerCase();
+  return SUPPORTED_UPLOAD_MIME_TYPES.has(mimeType);
 }
 
 function getCurrentFinancialYearStart() {
@@ -246,6 +275,7 @@ export default function DashboardPage() {
   const [debugConsoleEntries, setDebugConsoleEntries] = useState<DashboardDebugConsoleRecord[]>([]);
   const [dashboardUserName, setDashboardUserName] = useState("User");
   const [showPersonalDetailsBanner, setShowPersonalDetailsBanner] = useState(false);
+  const [isUploadDropActive, setIsUploadDropActive] = useState(false);
   const mainUploadInputRef = useRef<HTMLInputElement | null>(null);
   const quickUploadInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -522,31 +552,96 @@ export default function DashboardPage() {
     [summary],
   );
 
-  const uploadFile = async (selectedFile: File) => {
-    setUploadMessage(null);
-    appendDebugEntry({
-      level: "info",
-      source: "upload",
-      title: "Bill upload started",
-      message: `Uploading ${selectedFile.name}`,
-      file_name: selectedFile.name,
-      details: {
-        size_bytes: selectedFile.size,
-        mime_type: selectedFile.type,
-      },
-    });
+  const resolveSupportedFile = useCallback(
+    (selectedFile: File | null): File | null => {
+      if (!selectedFile) return null;
+      if (isSupportedUploadFile(selectedFile)) return selectedFile;
 
-    try {
-      await startBillUpload(selectedFile, { invoiceType: "sales" });
-    } catch {
-      // Upload completion and errors are handled by the shared upload-state subscriber.
-    }
-  };
+      const message = `This file format is unsupported. Please try with supported files: ${SUPPORTED_UPLOAD_FORMAT_LABEL}.`;
+      showAppErrorPopup(message, "Unsupported File Format");
+      appendDebugEntry({
+        level: "warning",
+        source: "upload",
+        title: "Unsupported upload file blocked",
+        message,
+        file_name: selectedFile.name,
+        details: {
+          mime_type: selectedFile.type || null,
+          size_bytes: selectedFile.size,
+        },
+      });
+      return null;
+    },
+    [appendDebugEntry],
+  );
+
+  const onUploadZoneDragEnter = useCallback((event: DragEvent<HTMLDivElement>) => {
+    if (!Array.from(event.dataTransfer.types || []).includes("Files")) return;
+    event.preventDefault();
+    setIsUploadDropActive(true);
+  }, []);
+
+  const onUploadZoneDragOver = useCallback((event: DragEvent<HTMLDivElement>) => {
+    if (!Array.from(event.dataTransfer.types || []).includes("Files")) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "copy";
+    setIsUploadDropActive(true);
+  }, []);
+
+  const onUploadZoneDragLeave = useCallback((event: DragEvent<HTMLDivElement>) => {
+    const nextTarget = event.relatedTarget as Node | null;
+    if (nextTarget && event.currentTarget.contains(nextTarget)) return;
+    setIsUploadDropActive(false);
+  }, []);
+
+  const uploadFile = useCallback(
+    async (selectedFile: File) => {
+      setUploadMessage(null);
+      appendDebugEntry({
+        level: "info",
+        source: "upload",
+        title: "Bill upload started",
+        message: `Uploading ${selectedFile.name}`,
+        file_name: selectedFile.name,
+        details: {
+          size_bytes: selectedFile.size,
+          mime_type: selectedFile.type,
+        },
+      });
+
+      try {
+        await startBillUpload(selectedFile, { invoiceType: "sales" });
+      } catch {
+        // Upload completion and errors are handled by the shared upload-state subscriber.
+      }
+    },
+    [appendDebugEntry],
+  );
 
   const onUpload = async () => {
     if (!file) return;
     await uploadFile(file);
   };
+
+  const onUploadZoneDrop = useCallback(
+    (event: DragEvent<HTMLDivElement>) => {
+      if (!Array.from(event.dataTransfer.types || []).includes("Files")) return;
+      event.preventDefault();
+      setIsUploadDropActive(false);
+
+      if (uploading) {
+        showAppInfoPopup("A bill upload is already in progress. Please wait for it to complete.", "Upload In Progress");
+        return;
+      }
+
+      const droppedFile = resolveSupportedFile(event.dataTransfer.files?.[0] || null);
+      if (!droppedFile) return;
+
+      setFile(droppedFile);
+      void uploadFile(droppedFile);
+    },
+    [resolveSupportedFile, uploadFile, uploading],
+  );
 
   return (
     <div className="space-y-5">
@@ -609,7 +704,16 @@ export default function DashboardPage() {
         </p>
       ) : null}
 
-      <Card className="border-amber-300/80 bg-amber-50/70 dark:border-amber-500/45 dark:bg-amber-500/15">
+      <Card
+        className={cn(
+          "border-amber-300/80 bg-amber-50/70 transition-colors dark:border-amber-500/45 dark:bg-amber-500/15",
+          isUploadDropActive && "border-primary/70 bg-primary/10 ring-2 ring-primary/40",
+        )}
+        onDragEnter={onUploadZoneDragEnter}
+        onDragOver={onUploadZoneDragOver}
+        onDragLeave={onUploadZoneDragLeave}
+        onDrop={onUploadZoneDrop}
+      >
         <CardHeader>
           <CardTitle>Bill Processing Flow</CardTitle>
           <CardDescription>
@@ -622,11 +726,27 @@ export default function DashboardPage() {
             ref={mainUploadInputRef}
             type="file"
             accept=".jpeg,.jpg,.png,.pdf,.docx,.xlsx,.csv"
-            onChange={(event) => setFile(event.target.files?.[0] || null)}
+            onChange={(event) => {
+              const selectedFile = resolveSupportedFile(event.target.files?.[0] || null);
+              setFile(selectedFile);
+              if (!selectedFile) {
+                event.target.value = "";
+              }
+            }}
           />
           <Button onClick={onUpload} disabled={!file || uploading}>
             {uploading ? "Uploading..." : "Upload Bill"}
           </Button>
+          <p
+            className={cn(
+              "text-xs md:col-span-2",
+              isUploadDropActive ? "font-medium text-primary" : "text-muted-foreground",
+            )}
+          >
+            {isUploadDropActive
+              ? "Drop file to upload now"
+              : `Drag and drop files here to upload bills. Supported: ${SUPPORTED_UPLOAD_FORMAT_LABEL}.`}
+          </p>
           {uploading ? (
             <div className="space-y-2 md:col-span-2">
               <p className="truncate text-xs text-muted-foreground">
@@ -764,8 +884,11 @@ export default function DashboardPage() {
         accept=".jpeg,.jpg,.png,.pdf,.docx,.xlsx,.csv"
         className="hidden"
         onChange={(event) => {
-          const selected = event.target.files?.[0] || null;
-          if (!selected) return;
+          const selected = resolveSupportedFile(event.target.files?.[0] || null);
+          if (!selected) {
+            event.target.value = "";
+            return;
+          }
           void uploadFile(selected);
         }}
       />
