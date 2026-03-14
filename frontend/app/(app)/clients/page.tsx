@@ -297,7 +297,7 @@ export default function ClientsPage() {
 
   return (
     <div className='space-y-5'>
-      <div className='flex items-center justify-between'>
+      <div className='flex flex-wrap items-start justify-between gap-3'>
         <div>
           <h2 className='font-[var(--font-space)] text-2xl font-semibold'>Clients</h2>
           <p className='text-sm text-muted-foreground'>
@@ -375,7 +375,7 @@ export default function ClientsPage() {
                 />
               </div>
               <div className='md:col-span-2'>
-                <div className='flex gap-2'>
+                <div className='flex flex-wrap gap-2'>
                   <Button type='submit' disabled={saving}>
                     {saving ? 'Saving...' : editingClientId ? 'Update Client' : 'Save Client'}
                   </Button>
@@ -450,7 +450,7 @@ export default function ClientsPage() {
                       <TableCell className='font-medium'>{client.name}</TableCell>
                       <TableCell>{client.gst_number || 'N/A'}</TableCell>
                       <TableCell className='text-right'>
-                        <div className='flex justify-end gap-2'>
+                        <div className='flex flex-wrap justify-end gap-2'>
                           <Button
                             variant='secondary'
                             size='sm'

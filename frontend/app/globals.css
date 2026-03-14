@@ -75,6 +75,10 @@ body {
   overflow-x: hidden;
 }
 
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
 *::-webkit-scrollbar {
   width: 12px;
   height: 12px;

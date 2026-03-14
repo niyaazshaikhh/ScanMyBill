@@ -324,7 +324,7 @@ export default function DeliveryChallanInvoicesPage() {
             <h2 className='font-[var(--font-space)] text-2xl font-semibold'>Delivery Challans</h2>
             <p className='text-sm text-muted-foreground'>View and download delivery challans by period folders.</p>
           </div>
-          <div className='min-w-44 space-y-1'>
+          <div className='w-full space-y-1 sm:min-w-44 sm:w-auto'>
             <Label className='text-xs'>Challan Type</Label>
             <Select
               value='delivery'
@@ -478,7 +478,7 @@ export default function DeliveryChallanInvoicesPage() {
                       <TableCell>{challan.client_name || 'Unlinked'}</TableCell>
                       <TableCell>Rs {formatAccountingAmount(challan.subtotal)}</TableCell>
                       <TableCell className='text-right'>
-                        <div className='flex justify-end gap-2'>
+                        <div className='flex flex-wrap justify-end gap-2'>
                           <Button
                             variant='outline'
                             size='icon'
@@ -553,11 +553,11 @@ export default function DeliveryChallanInvoicesPage() {
         type='button'
         onClick={() => quickUploadInputRef.current?.click()}
         disabled={uploadingBill}
-        className='fixed bottom-6 right-6 z-50 h-14 w-14 rounded-full bg-orange-600 p-0 text-white shadow-lg hover:bg-orange-500 focus-visible:ring-orange-500'
+        className='fixed bottom-[calc(1rem+env(safe-area-inset-bottom))] right-4 z-50 h-12 w-12 rounded-full bg-orange-600 p-0 text-white shadow-lg hover:bg-orange-500 focus-visible:ring-orange-500 sm:bottom-6 sm:right-6 sm:h-14 sm:w-14'
         aria-label='Quick upload bill'
         title='Upload Bill'
       >
-        {uploadingBill ? <Loader2 className='h-6 w-6 animate-spin' /> : <Plus className='h-7 w-7' />}
+        {uploadingBill ? <Loader2 className='h-5 w-5 animate-spin sm:h-6 sm:w-6' /> : <Plus className='h-6 w-6 sm:h-7 sm:w-7' />}
       </Button>
       <PopupWindow
         open={Boolean(pendingDeleteChallan)}

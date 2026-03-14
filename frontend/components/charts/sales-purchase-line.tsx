@@ -2,7 +2,16 @@
 
 import { useCallback, useMemo } from 'react';
 
-import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
+import {
+  Bar,
+  BarChart,
+  CartesianGrid,
+  ResponsiveContainer,
+  Tooltip,
+  type TooltipProps,
+  XAxis,
+  YAxis,
+} from 'recharts';
 import { formatAccountingAmount, formatAccountingInteger } from '@/lib/number-format';
 import { useTheme } from '@/hooks/useTheme';
 
@@ -10,22 +19,6 @@ type TrendPoint = {
   label: string;
   sales: number;
   purchases: number;
-};
-
-type TrendTooltipPayloadItem = {
-  color?: string;
-  dataKey?: string;
-  name?: string;
-  value?: number | string;
-  payload?: {
-    originalLabel?: string;
-  };
-};
-
-type TrendTooltipProps = {
-  active?: boolean;
-  label?: string | number;
-  payload?: TrendTooltipPayloadItem[];
 };
 
 type PeriodValue = 'monthly' | 'quarterly' | 'semi-annually' | 'annually';
@@ -163,7 +156,7 @@ export function SalesPurchaseBarChart({
   }, [chartData]);
 
   const renderTooltip = useCallback(
-    ({ active, label, payload }: TrendTooltipProps) => {
+    ({ active, label, payload }: TooltipProps<number | string, string | number>) => {
       if (!active || !payload?.length) return null;
 
       const firstPayload = payload[0]?.payload;
@@ -178,7 +171,7 @@ export function SalesPurchaseBarChart({
 
       return (
         <div
-          className='min-w-[13rem] rounded-md border px-3 py-2'
+          className='min-w-[11rem] rounded-md border px-3 py-2 sm:min-w-[13rem]'
           style={{
             backgroundColor: isDark ? '#1e293b' : '#ffffff',
             borderColor: isDark ? '#334155' : '#e2e8f0',
@@ -196,16 +189,17 @@ export function SalesPurchaseBarChart({
           </p>
           <div className='space-y-1.5'>
             {payload.map((item, index) => {
+              const dataKeyValue = typeof item.dataKey === 'string' ? item.dataKey : String(item.dataKey || '');
               const tone =
                 item.color ||
-                BAR_SERIES.find((series) => series.key === item.dataKey)?.color ||
+                BAR_SERIES.find((series) => series.key === dataKeyValue)?.color ||
                 (isDark ? '#cbd5e1' : '#334155');
               const itemLabel =
-                typeof item.name === 'string'
-                  ? item.name
-                  : item.dataKey === 'sales'
+                typeof item.name === 'string' || typeof item.name === 'number'
+                  ? String(item.name)
+                  : dataKeyValue === 'sales'
                     ? 'Sales'
-                    : item.dataKey === 'purchases'
+                    : dataKeyValue === 'purchases'
                       ? 'Purchases'
                       : 'Amount';
               const numericValue = Number(item.value ?? 0);

@@ -10,7 +10,16 @@ import {
   type DragEvent,
   type FormEvent,
 } from "react";
-import { BrushCleaning, Loader2, Plus, Send, Sparkles, X } from "lucide-react";
+import {
+  BrushCleaning,
+  Eye,
+  Loader2,
+  Plus,
+  Send,
+  Sparkles,
+  Trash2,
+  X,
+} from "lucide-react";
 
 export const dynamic = "force-dynamic";
 
@@ -108,6 +117,28 @@ type DashboardAssistantApiResponse = {
   model?: string;
 };
 
+type RecentUploadRecord = {
+  upload_key: string;
+  record_id: string;
+  document_type: "gst_invoice" | "delivery_challan";
+  document_number: string;
+  target_route: "/invoices" | "/invoices/delivery-challan";
+  preview_path: string;
+  total_amount: number;
+  invoice_type: "sales" | "purchase" | null;
+  bill_date: string | null;
+  created_at: string;
+};
+
+type RecentUploadsResponse = {
+  uploads: RecentUploadRecord[];
+  count: number;
+};
+
+type RecentUploadsClearResponse = {
+  cleared: number;
+};
+
 type PersonalDetailsResponse = {
   company_name: string | null;
   gstin_number: string | null;
@@ -157,7 +188,7 @@ const AI_DEFAULT_PROMPTS = [
 ] as const;
 
 const AI_WELCOME_MESSAGE =
-  "Hello! I'm ScanMyBill AI Assistant. Ask me about business performance, GST, or invoice trends.";
+  "Hello! I'm SMB AI Assistant. Ask me about business performance, GST, or invoice trends.";
 
 function getFinancialYearStart(dateString: string) {
   const monthIndex = isoMonthIndex(dateString);
@@ -304,6 +335,10 @@ export default function DashboardPage() {
   const uploading = uploadState.status === "uploading";
   const [file, setFile] = useState<File | null>(null);
   const [uploadMessage, setUploadMessage] = useState<string | null>(null);
+  const [recentUploads, setRecentUploads] = useState<RecentUploadRecord[]>([]);
+  const [recentUploadsLoading, setRecentUploadsLoading] = useState(true);
+  const [recentUploadsClearing, setRecentUploadsClearing] = useState(false);
+  const [previewingRecentUploadKey, setPreviewingRecentUploadKey] = useState<string | null>(null);
   const [debugModeEnabled, setDebugModeEnabled] = useState(false);
   const [debugConsoleEntries, setDebugConsoleEntries] = useState<DashboardDebugConsoleRecord[]>([]);
   const [dashboardUserName, setDashboardUserName] = useState("User");
@@ -402,10 +437,41 @@ export default function DashboardPage() {
     }
   };
 
+  const loadRecentUploads = useCallback(
+    async (quiet = false) => {
+      if (!quiet) {
+        setRecentUploadsLoading(true);
+      }
+      try {
+        const response = await apiRequest<RecentUploadsResponse>("/dashboard/recent-uploads?limit=100");
+        setRecentUploads(response.uploads || []);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "Failed to load recent uploads";
+        appendDebugEntry({
+          level: "warning",
+          source: "dashboard",
+          title: "Recent uploads load failed",
+          message,
+          details: err instanceof Error ? { name: err.name, stack: err.stack } : { error: String(err) },
+        });
+        setRecentUploads([]);
+      } finally {
+        if (!quiet) {
+          setRecentUploadsLoading(false);
+        }
+      }
+    },
+    [appendDebugEntry],
+  );
+
   useEffect(() => {
     void loadYearOptions();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    void loadRecentUploads();
+  }, [loadRecentUploads]);
 
   useEffect(() => {
     setDashboardUserName(resolveUserDisplayName());
@@ -558,6 +624,7 @@ export default function DashboardPage() {
         }
         void loadYearOptions();
         void loadSummary();
+        void loadRecentUploads(true);
       } else {
         const message = nextState.error || "Upload failed";
         appendDebugEntry({
@@ -581,7 +648,7 @@ export default function DashboardPage() {
       previousState = nextState;
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [appendDebugEntry]);
+  }, [appendDebugEntry, loadRecentUploads]);
 
   const onClearDebugConsole = () => {
     clearDashboardDebugResponses();
@@ -669,6 +736,64 @@ export default function DashboardPage() {
     if (!file) return;
     await uploadFile(file);
   };
+
+  const previewRecentUpload = useCallback(async (upload: RecentUploadRecord) => {
+    setPreviewingRecentUploadKey(upload.upload_key);
+    try {
+      const blob = await apiRequest<Blob>(upload.preview_path, { responseType: "blob" });
+      const previewUrl = URL.createObjectURL(blob);
+      const popup = window.open(previewUrl, "_blank", "noopener,noreferrer");
+      if (!popup) {
+        const link = document.createElement("a");
+        link.href = previewUrl;
+        link.target = "_blank";
+        link.rel = "noopener noreferrer";
+        link.click();
+      }
+      window.setTimeout(() => URL.revokeObjectURL(previewUrl), 60_000);
+    } catch (err) {
+      appendDebugEntry({
+        level: "warning",
+        source: "dashboard",
+        title: "Recent upload preview failed",
+        message: err instanceof Error ? err.message : "Failed to preview uploaded file",
+        details: {
+          upload_key: upload.upload_key,
+          preview_path: upload.preview_path,
+        },
+      });
+    } finally {
+      setPreviewingRecentUploadKey(null);
+    }
+  }, [appendDebugEntry]);
+
+  const clearRecentUploads = useCallback(async () => {
+    if (recentUploadsClearing || recentUploads.length === 0) return;
+    setRecentUploadsClearing(true);
+    try {
+      const response = await apiRequest<RecentUploadsClearResponse>("/dashboard/recent-uploads", {
+        method: "DELETE",
+      });
+      setRecentUploads([]);
+      notifyApp({
+        title: "Recent uploads cleared",
+        message:
+          response.cleared > 0
+            ? `${response.cleared} upload record${response.cleared === 1 ? "" : "s"} cleared.`
+            : "No upload records were available to clear.",
+        tone: "success",
+      });
+    } catch (err) {
+      appendDebugEntry({
+        level: "error",
+        source: "dashboard",
+        title: "Recent uploads clear failed",
+        message: err instanceof Error ? err.message : "Failed to clear recent uploads",
+      });
+    } finally {
+      setRecentUploadsClearing(false);
+    }
+  }, [appendDebugEntry, recentUploads.length, recentUploadsClearing]);
 
   const onUploadZoneDrop = useCallback(
     (event: DragEvent<HTMLDivElement>) => {
@@ -1056,6 +1181,100 @@ export default function DashboardPage() {
         </Card>
       ) : null}
 
+      <Card className="bg-card/85">
+        <CardHeader className="pb-3">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <CardTitle>Recent uploads</CardTitle>
+              <CardDescription>
+                Latest uploaded records across invoices and delivery challans.
+              </CardDescription>
+            </div>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => void clearRecentUploads()}
+              disabled={recentUploadsClearing || recentUploadsLoading || recentUploads.length === 0}
+              className="gap-1.5"
+            >
+              {recentUploadsClearing ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Trash2 className="h-3.5 w-3.5" />
+              )}
+              Clear
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent>
+          {recentUploadsLoading ? (
+            <p className="text-sm text-muted-foreground">Loading recent uploads...</p>
+          ) : recentUploads.length === 0 ? (
+            <p className="text-sm text-muted-foreground">No uploaded records available yet.</p>
+          ) : (
+            <div
+              className={cn(
+                "space-y-2 pr-1",
+                recentUploads.length > 5 && "max-h-[23.25rem] overflow-y-auto",
+              )}
+            >
+              {recentUploads.map((upload) => (
+                <div
+                  key={upload.upload_key}
+                  className="flex min-h-[4.25rem] items-center justify-between gap-3 rounded-md border border-border bg-background/70 px-3 py-2"
+                >
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-medium text-foreground">
+                      {upload.document_type === "gst_invoice"
+                        ? `Invoice ${upload.document_number}`
+                        : `Delivery Challan ${upload.document_number}`}
+                    </p>
+                    <p className="truncate text-xs text-muted-foreground">
+                      {upload.invoice_type ? `${upload.invoice_type.toUpperCase()} • ` : ""}
+                      {upload.bill_date
+                        ? new Date(upload.bill_date).toLocaleDateString("en-IN", {
+                            day: "2-digit",
+                            month: "short",
+                            year: "numeric",
+                          })
+                        : "No bill date"}
+                      {" • "}
+                      Rs {formatAccountingAmount(upload.total_amount)}
+                    </p>
+                    <p className="text-[11px] text-muted-foreground">
+                      Uploaded{" "}
+                      {new Date(upload.created_at).toLocaleString("en-IN", {
+                        day: "2-digit",
+                        month: "short",
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      })}
+                    </p>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="icon"
+                    onClick={() => void previewRecentUpload(upload)}
+                    disabled={previewingRecentUploadKey === upload.upload_key}
+                    aria-label="View uploaded record"
+                    title="View uploaded record"
+                    className="h-9 w-9 shrink-0"
+                  >
+                    {previewingRecentUploadKey === upload.upload_key ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Eye className="h-4 w-4" />
+                    )}
+                  </Button>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
       <input
         ref={quickUploadInputRef}
         type="file"
@@ -1071,7 +1290,7 @@ export default function DashboardPage() {
         }}
       />
       {aiChatOpen ? (
-        <div className="fixed bottom-24 right-6 z-[60] w-[min(24rem,calc(100vw-1.5rem))] overflow-hidden rounded-2xl border border-border bg-background shadow-2xl">
+        <div className="fixed inset-x-3 bottom-[5.75rem] z-[60] w-auto overflow-hidden rounded-2xl border border-border bg-background shadow-2xl sm:inset-x-auto sm:bottom-24 sm:right-6 sm:w-[min(24rem,calc(100vw-1.5rem))]">
           <div className="flex items-center justify-between border-b border-border bg-background/95 px-4 py-3 backdrop-blur">
             <div className="flex items-center gap-2">
               <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-primary/12 text-primary">
@@ -1181,7 +1400,7 @@ export default function DashboardPage() {
       <Button
         type="button"
         onClick={() => setAiChatOpen((previous) => !previous)}
-        className="fixed bottom-24 right-6 z-50 h-12 w-12 rounded-full bg-sky-600 p-0 text-white shadow-lg hover:bg-sky-500 focus-visible:ring-sky-500"
+        className="fixed bottom-[calc(5.75rem+env(safe-area-inset-bottom))] right-4 z-50 h-11 w-11 rounded-full bg-sky-600 p-0 text-white shadow-lg hover:bg-sky-500 focus-visible:ring-sky-500 sm:bottom-24 sm:right-6 sm:h-12 sm:w-12"
         aria-label={aiChatOpen ? "Close SMB AI Assistant chat" : "Open SMB AI Assistant chat"}
         title="SMB AI Assistant"
       >
@@ -1191,7 +1410,7 @@ export default function DashboardPage() {
             aria-hidden="true"
           />
         ) : null}
-        <Sparkles className="relative h-5 w-5" />
+        <Sparkles className="relative h-4 w-4 sm:h-5 sm:w-5" />
       </Button>
       <Button
         type="button"
@@ -1203,14 +1422,14 @@ export default function DashboardPage() {
           quickUploadInputRef.current?.click();
         }}
         disabled={uploading}
-        className="fixed bottom-6 right-6 z-50 h-14 w-14 rounded-full bg-orange-600 p-0 text-white shadow-lg hover:bg-orange-500 focus-visible:ring-orange-500"
+        className="fixed bottom-[calc(1rem+env(safe-area-inset-bottom))] right-4 z-50 h-12 w-12 rounded-full bg-orange-600 p-0 text-white shadow-lg hover:bg-orange-500 focus-visible:ring-orange-500 sm:bottom-6 sm:right-6 sm:h-14 sm:w-14"
         aria-label="Quick upload bill"
         title="Upload Bill"
       >
         {uploading ? (
-          <Loader2 className="h-6 w-6 animate-spin" />
+          <Loader2 className="h-5 w-5 animate-spin sm:h-6 sm:w-6" />
         ) : (
-          <Plus className="h-7 w-7" />
+          <Plus className="h-6 w-6 sm:h-7 sm:w-7" />
         )}
       </Button>
       <style jsx>{`

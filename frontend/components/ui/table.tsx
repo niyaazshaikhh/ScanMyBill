@@ -4,8 +4,12 @@ import { cn } from '@/lib/utils';
 
 const Table = React.forwardRef<HTMLTableElement, React.HTMLAttributes<HTMLTableElement>>(
   ({ className, ...props }, ref) => (
-    <div className='w-full overflow-auto'>
-      <table ref={ref} className={cn('w-full caption-bottom text-sm', className)} {...props} />
+    <div className='w-full overflow-x-auto overscroll-x-contain [scrollbar-width:thin] [-webkit-overflow-scrolling:touch]'>
+      <table
+        ref={ref}
+        className={cn('w-full min-w-max caption-bottom text-xs sm:text-sm', className)}
+        {...props}
+      />
     </div>
   )
 );
@@ -40,7 +44,10 @@ const TableHead = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <th
     ref={ref}
-    className={cn('h-12 px-4 text-left align-middle font-semibold text-muted-foreground', className)}
+    className={cn(
+      'h-10 px-2 text-left align-middle text-xs font-semibold text-muted-foreground sm:h-12 sm:px-3 sm:text-sm lg:px-4',
+      className
+    )}
     {...props}
   />
 ));
@@ -50,7 +57,7 @@ const TableCell = React.forwardRef<
   HTMLTableCellElement,
   React.TdHTMLAttributes<HTMLTableCellElement>
 >(({ className, ...props }, ref) => (
-  <td ref={ref} className={cn('p-4 align-middle', className)} {...props} />
+  <td ref={ref} className={cn('p-2 align-middle text-xs sm:p-3 sm:text-sm lg:p-4', className)} {...props} />
 ));
 TableCell.displayName = 'TableCell';
 

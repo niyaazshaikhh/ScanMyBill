@@ -217,7 +217,7 @@ export default function ClientAnalyticsPage() {
           <p className='text-sm text-muted-foreground'>Sales analytics by client.</p>
         </div>
 
-        <div className='grid gap-2 sm:grid-cols-2'>
+        <div className='grid w-full gap-2 sm:w-auto sm:grid-cols-2'>
           <div>
             <Label className='text-xs'>Period</Label>
             <Select value={period} onChange={(event) => setPeriod(event.target.value)}>

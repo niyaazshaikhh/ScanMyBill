@@ -8,6 +8,7 @@ from app.models.notification import Notification, NotificationCategory
 from app.models.password_reset_token import PasswordResetToken
 from app.models.payment_event import PaymentEvent
 from app.models.personal_details import PersonalDetails
+from app.models.recent_upload_state import RecentUploadState
 from app.models.revoked_token import RevokedToken
 from app.models.token_blacklist import TokenBlacklist
 from app.models.user import SubscriptionPlan, SubscriptionStatus, User, UserRole
@@ -32,6 +33,7 @@ __all__ = [
     'NotificationCategory',
     'PaymentEvent',
     'PersonalDetails',
+    'RecentUploadState',
     'PasswordResetToken',
     'RevokedToken',
     'TokenBlacklist',

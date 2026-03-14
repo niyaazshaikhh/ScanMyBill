@@ -1,6 +1,9 @@
+from datetime import date, datetime
 from typing import Literal
 
 from pydantic import BaseModel, Field
+
+from app.models.invoice import InvoiceType
 
 
 class TrendPoint(BaseModel):
@@ -39,3 +42,25 @@ class DashboardAssistantRequest(BaseModel):
 class DashboardAssistantResponse(BaseModel):
     answer: str
     model: str
+
+
+class RecentUploadRecord(BaseModel):
+    upload_key: str
+    record_id: str
+    document_type: Literal['gst_invoice', 'delivery_challan']
+    document_number: str
+    target_route: Literal['/invoices', '/invoices/delivery-challan']
+    preview_path: str
+    total_amount: float
+    invoice_type: InvoiceType | None = None
+    bill_date: date | None = None
+    created_at: datetime
+
+
+class RecentUploadsResponse(BaseModel):
+    uploads: list[RecentUploadRecord]
+    count: int
+
+
+class RecentUploadsClearResponse(BaseModel):
+    cleared: int

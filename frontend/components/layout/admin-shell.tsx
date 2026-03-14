@@ -947,7 +947,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
     <div className="flex h-[100dvh] overflow-hidden">
       <aside
         className={cn(
-          "fixed inset-y-0 left-0 z-40 flex w-64 min-h-0 flex-col border-r border-border bg-background/95 p-4 transition-transform lg:fixed lg:top-0 lg:h-[100dvh] lg:translate-x-0",
+          "fixed inset-y-0 left-0 z-40 flex w-[86vw] max-w-72 min-h-0 flex-col border-r border-border bg-background/95 p-4 transition-transform lg:fixed lg:top-0 lg:h-[100dvh] lg:w-64 lg:max-w-none lg:translate-x-0",
           open ? "translate-x-0" : "-translate-x-full",
           collapsed && "lg:w-20",
         )}
@@ -1069,7 +1069,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
         )}
       >
         <header className="sticky top-0 z-20 border-b border-border bg-background/95 backdrop-blur">
-          <div className="flex items-center gap-2 px-4 py-3 sm:px-6">
+          <div className="flex flex-wrap items-center gap-2 px-4 py-3 sm:px-6">
             <Button
               variant="ghost"
               size="icon"
@@ -1091,7 +1091,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
             </h1>
             <div
               ref={searchContainerRef}
-              className="mx-auto hidden w-full max-w-md md:block"
+              className="order-last w-full pt-1 md:order-none md:w-80 md:pt-0 lg:mx-auto lg:w-full lg:max-w-md"
             >
               <div className="relative flex h-10 items-center">
                 <Search
@@ -1166,7 +1166,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
               >
                 <CircleHelp className="h-4 w-4" />
               </div>
-              <div className="pointer-events-none absolute right-0 top-full z-50 w-72 rounded-md border border-border bg-background p-3 text-xs text-muted-foreground opacity-0 shadow-lg transition-opacity duration-150 group-hover:pointer-events-auto group-hover:opacity-100">
+              <div className="pointer-events-none absolute right-0 top-full z-50 w-72 max-w-[calc(100vw-1rem)] rounded-md border border-border bg-background p-3 text-xs text-muted-foreground opacity-0 shadow-lg transition-opacity duration-150 group-hover:pointer-events-auto group-hover:opacity-100">
                 <p className="text-[11px] font-semibold uppercase tracking-wide text-foreground">
                   Need help?
                 </p>
@@ -1274,7 +1274,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
                   id={NOTIFICATIONS_PANEL_ID}
                   role="dialog"
                   aria-labelledby={NOTIFICATIONS_HEADING_ID}
-                  className="absolute right-0 top-full z-50 w-96 max-w-[calc(100vw-2rem)] overflow-hidden rounded-md border border-border bg-background shadow-lg"
+                  className="absolute right-0 top-full z-50 w-[calc(100vw-1rem)] max-w-sm overflow-hidden rounded-md border border-border bg-background shadow-lg sm:w-96"
                 >
                   <div className="flex items-center justify-between border-b border-border px-3 py-2">
                     <p
@@ -1386,7 +1386,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
               {userMenuOpen ? (
                 <div
                   role="menu"
-                  className="absolute right-0 top-[calc(100%+8px)] z-50 w-72 overflow-hidden rounded-md border border-border bg-background shadow-lg"
+                  className="absolute right-0 top-[calc(100%+8px)] z-50 w-[calc(100vw-1rem)] max-w-xs overflow-hidden rounded-md border border-border bg-background shadow-lg sm:w-72 sm:max-w-none"
                 >
                   <div className="border-b border-border px-3 py-3">
                     <p className="truncate text-sm font-semibold text-foreground">
@@ -1464,9 +1464,9 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
           </div>
         </header>
 
-        <main className="flex-1 px-4 py-5 sm:px-6">{children}</main>
+        <main className="flex-1 px-3 py-4 sm:px-6 sm:py-5">{children}</main>
       </div>
-      <div className="pointer-events-none fixed bottom-4 right-4 z-50 flex w-[min(24rem,calc(100vw-1.5rem))] flex-col gap-2">
+      <div className="pointer-events-none fixed inset-x-3 bottom-3 z-50 flex w-auto flex-col gap-2 sm:inset-x-auto sm:bottom-4 sm:right-4 sm:w-[min(24rem,calc(100vw-1.5rem))]">
         {toasts.map((toast) => (
           <div
             key={toast.id}

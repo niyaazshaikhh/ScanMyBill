@@ -352,7 +352,7 @@ export default function CreateDeliveryChallanPage() {
             Create delivery challans and save them for later download.
           </p>
         </div>
-        <div className="min-w-44 space-y-1">
+        <div className="w-full space-y-1 sm:min-w-44 sm:w-auto">
           <Label className="text-xs">Challan Type</Label>
           <Select
             value="delivery"

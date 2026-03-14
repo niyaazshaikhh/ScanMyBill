@@ -484,11 +484,11 @@ export default function CreateInvoicePage() {
             Create sales invoices with automatic tax split calculations.
           </p>
         </div>
-        <div className="flex flex-wrap items-end gap-2">
+        <div className="flex w-full flex-wrap items-end gap-2 sm:w-auto sm:justify-end">
           <Button asChild variant="outline">
             <Link href="/hsn-sac-master-list">HSN Master List</Link>
           </Button>
-          <div className="min-w-44 space-y-1">
+          <div className="w-full space-y-1 sm:min-w-44 sm:w-auto">
             <Label className="text-xs">Challan Type</Label>
             <Select
               value="gst"
