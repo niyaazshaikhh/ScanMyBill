@@ -321,6 +321,8 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
+  const [isMobileViewport, setIsMobileViewport] = useState(false);
+  const [notificationsPanelTop, setNotificationsPanelTop] = useState(72);
   const [notificationsLoading, setNotificationsLoading] = useState(false);
   const [undoingNotificationId, setUndoingNotificationId] = useState<
     string | null
@@ -341,16 +343,51 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
     confirmLabel: "OK",
   });
   const searchContainerRef = useRef<HTMLDivElement | null>(null);
+  const headerRef = useRef<HTMLElement | null>(null);
   const notificationsContainerRef = useRef<HTMLDivElement | null>(null);
   const userMenuContainerRef = useRef<HTMLDivElement | null>(null);
   const seenNotificationIdsRef = useRef<Set<string>>(new Set());
   const initializedNotificationSyncRef = useRef(false);
   const toastTimersRef = useRef<Map<string, number>>(new Map());
-  const notificationCloseTimerRef = useRef<number | null>(null);
-  const userMenuCloseTimerRef = useRef<number | null>(null);
   const personalDetailsPromptShownRef = useRef(false);
 
   useAuthGuard();
+
+  useEffect(() => {
+    const mediaQuery = window.matchMedia("(max-width: 639px)");
+
+    const syncViewport = () => {
+      setIsMobileViewport(mediaQuery.matches);
+    };
+
+    syncViewport();
+    if (typeof mediaQuery.addEventListener === "function") {
+      mediaQuery.addEventListener("change", syncViewport);
+      return () => {
+        mediaQuery.removeEventListener("change", syncViewport);
+      };
+    }
+    mediaQuery.addListener(syncViewport);
+    return () => {
+      mediaQuery.removeListener(syncViewport);
+    };
+  }, []);
+
+  const updateNotificationsPanelTop = useCallback(() => {
+    const headerBottom = headerRef.current?.getBoundingClientRect().bottom ?? 64;
+    setNotificationsPanelTop(Math.max(Math.round(headerBottom + 8), 64));
+  }, []);
+
+  useEffect(() => {
+    if (!notificationsOpen || !isMobileViewport) return;
+
+    updateNotificationsPanelTop();
+    const onResize = () => updateNotificationsPanelTop();
+    window.addEventListener("resize", onResize);
+    return () => {
+      window.removeEventListener("resize", onResize);
+    };
+  }, [isMobileViewport, notificationsOpen, updateNotificationsPanelTop]);
 
   useEffect(() => {
     let active = true;
@@ -775,14 +812,6 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
     return () => {
       timers.forEach((timeoutId) => window.clearTimeout(timeoutId));
       timers.clear();
-      if (notificationCloseTimerRef.current) {
-        window.clearTimeout(notificationCloseTimerRef.current);
-        notificationCloseTimerRef.current = null;
-      }
-      if (userMenuCloseTimerRef.current) {
-        window.clearTimeout(userMenuCloseTimerRef.current);
-        userMenuCloseTimerRef.current = null;
-      }
     };
   }, []);
 
@@ -1172,7 +1201,10 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
           collapsed ? "lg:ml-20" : "lg:ml-64",
         )}
       >
-        <header className="sticky top-0 z-20 border-b border-border bg-background/95 backdrop-blur">
+        <header
+          ref={headerRef}
+          className="sticky top-0 z-20 border-b border-border bg-background/95 backdrop-blur"
+        >
           <div className="flex flex-wrap items-center gap-2 px-4 py-3 sm:px-6">
             <Button
               variant="ghost"
@@ -1318,24 +1350,6 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
             <div
               ref={notificationsContainerRef}
               className="relative"
-              onMouseEnter={() => {
-                if (!notificationsEnabled) return;
-                if (notificationCloseTimerRef.current) {
-                  window.clearTimeout(notificationCloseTimerRef.current);
-                  notificationCloseTimerRef.current = null;
-                }
-                if (!notificationsOpen) {
-                  void syncNotifications(true);
-                }
-                setNotificationsOpen(true);
-              }}
-              onMouseLeave={() => {
-                if (!notificationsEnabled) return;
-                notificationCloseTimerRef.current = window.setTimeout(() => {
-                  setNotificationsOpen(false);
-                  notificationCloseTimerRef.current = null;
-                }, 180);
-              }}
             >
               <Button
                 variant="outline"
@@ -1345,6 +1359,9 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
                   const next = !notificationsOpen;
                   setNotificationsOpen(next);
                   if (next) {
+                    if (isMobileViewport) {
+                      updateNotificationsPanelTop();
+                    }
                     void syncNotifications(true);
                   }
                 }}
@@ -1378,7 +1395,15 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
                   id={NOTIFICATIONS_PANEL_ID}
                   role="dialog"
                   aria-labelledby={NOTIFICATIONS_HEADING_ID}
-                  className="absolute right-0 top-full z-50 w-[calc(100vw-1rem)] max-w-sm overflow-hidden rounded-md border border-border bg-background shadow-lg sm:w-96"
+                  className={cn(
+                    "z-50 overflow-hidden rounded-md border border-border bg-background shadow-lg",
+                    isMobileViewport
+                      ? "fixed inset-x-2"
+                      : "absolute right-0 top-full w-[calc(100vw-1rem)] max-w-sm sm:w-96",
+                  )}
+                  style={
+                    isMobileViewport ? { top: `${notificationsPanelTop}px` } : undefined
+                  }
                 >
                   <div className="flex items-center justify-between border-b border-border px-3 py-2">
                     <p
@@ -1501,19 +1526,6 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
             <div
               ref={userMenuContainerRef}
               className="relative"
-              onMouseEnter={() => {
-                if (userMenuCloseTimerRef.current) {
-                  window.clearTimeout(userMenuCloseTimerRef.current);
-                  userMenuCloseTimerRef.current = null;
-                }
-                setUserMenuOpen(true);
-              }}
-              onMouseLeave={() => {
-                userMenuCloseTimerRef.current = window.setTimeout(() => {
-                  setUserMenuOpen(false);
-                  userMenuCloseTimerRef.current = null;
-                }, 180);
-              }}
             >
               <Button
                 variant="outline"
