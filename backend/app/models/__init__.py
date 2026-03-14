@@ -11,6 +11,7 @@ from app.models.personal_details import PersonalDetails
 from app.models.recent_upload_state import RecentUploadState
 from app.models.revoked_token import RevokedToken
 from app.models.token_blacklist import TokenBlacklist
+from app.models.undo_delete_record import UndoDeleteRecord, UndoDeleteRecordType
 from app.models.user import SubscriptionPlan, SubscriptionStatus, User, UserRole
 from app.models.user_session import UserSession
 
@@ -37,5 +38,7 @@ __all__ = [
     'PasswordResetToken',
     'RevokedToken',
     'TokenBlacklist',
+    'UndoDeleteRecord',
+    'UndoDeleteRecordType',
     'UserSession',
 ]

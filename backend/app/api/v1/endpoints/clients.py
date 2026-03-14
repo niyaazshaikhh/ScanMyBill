@@ -9,6 +9,10 @@ from app.models.invoice import Invoice, InvoiceType
 from app.models.non_gst_challan import NonGSTChallan
 from app.models.user import User
 from app.schemas.client import ClientAnalytics, ClientCreate, ClientResponse, ClientUpdate, ClientsOverview
+from app.services.delete_undo import (
+    build_notification_undo_route,
+    create_deleted_client_undo_record,
+)
 from app.services.notifications import create_notification
 
 router = APIRouter()
@@ -282,6 +286,13 @@ def delete_client(
             detail='Client cannot be deleted because invoices or delivery challans are linked to it.',
         )
 
+    undo_record = create_deleted_client_undo_record(
+        db,
+        owner_id=current_user.id,
+        client=client,
+    )
+    undo_route = build_notification_undo_route('/clients', undo_record)
+
     db.delete(client)
     db.commit()
 
@@ -290,4 +301,5 @@ def delete_client(
         user_id=current_user.id,
         title='Client Deleted',
         message=f'Client {client_name} has been deleted.',
+        route=undo_route,
     )

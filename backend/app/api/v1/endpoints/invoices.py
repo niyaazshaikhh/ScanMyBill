@@ -41,6 +41,10 @@ from app.services.pdf_invoice_service import (
 )
 from app.services.pdf_service import build_invoice_pdf
 from app.services.notifications import create_notification
+from app.services.delete_undo import (
+    build_notification_undo_route,
+    create_deleted_invoice_undo_record,
+)
 from app.utils.pdf_filename import build_bill_pdf_filename
 from app.utils.period import matches_bucket, valid_period
 
@@ -789,11 +793,19 @@ def delete_invoice(
     current_user: User = Depends(get_current_user),
 ) -> Response:
     invoice = db.scalar(
-        select(Invoice).where(Invoice.id == invoice_id, Invoice.owner_id == current_user.id)
+        select(Invoice)
+        .options(selectinload(Invoice.items))
+        .where(Invoice.id == invoice_id, Invoice.owner_id == current_user.id)
     )
     if not invoice:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='Invoice not found')
     invoice_number = invoice.invoice_number
+    undo_record = create_deleted_invoice_undo_record(
+        db,
+        owner_id=current_user.id,
+        invoice=invoice,
+    )
+    undo_route = build_notification_undo_route('/invoices', undo_record)
 
     uploads = list(
         db.scalars(
@@ -822,7 +834,7 @@ def delete_invoice(
         user_id=current_user.id,
         title='Invoice Deleted',
         message=f'Invoice {invoice_number} has been deleted.',
-        route='/invoices',
+        route=undo_route,
     )
 
     return Response(status_code=status.HTTP_204_NO_CONTENT)

@@ -29,7 +29,12 @@ from app.schemas.newsletter import (
     NewsletterSubscribe,
     NewsletterSubscribeResponse,
 )
-from app.schemas.notification import NotificationListResponse, NotificationResponse, NotificationStatusResponse
+from app.schemas.notification import (
+    NotificationListResponse,
+    NotificationResponse,
+    NotificationStatusResponse,
+    NotificationUndoDeleteResponse,
+)
 from app.schemas.non_gst_challan import (
     LatestCreatedNonGSTChallanResponse,
     NonGSTChallanCreate,
@@ -93,6 +98,7 @@ __all__ = [
     'NotificationResponse',
     'NotificationListResponse',
     'NotificationStatusResponse',
+    'NotificationUndoDeleteResponse',
     'NonGSTChallanCreate',
     'NonGSTChallanItemCreate',
     'NonGSTChallanItemResponse',

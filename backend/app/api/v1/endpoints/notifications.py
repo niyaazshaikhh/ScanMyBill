@@ -6,8 +6,15 @@ from app.core.database import get_db
 from app.core.deps import get_current_user
 from app.models.notification import Notification
 from app.models.user import User, UserRole
-from app.schemas.notification import NotificationListResponse, NotificationResponse, NotificationStatusResponse
+from app.schemas.notification import (
+    NotificationListResponse,
+    NotificationResponse,
+    NotificationStatusResponse,
+    NotificationUndoDeleteResponse,
+)
+from app.services.delete_undo import parse_notification_undo_metadata, restore_deleted_record
 from app.services.notifications import (
+    create_notification,
     ensure_monthly_gst_payable_notification,
     ensure_personal_details_reminder_notification,
     ensure_quarterly_gst_payable_notification,
@@ -121,3 +128,57 @@ def mark_notification_as_read(
         db.refresh(notification)
 
     return NotificationResponse.model_validate(notification)
+
+
+@router.post('/{notification_id}/undo-delete', response_model=NotificationUndoDeleteResponse)
+def undo_delete_from_notification(
+    notification_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> NotificationUndoDeleteResponse:
+    notification = db.scalar(
+        select(Notification).where(
+            Notification.id == notification_id,
+            Notification.owner_id == current_user.id,
+        )
+    )
+    if not notification:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='Notification not found')
+
+    undo_metadata = parse_notification_undo_metadata(notification.route)
+    if not undo_metadata:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail='This notification does not support undo.',
+        )
+
+    try:
+        undo_result = restore_deleted_record(
+            db,
+            owner_id=current_user.id,
+            undo_record_id=undo_metadata.undo_record_id,
+            expected_record_type=undo_metadata.record_type,
+        )
+        notification.route = undo_metadata.base_route
+        notification.is_read = True
+        create_notification(
+            db,
+            user_id=current_user.id,
+            title=undo_result.title,
+            message=undo_result.message,
+            route=undo_result.route,
+        )
+        db.commit()
+    except HTTPException:
+        db.rollback()
+        raise
+    except Exception:
+        db.rollback()
+        raise
+
+    return NotificationUndoDeleteResponse(
+        success=True,
+        message=undo_result.message,
+        route=undo_result.route,
+        record_type=undo_result.record_type.value,
+    )

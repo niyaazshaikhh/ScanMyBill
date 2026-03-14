@@ -17,6 +17,7 @@ import {
   Plus,
   Send,
   Sparkles,
+  Star,
   Trash2,
   X,
 } from "lucide-react";
@@ -155,9 +156,22 @@ type PersonalDetailsResponse = {
 
 type DashboardPeriod = "monthly" | "quarterly" | "semi-annually" | "annually";
 
-const periodOptions: DashboardPeriod[] = ["monthly", "quarterly", "semi-annually", "annually"];
+const periodOptions: DashboardPeriod[] = [
+  "monthly",
+  "quarterly",
+  "semi-annually",
+  "annually",
+];
 const SUPPORTED_UPLOAD_FORMAT_LABEL = "JPEG/PNG/PDF/DOCX/XLSX/CSV";
-const SUPPORTED_UPLOAD_EXTENSIONS = new Set(["jpeg", "jpg", "png", "pdf", "docx", "xlsx", "csv"]);
+const SUPPORTED_UPLOAD_EXTENSIONS = new Set([
+  "jpeg",
+  "jpg",
+  "png",
+  "pdf",
+  "docx",
+  "xlsx",
+  "csv",
+]);
 const SUPPORTED_UPLOAD_MIME_TYPES = new Set([
   "image/jpeg",
   "image/png",
@@ -230,7 +244,9 @@ function asString(value: unknown): string | null {
   return cleaned.length > 0 ? cleaned : null;
 }
 
-function hasCompletedPersonalDetails(details: PersonalDetailsResponse): boolean {
+function hasCompletedPersonalDetails(
+  details: PersonalDetailsResponse,
+): boolean {
   return PERSONAL_DETAILS_REQUIRED_KEYS.every((key) => {
     const value = details[key];
     return typeof value === "string" && value.trim().length > 0;
@@ -320,7 +336,9 @@ export default function DashboardPage() {
   const currentFinancialYearStart = getCurrentFinancialYearStart();
   const [period, setPeriod] = useState<DashboardPeriod>("monthly");
   const [year, setYear] = useState(String(currentFinancialYearStart));
-  const [yearOptions, setYearOptions] = useState<{ value: string; label: string }[]>([
+  const [yearOptions, setYearOptions] = useState<
+    { value: string; label: string }[]
+  >([
     {
       value: String(currentFinancialYearStart),
       label: toFinancialYearLabel(currentFinancialYearStart),
@@ -331,18 +349,24 @@ export default function DashboardPage() {
   const [error, setError] = useState<string | null>(null);
   const [invoiceDates, setInvoiceDates] = useState<string[]>([]);
 
-  const [uploadState, setUploadState] = useState<BillUploadState>(getBillUploadState());
+  const [uploadState, setUploadState] =
+    useState<BillUploadState>(getBillUploadState());
   const uploading = uploadState.status === "uploading";
   const [file, setFile] = useState<File | null>(null);
   const [uploadMessage, setUploadMessage] = useState<string | null>(null);
   const [recentUploads, setRecentUploads] = useState<RecentUploadRecord[]>([]);
   const [recentUploadsLoading, setRecentUploadsLoading] = useState(true);
   const [recentUploadsClearing, setRecentUploadsClearing] = useState(false);
-  const [previewingRecentUploadKey, setPreviewingRecentUploadKey] = useState<string | null>(null);
+  const [previewingRecentUploadKey, setPreviewingRecentUploadKey] = useState<
+    string | null
+  >(null);
   const [debugModeEnabled, setDebugModeEnabled] = useState(false);
-  const [debugConsoleEntries, setDebugConsoleEntries] = useState<DashboardDebugConsoleRecord[]>([]);
+  const [debugConsoleEntries, setDebugConsoleEntries] = useState<
+    DashboardDebugConsoleRecord[]
+  >([]);
   const [dashboardUserName, setDashboardUserName] = useState("User");
-  const [showPersonalDetailsBanner, setShowPersonalDetailsBanner] = useState(false);
+  const [showPersonalDetailsBanner, setShowPersonalDetailsBanner] =
+    useState(false);
   const [isUploadDropActive, setIsUploadDropActive] = useState(false);
   const [aiChatOpen, setAiChatOpen] = useState(false);
   const [aiChatThinking, setAiChatThinking] = useState(false);
@@ -379,10 +403,15 @@ export default function DashboardPage() {
       const response = await apiRequest<InvoiceYearListResponse>("/invoices");
       setInvoiceDates(response.invoices.map((invoice) => invoice.invoice_date));
       const starts = Array.from(
-        new Set(response.invoices.map((invoice) => getFinancialYearStart(invoice.invoice_date))),
+        new Set(
+          response.invoices.map((invoice) =>
+            getFinancialYearStart(invoice.invoice_date),
+          ),
+        ),
       ).sort((a, b) => b - a);
 
-      const normalized = starts.length > 0 ? starts : [currentFinancialYearStart];
+      const normalized =
+        starts.length > 0 ? starts : [currentFinancialYearStart];
       const options = normalized.map((start) => ({
         value: String(start),
         label: toFinancialYearLabel(start),
@@ -408,8 +437,14 @@ export default function DashboardPage() {
         level: "warning",
         source: "dashboard",
         title: "Invoice year options fallback applied",
-        message: err instanceof Error ? err.message : "Failed to fetch invoice list for year filter",
-        details: err instanceof Error ? { name: err.name, stack: err.stack } : { error: String(err) },
+        message:
+          err instanceof Error
+            ? err.message
+            : "Failed to fetch invoice list for year filter",
+        details:
+          err instanceof Error
+            ? { name: err.name, stack: err.stack }
+            : { error: String(err) },
       });
     }
   };
@@ -423,14 +458,18 @@ export default function DashboardPage() {
       );
       setSummary(data);
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Failed to load dashboard";
+      const message =
+        err instanceof Error ? err.message : "Failed to load dashboard";
       setError(message);
       appendDebugEntry({
         level: "error",
         source: "dashboard",
         title: "Dashboard summary load failed",
         message,
-        details: err instanceof Error ? { name: err.name, stack: err.stack } : { error: String(err) },
+        details:
+          err instanceof Error
+            ? { name: err.name, stack: err.stack }
+            : { error: String(err) },
       });
     } finally {
       setLoading(false);
@@ -443,16 +482,22 @@ export default function DashboardPage() {
         setRecentUploadsLoading(true);
       }
       try {
-        const response = await apiRequest<RecentUploadsResponse>("/dashboard/recent-uploads?limit=100");
+        const response = await apiRequest<RecentUploadsResponse>(
+          "/dashboard/recent-uploads?limit=100",
+        );
         setRecentUploads(response.uploads || []);
       } catch (err) {
-        const message = err instanceof Error ? err.message : "Failed to load recent uploads";
+        const message =
+          err instanceof Error ? err.message : "Failed to load recent uploads";
         appendDebugEntry({
           level: "warning",
           source: "dashboard",
           title: "Recent uploads load failed",
           message,
-          details: err instanceof Error ? { name: err.name, stack: err.stack } : { error: String(err) },
+          details:
+            err instanceof Error
+              ? { name: err.name, stack: err.stack }
+              : { error: String(err) },
         });
         setRecentUploads([]);
       } finally {
@@ -483,7 +528,9 @@ export default function DashboardPage() {
       .then((details) => {
         if (!active) return;
         setShowPersonalDetailsBanner(!hasCompletedPersonalDetails(details));
-        const preferred = (details.gst_filing_period || "").trim().toLowerCase();
+        const preferred = (details.gst_filing_period || "")
+          .trim()
+          .toLowerCase();
         if (preferred !== "monthly" && preferred !== "quarterly") return;
         setPeriod((current) => (current === "monthly" ? preferred : current));
       })
@@ -535,13 +582,25 @@ export default function DashboardPage() {
       setDebugConsoleEntries(readDashboardDebugResponses());
     };
 
-    window.addEventListener(DEBUG_MODE_CHANGED_EVENT, onDebugModeChange as EventListener);
+    window.addEventListener(
+      DEBUG_MODE_CHANGED_EVENT,
+      onDebugModeChange as EventListener,
+    );
     window.addEventListener("storage", onStorage);
-    window.addEventListener(DASHBOARD_DEBUG_UPDATED_EVENT, onDebugEntriesUpdated as EventListener);
+    window.addEventListener(
+      DASHBOARD_DEBUG_UPDATED_EVENT,
+      onDebugEntriesUpdated as EventListener,
+    );
     return () => {
-      window.removeEventListener(DEBUG_MODE_CHANGED_EVENT, onDebugModeChange as EventListener);
+      window.removeEventListener(
+        DEBUG_MODE_CHANGED_EVENT,
+        onDebugModeChange as EventListener,
+      );
       window.removeEventListener("storage", onStorage);
-      window.removeEventListener(DASHBOARD_DEBUG_UPDATED_EVENT, onDebugEntriesUpdated as EventListener);
+      window.removeEventListener(
+        DASHBOARD_DEBUG_UPDATED_EVENT,
+        onDebugEntriesUpdated as EventListener,
+      );
     };
   }, []);
 
@@ -569,7 +628,10 @@ export default function DashboardPage() {
         source: "runtime",
         title: "Unhandled promise rejection",
         message,
-        details: reason instanceof Error ? { name: reason.name, stack: reason.stack } : { reason },
+        details:
+          reason instanceof Error
+            ? { name: reason.name, stack: reason.stack }
+            : { reason },
       });
     };
 
@@ -595,8 +657,9 @@ export default function DashboardPage() {
       }
 
       if (nextState.status === "success") {
-        const uploadResponse =
-          isRecord(nextState.response) ? (nextState.response as BillUploadApiResponse) : {};
+        const uploadResponse = isRecord(nextState.response)
+          ? (nextState.response as BillUploadApiResponse)
+          : {};
         const processingSource = summarizeProcessingSource(uploadResponse);
         appendDebugEntry({
           level: "success",
@@ -689,24 +752,33 @@ export default function DashboardPage() {
     [appendDebugEntry],
   );
 
-  const onUploadZoneDragEnter = useCallback((event: DragEvent<HTMLDivElement>) => {
-    if (!Array.from(event.dataTransfer.types || []).includes("Files")) return;
-    event.preventDefault();
-    setIsUploadDropActive(true);
-  }, []);
+  const onUploadZoneDragEnter = useCallback(
+    (event: DragEvent<HTMLDivElement>) => {
+      if (!Array.from(event.dataTransfer.types || []).includes("Files")) return;
+      event.preventDefault();
+      setIsUploadDropActive(true);
+    },
+    [],
+  );
 
-  const onUploadZoneDragOver = useCallback((event: DragEvent<HTMLDivElement>) => {
-    if (!Array.from(event.dataTransfer.types || []).includes("Files")) return;
-    event.preventDefault();
-    event.dataTransfer.dropEffect = "copy";
-    setIsUploadDropActive(true);
-  }, []);
+  const onUploadZoneDragOver = useCallback(
+    (event: DragEvent<HTMLDivElement>) => {
+      if (!Array.from(event.dataTransfer.types || []).includes("Files")) return;
+      event.preventDefault();
+      event.dataTransfer.dropEffect = "copy";
+      setIsUploadDropActive(true);
+    },
+    [],
+  );
 
-  const onUploadZoneDragLeave = useCallback((event: DragEvent<HTMLDivElement>) => {
-    const nextTarget = event.relatedTarget as Node | null;
-    if (nextTarget && event.currentTarget.contains(nextTarget)) return;
-    setIsUploadDropActive(false);
-  }, []);
+  const onUploadZoneDragLeave = useCallback(
+    (event: DragEvent<HTMLDivElement>) => {
+      const nextTarget = event.relatedTarget as Node | null;
+      if (nextTarget && event.currentTarget.contains(nextTarget)) return;
+      setIsUploadDropActive(false);
+    },
+    [],
+  );
 
   const uploadFile = useCallback(
     async (selectedFile: File) => {
@@ -737,43 +809,54 @@ export default function DashboardPage() {
     await uploadFile(file);
   };
 
-  const previewRecentUpload = useCallback(async (upload: RecentUploadRecord) => {
-    setPreviewingRecentUploadKey(upload.upload_key);
-    try {
-      const blob = await apiRequest<Blob>(upload.preview_path, { responseType: "blob" });
-      const previewUrl = URL.createObjectURL(blob);
-      const popup = window.open(previewUrl, "_blank", "noopener,noreferrer");
-      if (!popup) {
-        const link = document.createElement("a");
-        link.href = previewUrl;
-        link.target = "_blank";
-        link.rel = "noopener noreferrer";
-        link.click();
+  const previewRecentUpload = useCallback(
+    async (upload: RecentUploadRecord) => {
+      setPreviewingRecentUploadKey(upload.upload_key);
+      try {
+        const blob = await apiRequest<Blob>(upload.preview_path, {
+          responseType: "blob",
+        });
+        const previewUrl = URL.createObjectURL(blob);
+        const popup = window.open(previewUrl, "_blank", "noopener,noreferrer");
+        if (!popup) {
+          const link = document.createElement("a");
+          link.href = previewUrl;
+          link.target = "_blank";
+          link.rel = "noopener noreferrer";
+          link.click();
+        }
+        window.setTimeout(() => URL.revokeObjectURL(previewUrl), 60_000);
+      } catch (err) {
+        appendDebugEntry({
+          level: "warning",
+          source: "dashboard",
+          title: "Recent upload preview failed",
+          message:
+            err instanceof Error
+              ? err.message
+              : "Failed to preview uploaded file",
+          details: {
+            upload_key: upload.upload_key,
+            preview_path: upload.preview_path,
+          },
+        });
+      } finally {
+        setPreviewingRecentUploadKey(null);
       }
-      window.setTimeout(() => URL.revokeObjectURL(previewUrl), 60_000);
-    } catch (err) {
-      appendDebugEntry({
-        level: "warning",
-        source: "dashboard",
-        title: "Recent upload preview failed",
-        message: err instanceof Error ? err.message : "Failed to preview uploaded file",
-        details: {
-          upload_key: upload.upload_key,
-          preview_path: upload.preview_path,
-        },
-      });
-    } finally {
-      setPreviewingRecentUploadKey(null);
-    }
-  }, [appendDebugEntry]);
+    },
+    [appendDebugEntry],
+  );
 
   const clearRecentUploads = useCallback(async () => {
     if (recentUploadsClearing || recentUploads.length === 0) return;
     setRecentUploadsClearing(true);
     try {
-      const response = await apiRequest<RecentUploadsClearResponse>("/dashboard/recent-uploads", {
-        method: "DELETE",
-      });
+      const response = await apiRequest<RecentUploadsClearResponse>(
+        "/dashboard/recent-uploads",
+        {
+          method: "DELETE",
+        },
+      );
       setRecentUploads([]);
       notifyApp({
         title: "Recent uploads cleared",
@@ -788,7 +871,8 @@ export default function DashboardPage() {
         level: "error",
         source: "dashboard",
         title: "Recent uploads clear failed",
-        message: err instanceof Error ? err.message : "Failed to clear recent uploads",
+        message:
+          err instanceof Error ? err.message : "Failed to clear recent uploads",
       });
     } finally {
       setRecentUploadsClearing(false);
@@ -802,11 +886,16 @@ export default function DashboardPage() {
       setIsUploadDropActive(false);
 
       if (uploading) {
-        showAppInfoPopup("A bill upload is already in progress. Please wait for it to complete.", "Upload In Progress");
+        showAppInfoPopup(
+          "A bill upload is already in progress. Please wait for it to complete.",
+          "Upload In Progress",
+        );
         return;
       }
 
-      const droppedFile = resolveSupportedFile(event.dataTransfer.files?.[0] || null);
+      const droppedFile = resolveSupportedFile(
+        event.dataTransfer.files?.[0] || null,
+      );
       if (!droppedFile) return;
 
       setFile(droppedFile);
@@ -819,16 +908,22 @@ export default function DashboardPage() {
     (prompt: string): string => {
       const normalized = prompt.trim().toLowerCase();
       const now = new Date();
-      const monthLabel = now.toLocaleString("en-IN", { month: "long", year: "numeric" });
+      const monthLabel = now.toLocaleString("en-IN", {
+        month: "long",
+        year: "numeric",
+      });
 
       if (
-        normalized.includes("how many invoices this month")
-        || (normalized.includes("invoice") && normalized.includes("month"))
+        normalized.includes("how many invoices this month") ||
+        (normalized.includes("invoice") && normalized.includes("month"))
       ) {
         const monthlyInvoiceCount = invoiceDates.filter((dateValue) => {
           const parsed = new Date(dateValue);
           if (Number.isNaN(parsed.getTime())) return false;
-          return parsed.getMonth() === now.getMonth() && parsed.getFullYear() === now.getFullYear();
+          return (
+            parsed.getMonth() === now.getMonth() &&
+            parsed.getFullYear() === now.getFullYear()
+          );
         }).length;
 
         return `For ${monthLabel}, you have ${monthlyInvoiceCount} invoice${
@@ -841,7 +936,9 @@ export default function DashboardPage() {
       const gstCollected = summary?.gst_collected ?? 0;
       const gstPaid = summary?.gst_paid ?? 0;
       const gstPayable = summary?.gst_payable ?? 0;
-      const latestTrendPoint = (summary?.trend || [])[summary?.trend.length ? summary.trend.length - 1 : 0];
+      const latestTrendPoint = (summary?.trend || [])[
+        summary?.trend.length ? summary.trend.length - 1 : 0
+      ];
 
       const trendLine = latestTrendPoint
         ? `In ${latestTrendPoint.label}, sales are Rs ${formatAccountingAmount(
@@ -883,14 +980,16 @@ export default function DashboardPage() {
           const response = await apiRequest<DashboardAssistantApiResponse>(
             "/dashboard/assistant",
             {
-            method: "POST",
-            body: {
-              message: prompt,
-              period,
-              financial_year_start:
-                Number.isInteger(requestedYear) && requestedYear >= 2000 ? requestedYear : null,
-              history: nextHistory,
-            },
+              method: "POST",
+              body: {
+                message: prompt,
+                period,
+                financial_year_start:
+                  Number.isInteger(requestedYear) && requestedYear >= 2000
+                    ? requestedYear
+                    : null,
+                history: nextHistory,
+              },
             },
           );
           assistantReply = (response.answer || "").trim();
@@ -914,7 +1013,13 @@ export default function DashboardPage() {
         setAiChatThinking(false);
       }
     },
-    [aiChatMessages, aiChatThinking, buildFallbackAssistantResponse, period, year],
+    [
+      aiChatMessages,
+      aiChatThinking,
+      buildFallbackAssistantResponse,
+      period,
+      year,
+    ],
   );
 
   const onSubmitAIChat = (event: FormEvent<HTMLFormElement>) => {
@@ -959,7 +1064,9 @@ export default function DashboardPage() {
             <Select
               id="period"
               value={period}
-              onChange={(event) => setPeriod(event.target.value as DashboardPeriod)}
+              onChange={(event) =>
+                setPeriod(event.target.value as DashboardPeriod)
+              }
             >
               {periodOptions.map((item) => (
                 <option key={item} value={item}>
@@ -1004,7 +1111,8 @@ export default function DashboardPage() {
       <Card
         className={cn(
           "border-amber-300/80 bg-amber-50/70 transition-colors dark:border-amber-500/45 dark:bg-amber-500/15",
-          isUploadDropActive && "border-primary/70 bg-primary/10 ring-2 ring-primary/40",
+          isUploadDropActive &&
+            "border-primary/70 bg-primary/10 ring-2 ring-primary/40",
         )}
         onDragEnter={onUploadZoneDragEnter}
         onDragOver={onUploadZoneDragOver}
@@ -1024,7 +1132,9 @@ export default function DashboardPage() {
             type="file"
             accept=".jpeg,.jpg,.png,.pdf,.docx,.xlsx,.csv"
             onChange={(event) => {
-              const selectedFile = resolveSupportedFile(event.target.files?.[0] || null);
+              const selectedFile = resolveSupportedFile(
+                event.target.files?.[0] || null,
+              );
               setFile(selectedFile);
               if (!selectedFile) {
                 event.target.value = "";
@@ -1034,27 +1144,19 @@ export default function DashboardPage() {
           <Button onClick={onUpload} disabled={!file || uploading}>
             {uploading ? "Uploading..." : "Upload Bill"}
           </Button>
-          <p
-            className={cn(
-              "text-xs md:col-span-2",
-              isUploadDropActive ? "font-medium text-primary" : "text-muted-foreground",
-            )}
-          >
-            {isUploadDropActive
-              ? "Drop file to upload now"
-              : `Drag and drop files here to upload bills. Supported: ${SUPPORTED_UPLOAD_FORMAT_LABEL}.`}
-          </p>
           {uploading ? (
             <div className="space-y-2 md:col-span-2">
-              <p className="truncate text-xs text-muted-foreground">
-                {uploadState.fileName
-                  ? `Uploading challan: ${uploadState.fileName}`
-                  : "Uploading challan..."}
+              <p className="flex items-center gap-2 text-sm font-medium text-sky-600 dark:text-sky-300">
+                <Star className="ai-analysis-star h-4 w-4 fill-current text-sky-500 dark:text-sky-300" />
+                <span className="flex items-center">
+                  AI analysing invoice
+                  <span className="ai-analysis-dots" aria-hidden="true">
+                    ....
+                  </span>
+                </span>
               </p>
               <div className="relative h-2 overflow-hidden rounded-full bg-muted">
-                <div
-                  className="upload-marquee-indicator absolute inset-y-0 left-0 w-1/3 rounded-full bg-orange-500"
-                />
+                <div className="upload-marquee-indicator absolute inset-y-0 left-0 w-1/3 rounded-full bg-sky-500" />
               </div>
             </div>
           ) : null}
@@ -1124,7 +1226,8 @@ export default function DashboardPage() {
               <div>
                 <CardTitle>Debug Console</CardTitle>
                 <CardDescription>
-                  API payloads, upload traces, and runtime errors captured during dashboard activity.
+                  API payloads, upload traces, and runtime errors captured
+                  during dashboard activity.
                 </CardDescription>
               </div>
               <Button
@@ -1145,7 +1248,10 @@ export default function DashboardPage() {
               </p>
             ) : (
               debugConsoleEntries.map((entry) => (
-                <div key={entry.id} className="rounded-md border border-border bg-background/70 p-3">
+                <div
+                  key={entry.id}
+                  className="rounded-md border border-border bg-background/70 p-3"
+                >
                   <div className="mb-2 flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
                     <div className="flex flex-wrap items-center gap-2">
                       <Badge
@@ -1163,12 +1269,18 @@ export default function DashboardPage() {
                         {entry.level.toUpperCase()}
                       </Badge>
                       <span>{entry.source}</span>
-                      {entry.file_name ? <span>File: {entry.file_name}</span> : null}
+                      {entry.file_name ? (
+                        <span>File: {entry.file_name}</span>
+                      ) : null}
                     </div>
-                    <span>{new Date(entry.created_at).toLocaleString("en-IN")}</span>
+                    <span>
+                      {new Date(entry.created_at).toLocaleString("en-IN")}
+                    </span>
                   </div>
                   <p className="text-sm font-medium">{entry.title}</p>
-                  <p className="mt-1 text-xs text-muted-foreground">{entry.message}</p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    {entry.message}
+                  </p>
                   {entry.details !== undefined ? (
                     <pre className="mt-3 max-h-80 overflow-auto rounded bg-muted p-3 text-xs leading-relaxed">
                       {JSON.stringify(entry.details, null, 2)}
@@ -1195,7 +1307,11 @@ export default function DashboardPage() {
               variant="outline"
               size="sm"
               onClick={() => void clearRecentUploads()}
-              disabled={recentUploadsClearing || recentUploadsLoading || recentUploads.length === 0}
+              disabled={
+                recentUploadsClearing ||
+                recentUploadsLoading ||
+                recentUploads.length === 0
+              }
               className="gap-1.5"
             >
               {recentUploadsClearing ? (
@@ -1209,9 +1325,13 @@ export default function DashboardPage() {
         </CardHeader>
         <CardContent>
           {recentUploadsLoading ? (
-            <p className="text-sm text-muted-foreground">Loading recent uploads...</p>
+            <p className="text-sm text-muted-foreground">
+              Loading recent uploads...
+            </p>
           ) : recentUploads.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No uploaded records available yet.</p>
+            <p className="text-sm text-muted-foreground">
+              No uploaded records available yet.
+            </p>
           ) : (
             <div
               className={cn(
@@ -1231,13 +1351,18 @@ export default function DashboardPage() {
                         : `Delivery Challan ${upload.document_number}`}
                     </p>
                     <p className="truncate text-xs text-muted-foreground">
-                      {upload.invoice_type ? `${upload.invoice_type.toUpperCase()} • ` : ""}
+                      {upload.invoice_type
+                        ? `${upload.invoice_type.toUpperCase()} • `
+                        : ""}
                       {upload.bill_date
-                        ? new Date(upload.bill_date).toLocaleDateString("en-IN", {
-                            day: "2-digit",
-                            month: "short",
-                            year: "numeric",
-                          })
+                        ? new Date(upload.bill_date).toLocaleDateString(
+                            "en-IN",
+                            {
+                              day: "2-digit",
+                              month: "short",
+                              year: "numeric",
+                            },
+                          )
                         : "No bill date"}
                       {" • "}
                       Rs {formatAccountingAmount(upload.total_amount)}
@@ -1281,7 +1406,9 @@ export default function DashboardPage() {
         accept=".jpeg,.jpg,.png,.pdf,.docx,.xlsx,.csv"
         className="hidden"
         onChange={(event) => {
-          const selected = resolveSupportedFile(event.target.files?.[0] || null);
+          const selected = resolveSupportedFile(
+            event.target.files?.[0] || null,
+          );
           if (!selected) {
             event.target.value = "";
             return;
@@ -1297,7 +1424,9 @@ export default function DashboardPage() {
                 <Sparkles className="h-4 w-4" />
               </span>
               <div>
-                <p className="text-sm font-semibold text-foreground">SMB AI Assistant</p>
+                <p className="text-sm font-semibold text-foreground">
+                  SMB AI Assistant
+                </p>
               </div>
             </div>
             <div className="flex items-center gap-1">
@@ -1336,7 +1465,9 @@ export default function DashboardPage() {
                     : "ml-auto bg-primary text-primary-foreground",
                 )}
               >
-                <p className="whitespace-pre-line text-sm leading-relaxed">{message.content}</p>
+                <p className="whitespace-pre-line text-sm leading-relaxed">
+                  {message.content}
+                </p>
                 <p
                   className={cn(
                     "mt-1 text-[10px]",
@@ -1401,7 +1532,11 @@ export default function DashboardPage() {
         type="button"
         onClick={() => setAiChatOpen((previous) => !previous)}
         className="fixed bottom-[calc(5.75rem+env(safe-area-inset-bottom))] right-4 z-50 h-11 w-11 rounded-full bg-sky-600 p-0 text-white shadow-lg hover:bg-sky-500 focus-visible:ring-sky-500 sm:bottom-24 sm:right-6 sm:h-12 sm:w-12"
-        aria-label={aiChatOpen ? "Close SMB AI Assistant chat" : "Open SMB AI Assistant chat"}
+        aria-label={
+          aiChatOpen
+            ? "Close SMB AI Assistant chat"
+            : "Open SMB AI Assistant chat"
+        }
         title="SMB AI Assistant"
       >
         {!aiChatOpen ? (
@@ -1433,6 +1568,27 @@ export default function DashboardPage() {
         )}
       </Button>
       <style jsx>{`
+        @keyframes aiAnalysisStarPulse {
+          0%,
+          100% {
+            opacity: 0.8;
+            transform: scale(1);
+          }
+          50% {
+            opacity: 1;
+            transform: scale(1.16);
+          }
+        }
+
+        @keyframes aiAnalysisDots {
+          0% {
+            width: 0ch;
+          }
+          100% {
+            width: 4ch;
+          }
+        }
+
         @keyframes uploadMarqueeSlide {
           0% {
             transform: translateX(-120%);
@@ -1442,6 +1598,20 @@ export default function DashboardPage() {
           }
         }
 
+        .ai-analysis-star {
+          animation: aiAnalysisStarPulse 1.1s ease-in-out infinite;
+          transform-origin: center;
+        }
+
+        .ai-analysis-dots {
+          display: inline-block;
+          overflow: hidden;
+          vertical-align: bottom;
+          white-space: nowrap;
+          width: 0ch;
+          animation: aiAnalysisDots 1.1s steps(4, end) infinite;
+        }
+
         .upload-marquee-indicator {
           animation: uploadMarqueeSlide 1.05s linear infinite;
         }
@@ -1449,4 +1619,3 @@ export default function DashboardPage() {
     </div>
   );
 }
-

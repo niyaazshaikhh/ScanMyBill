@@ -25,3 +25,10 @@ class NotificationListResponse(BaseModel):
 
 class NotificationStatusResponse(BaseModel):
     success: bool = True
+
+
+class NotificationUndoDeleteResponse(BaseModel):
+    success: bool = True
+    message: str
+    route: str | None = None
+    record_type: str

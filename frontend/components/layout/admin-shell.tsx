@@ -17,6 +17,7 @@ import {
   Search,
   Settings,
   ShieldCheck,
+  Undo2,
   UserCircle2,
   Users,
   X,
@@ -79,6 +80,8 @@ const NOTIFICATIONS_PANEL_ID = "notifications-panel";
 const NOTIFICATIONS_HEADING_ID = "notifications-heading";
 const PERSONAL_DETAILS_SIGNUP_PROMPT_KEY =
   "scanmybill_personal_details_signup_prompt";
+const UNDO_RECORD_ID_QUERY_PARAM = "undo_record_id";
+const UNDO_RECORD_TYPE_QUERY_PARAM = "undo_record_type";
 
 type SearchInvoice = {
   id: string;
@@ -124,6 +127,15 @@ type NotificationsResponse = {
   notifications: NotificationItem[];
   unread_count: number;
   count: number;
+};
+
+type UndoRecordType = "invoice" | "client";
+
+type NotificationUndoDeleteResponse = {
+  success: boolean;
+  message: string;
+  route: string | null;
+  record_type: UndoRecordType;
 };
 
 type PersonalDetailsResponse = {
@@ -239,6 +251,43 @@ function includesQuery(
   return (value || "").toLowerCase().includes(query);
 }
 
+function parseNotificationUndoAction(route: string | null): {
+  undoRecordId: string;
+  recordType: UndoRecordType;
+  baseRoute: string | null;
+} | null {
+  if (!route || !route.startsWith("/")) return null;
+
+  const hashIndex = route.indexOf("#");
+  const hash = hashIndex >= 0 ? route.slice(hashIndex) : "";
+  const withoutHash = hashIndex >= 0 ? route.slice(0, hashIndex) : route;
+  const questionIndex = withoutHash.indexOf("?");
+  const path =
+    questionIndex >= 0 ? withoutHash.slice(0, questionIndex) : withoutHash;
+  const queryString =
+    questionIndex >= 0 ? withoutHash.slice(questionIndex + 1) : "";
+  const params = new URLSearchParams(queryString);
+
+  const undoRecordId = (params.get(UNDO_RECORD_ID_QUERY_PARAM) || "").trim();
+  const recordTypeRaw = (
+    params.get(UNDO_RECORD_TYPE_QUERY_PARAM) || ""
+  ).trim().toLowerCase();
+  if (!undoRecordId) return null;
+  if (recordTypeRaw !== "invoice" && recordTypeRaw !== "client") return null;
+
+  params.delete(UNDO_RECORD_ID_QUERY_PARAM);
+  params.delete(UNDO_RECORD_TYPE_QUERY_PARAM);
+  const cleanedQuery = params.toString();
+  const cleanedPath = cleanedQuery ? `${path}?${cleanedQuery}` : path;
+  const baseRoute = `${cleanedPath}${hash}`;
+
+  return {
+    undoRecordId,
+    recordType: recordTypeRaw,
+    baseRoute: baseRoute || null,
+  };
+}
+
 function hasCompletedPersonalDetails(details: PersonalDetailsResponse): boolean {
   return PERSONAL_DETAILS_REQUIRED_KEYS.every((key) => {
     const value = details[key];
@@ -250,7 +299,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
   const [open, setOpen] = useState(false);
-  const [collapsed, setCollapsed] = useState(false);
+  const [collapsed, setCollapsed] = useState(true);
   const [loggingOut, setLoggingOut] = useState(false);
   const [displayName, setDisplayName] = useState("User");
   const [userEmail, setUserEmail] = useState("");
@@ -273,6 +322,9 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [notificationsLoading, setNotificationsLoading] = useState(false);
+  const [undoingNotificationId, setUndoingNotificationId] = useState<
+    string | null
+  >(null);
   const [unreadNotificationCount, setUnreadNotificationCount] = useState(0);
   const [toasts, setToasts] = useState<ToastItem[]>([]);
   const [sessionTimeoutOpen, setSessionTimeoutOpen] = useState(false);
@@ -798,11 +850,63 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
         }
       }
 
-      if (notification.route) {
-        router.push(notification.route);
+      const undoAction = parseNotificationUndoAction(notification.route);
+      const targetRoute = undoAction?.baseRoute || notification.route;
+      if (targetRoute) {
+        router.push(targetRoute);
       }
     },
     [router, syncNotifications],
+  );
+
+  const undoDeleteFromNotification = useCallback(
+    async (notification: NotificationItem) => {
+      if (undoingNotificationId) return;
+      const undoAction = parseNotificationUndoAction(notification.route);
+      if (!undoAction) return;
+
+      setUndoingNotificationId(notification.id);
+      try {
+        const response = await apiRequest<NotificationUndoDeleteResponse>(
+          `/notifications/${notification.id}/undo-delete`,
+          { method: "POST" },
+        );
+        setNotifications((previous) =>
+          previous.map((item) =>
+            item.id === notification.id
+              ? {
+                  ...item,
+                  route: undoAction.baseRoute,
+                  is_read: true,
+                }
+              : item,
+          ),
+        );
+        if (!notification.is_read) {
+          setUnreadNotificationCount((previous) => Math.max(previous - 1, 0));
+        }
+
+        queueToast({
+          id: `undo-delete-${notification.id}-${Date.now()}`,
+          title: "Delete undone",
+          message: response.message || "Deleted record has been restored.",
+          tone: "success",
+        });
+        void syncNotifications(true);
+      } catch (err) {
+        queueToast({
+          id: `undo-delete-error-${notification.id}-${Date.now()}`,
+          title: "Undo failed",
+          message:
+            err instanceof Error ? err.message : "Unable to undo this delete.",
+          tone: "error",
+        });
+        void syncNotifications(true);
+      } finally {
+        setUndoingNotificationId(null);
+      }
+    },
+    [queueToast, syncNotifications, undoingNotificationId],
   );
 
   const closePersonalDetailsPrompt = useCallback(() => {
@@ -1041,14 +1145,14 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
             onClick={logout}
             disabled={loggingOut}
             variant="outline"
-            className={cn("w-full", collapsed && "lg:px-0")}
+            className={cn("w-full", collapsed && "lg:px-0 lg:text-foreground")}
+            aria-label={loggingOut ? "Logging out" : "Logout"}
+            title={loggingOut ? "Logging out..." : "Logout"}
           >
             <span className={cn(collapsed && "lg:hidden")}>
               {loggingOut ? "Logging out..." : "Logout"}
             </span>
-            <span className={cn("hidden", collapsed && "lg:inline")}>
-              Logout
-            </span>
+            <LogOut className={cn("hidden h-5 w-5", collapsed && "lg:inline")} />
           </Button>
         </div>
       </aside>
@@ -1313,41 +1417,81 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
                       </p>
                     ) : (
                       <ul className="py-1">
-                        {notifications.map((notification) => (
-                          <li key={notification.id}>
-                            <button
-                              type="button"
-                              className={cn(
-                                "flex w-full items-start gap-3 px-3 py-2 text-left hover:bg-muted",
-                                !notification.is_read && "bg-muted/40",
-                              )}
-                              onClick={() =>
-                                void openNotification(notification)
-                              }
-                            >
-                              <span
+                        {notifications.map((notification) => {
+                          const undoAction = parseNotificationUndoAction(
+                            notification.route,
+                          );
+                          const isUndoing =
+                            undoingNotificationId === notification.id;
+                          return (
+                            <li key={notification.id}>
+                              <div
                                 className={cn(
-                                  "mt-1 h-2 w-2 shrink-0 rounded-full bg-primary/80",
-                                  notification.is_read && "opacity-0",
+                                  "flex items-start gap-2 px-3 py-2 hover:bg-muted",
+                                  !notification.is_read && "bg-muted/40",
                                 )}
-                                aria-hidden="true"
-                              />
-                              <span className="min-w-0 flex-1">
-                                <span className="block truncate text-sm font-medium text-foreground">
-                                  {notification.title}
-                                </span>
-                                <span className="block text-xs text-muted-foreground">
-                                  {notification.message}
-                                </span>
-                                <span className="mt-1 block text-[11px] text-muted-foreground">
-                                  {formatNotificationTimestamp(
-                                    notification.created_at,
-                                  )}
-                                </span>
-                              </span>
-                            </button>
-                          </li>
-                        ))}
+                              >
+                                <button
+                                  type="button"
+                                  className="flex min-w-0 flex-1 items-start gap-3 text-left"
+                                  onClick={() =>
+                                    void openNotification(notification)
+                                  }
+                                >
+                                  <span
+                                    className={cn(
+                                      "mt-1 h-2 w-2 shrink-0 rounded-full bg-primary/80",
+                                      notification.is_read && "opacity-0",
+                                    )}
+                                    aria-hidden="true"
+                                  />
+                                  <span className="min-w-0 flex-1">
+                                    <span className="block truncate text-sm font-medium text-foreground">
+                                      {notification.title}
+                                    </span>
+                                    <span className="block text-xs text-muted-foreground">
+                                      {notification.message}
+                                    </span>
+                                    <span className="mt-1 block text-[11px] text-muted-foreground">
+                                      {formatNotificationTimestamp(
+                                        notification.created_at,
+                                      )}
+                                    </span>
+                                  </span>
+                                </button>
+                                {undoAction ? (
+                                  <button
+                                    type="button"
+                                    onClick={(event) => {
+                                      event.stopPropagation();
+                                      void undoDeleteFromNotification(
+                                        notification,
+                                      );
+                                    }}
+                                    disabled={undoingNotificationId !== null}
+                                    className={cn(
+                                      "mt-0.5 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-border text-muted-foreground transition-colors hover:bg-background hover:text-foreground disabled:cursor-not-allowed disabled:opacity-60",
+                                      isUndoing && "text-foreground",
+                                    )}
+                                    aria-label={
+                                      isUndoing
+                                        ? "Undoing delete action"
+                                        : "Undo delete action"
+                                    }
+                                    title={isUndoing ? "Undoing..." : "Undo"}
+                                  >
+                                    <Undo2
+                                      className={cn(
+                                        "h-4 w-4",
+                                        isUndoing && "animate-pulse",
+                                      )}
+                                    />
+                                  </button>
+                                ) : null}
+                              </div>
+                            </li>
+                          );
+                        })}
                       </ul>
                     )}
                   </div>
