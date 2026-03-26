@@ -1,5 +1,7 @@
 # Azure Production Rollout (Container Apps + CI/CD)
 
+Last updated: March 26, 2026
+
 This guide keeps your local `.env` untouched and uses Azure/GitHub secrets for production.
 
 ## Target Architecture
@@ -20,7 +22,7 @@ This guide keeps your local `.env` untouched and uses Azure/GitHub secrets for p
 
 ## 1) Create Azure Resources
 
-Use Cloud Shell (Bash) or local terminal:
+Use Cloud Shell (Bash) or a local terminal:
 
 ```bash
 # ===== Change these first =====
@@ -66,7 +68,7 @@ az postgres flexible-server db create --resource-group "$RG" --server-name "$PG_
 
 ## 2) Prepare Container Apps (One-Time)
 
-Create apps first (placeholder image), then CI/CD will update images:
+Create apps first with a placeholder image, then CI/CD will update images:
 
 ```bash
 ACR_LOGIN_SERVER="${ACR_NAME}.azurecr.io"
@@ -148,7 +150,7 @@ az containerapp update --name "$BACKEND_APP" --resource-group "$RG" \
   UPLOADS_DIR=uploads
 ```
 
-Frontend runtime env vars (for server runtime only):
+Frontend runtime env vars:
 
 ```bash
 az containerapp update --name "$FRONTEND_APP" --resource-group "$RG" \

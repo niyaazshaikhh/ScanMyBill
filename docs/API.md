@@ -1,11 +1,11 @@
 # API Documentation (v1)
 
+Last updated: March 26, 2026
+
 Base URL: `http://localhost:8000/api/v1`  
 Health endpoints: `http://localhost:8000/health/*`
 
-## Authentication
-
-Auth routes are under `/auth`.
+## Authentication (`/auth`)
 
 - `POST /auth/create-account`
 - `POST /auth/register`
@@ -18,98 +18,92 @@ Auth routes are under `/auth`.
 - `POST /auth/forgot-password`
 - `POST /auth/reset-password`
 
-## Dashboard
+## Dashboard (`/dashboard`)
 
-- `GET /dashboard/summary?period=monthly|quarterly|semi-annually|annually&year=...`
+- `GET /dashboard/summary`
+  - query: `period=monthly|quarterly|semi-annually|annually`
+  - optional query: `year`, `financial_year_start`
 - `GET /dashboard/admin-overview` (admin only)
+- `POST /dashboard/assistant`
+- `GET /dashboard/recent-uploads`
+- `DELETE /dashboard/recent-uploads`
 
-## Bills (AI Extraction Upload Flow)
+## Bills (`/bills`)
 
 - `POST /bills/upload` (multipart/form-data)
   - fields: `file`, `invoice_type` (`sales` or `purchase`)
   - flow: upload validation -> AI/OCR extraction -> parsed invoice persistence
 
-## Invoices
+## Invoices (`/invoices`)
 
 - `GET /invoices`
 - `GET /invoices/latest-created`
 - `POST /invoices/create`
 - `POST /invoices/create/pdf`
 - `GET /invoices/export-folder`
+- `DELETE /invoices/{invoice_id}`
 - `GET /invoices/{invoice_id}`
 - `GET /invoices/{invoice_id}/preview`
 - `GET /invoices/{invoice_id}/pdf`
-- `DELETE /invoices/{invoice_id}`
 
-## Delivery Challans (Non-GST)
-
-Routes are under `/delivery-challans`.
+## Delivery Challans (`/delivery-challans`)
 
 - `GET /delivery-challans`
 - `GET /delivery-challans/latest-created`
 - `POST /delivery-challans/create`
 - `POST /delivery-challans/create/pdf`
+- `DELETE /delivery-challans/{challan_id}`
 - `GET /delivery-challans/{challan_id}/preview`
 - `GET /delivery-challans/{challan_id}/pdf`
-- `DELETE /delivery-challans/{challan_id}`
 
-## Clients
+## Clients (`/clients`)
 
 - `GET /clients`
 - `POST /clients`
+- `GET /clients/analytics`
 - `PUT /clients/{client_id}`
 - `DELETE /clients/{client_id}`
-- `GET /clients/analytics`
 
-## HSN/SAC Master
-
-Routes are under `/hsn-sac-master-list`.
+## HSN/SAC Master (`/hsn-sac-master-list`)
 
 - `GET /hsn-sac-master-list`
 - `POST /hsn-sac-master-list`
 - `PUT /hsn-sac-master-list/{entry_id}`
 - `DELETE /hsn-sac-master-list/{entry_id}`
 
-## Payments (Razorpay)
-
-Routes are under `/payments`.
+## Payments (`/payments`)
 
 - `GET /payments/config`
-- `POST /payments/orders` (recommended production checkout flow)
+- `POST /payments/orders`
 - `POST /payments/subscriptions`
 - `POST /payments/subscriptions/cancel`
 - `POST /payments/verify`
 - `POST /payments/webhook`
 
-### Recommended Production Checkout Sequence
+Recommended checkout sequence:
 
 1. Frontend calls `POST /payments/orders`.
-2. Backend creates Razorpay order and stores status as `ORDER_CREATED`.
+2. Backend creates Razorpay order and stores status.
 3. Frontend opens Razorpay checkout with `order_id`.
-4. Frontend posts `razorpay_order_id`, `razorpay_payment_id`, `razorpay_signature` to `POST /payments/verify`.
-5. Backend verifies signature + payment status and updates DB order status to `PAID`.
+4. Frontend posts signature payload to `POST /payments/verify`.
+5. Backend verifies signature and marks payment as completed.
 
-## User Profile and Preferences
-
-Routes are under `/users`.
+## Users (`/users`)
 
 - `GET /users/me`
 - `PUT /users/notification-preference`
 - `GET /users/personal-details`
 - `PUT /users/personal-details`
 
-## Notifications
-
-Routes are under `/notifications`.
+## Notifications (`/notifications`)
 
 - `GET /notifications`
 - `POST /notifications/read-all`
-- `POST /notifications/{notification_id}/read`
 - `DELETE /notifications/clear-all`
+- `POST /notifications/{notification_id}/read`
+- `POST /notifications/{notification_id}/undo-delete`
 
-## Newsletter
-
-Routes are under `/newsletter`.
+## Newsletter (`/newsletter`)
 
 - `POST /newsletter/subscribe`
 - `POST /newsletter/unsubscribe`
@@ -117,9 +111,9 @@ Routes are under `/newsletter`.
 - `GET /newsletter/subscribers`
 - `POST /newsletter/send`
 
-## Admin
+## Admin (`/admin`)
 
-Routes are under `/admin` and require admin access.
+Admin routes require admin access.
 
 - `GET /admin/users`
 - `PATCH /admin/users/{user_id}`
@@ -129,9 +123,7 @@ Routes are under `/admin` and require admin access.
 - `DELETE /admin/newsletter/subscribers/{subscriber_id}`
 - `POST /admin/newsletter/send`
 
-## Debug
-
-Routes are under `/debug`.
+## Debug (`/debug`)
 
 - `GET /debug/ai-config`
 
@@ -139,6 +131,7 @@ Routes are under `/debug`.
 
 - `GET /health/live`
 - `GET /health/ready`
+- `GET /healthz`
 - `GET /health`
 
 ## Error Envelope

@@ -1,68 +1,70 @@
 # Security and Deployment Hardening
 
-This backend includes baseline hardening suitable for production deployment once secrets and host policies are configured correctly.
+Last updated: March 26, 2026
+
+This backend includes baseline hardening suitable for production once secrets and host policies are configured correctly.
 
 ## Implemented Security Controls
 
 - Centralized API error envelope with stable error codes.
 - Request ID propagation (`X-Request-ID`) and structured request logging.
-- Startup-time production guardrails (`ENVIRONMENT=production`) that block unsafe configuration.
+- Startup production guardrails (`ENVIRONMENT=production`) that block unsafe configuration.
 - Trusted host middleware (`TRUSTED_HOSTS`) and HTTPS redirect support (`ENFORCE_HTTPS`).
+- Proxy header support when running behind ingress (`TRUST_PROXY_HEADERS=true`).
 - Security response headers:
   - `Content-Security-Policy`
   - `X-Frame-Options`
   - `X-XSS-Protection`
   - `X-Content-Type-Options`
-  - `Strict-Transport-Security` (when HTTPS/prod)
-- Endpoint-aware rate limiting for login/auth/general/invoice PDF traffic.
+  - `Strict-Transport-Security` (prod/HTTPS)
+- Endpoint-aware rate limiting for auth, general traffic, and invoice PDF flows.
 - Login brute-force protection and account lockout windows.
-- Cookie/session hardening controls (`COOKIE_SECURE`, `COOKIE_SAMESITE`, inactivity timeout).
+- Cookie/session hardening (`COOKIE_SECURE`, `COOKIE_SAMESITE`, inactivity timeout).
 - Upload security checks (MIME + extension + size limits + defensive parsing).
-- PostgreSQL connection hardening (pooling, connect timeout, statement timeout).
-- Razorpay verification hardening (server-side verification and webhook signature checks).
+- PostgreSQL hardening (pooling, connect timeout, statement timeout).
+- Razorpay verification hardening (server-side verify + webhook signature checks).
 
-## Production Startup Checks Enforced by the App
+## Production Startup Checks
 
 When `ENVIRONMENT=production`, startup fails if any of these are unsafe:
 
-- Weak/default `SECRET_KEY`.
-- `DEBUG=true`.
-- `ENABLE_DOCS=true`.
-- `COOKIE_SECURE=false`.
-- `EXPOSE_PASSWORD_RESET_TOKEN=true`.
-- Wildcard CORS origin (`*`).
-- `SEED_DEFAULT_ADMIN=true`.
-- Weak/default database password.
-- `ENFORCE_HTTPS=false`.
+- Weak/default `SECRET_KEY`
+- `DEBUG=true`
+- `ENABLE_DOCS=true`
+- `COOKIE_SECURE=false`
+- `EXPOSE_PASSWORD_RESET_TOKEN=true`
+- Wildcard CORS origin (`*`)
+- `SEED_DEFAULT_ADMIN=true`
+- Weak/default DB password (unless `DATABASE_URL_OVERRIDE` is provided)
+- `ENFORCE_HTTPS=false`
 
-## Required Environment Variables for Production
+## Required Production Environment Variables
 
 Set these values in your runtime secret manager or environment:
 
 - `ENVIRONMENT=production`
 - `SECRET_KEY` (32+ random characters)
 - `POSTGRES_SERVER`, `POSTGRES_PORT`, `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB`
-  - or `DATABASE_URL_OVERRIDE`
-  - if `DATABASE_URL_OVERRIDE` is used, `POSTGRES_PASSWORD` can remain a placeholder
+- or `DATABASE_URL_OVERRIDE` for managed DB
 - `COOKIE_SECURE=true`
 - `ENFORCE_HTTPS=true`
 - `CORS_ORIGINS` with exact frontend domain(s)
 - `TRUSTED_HOSTS` with exact hostnames
 - `SEED_DEFAULT_ADMIN=false`
 - `EXPOSE_PASSWORD_RESET_TOKEN=false`
-- `SMTP_*` values for password reset/newsletter email flows
-- `RAZORPAY_*` values for subscription workflows
-- AI provider keys (`OPENAI_*` and/or `AZURE_OPENAI_*`) when AI extraction is enabled
+- `SMTP_*` for password reset/newsletter flows
+- `RAZORPAY_*` for payment flows
+- `OPENAI_*` and/or `AZURE_OPENAI_*` for AI extraction
 
 ## Docker Compose Notes
 
-The root `docker-compose.yml` includes:
+Root `docker-compose.yml` includes:
 
-- DB health checks before backend startup.
-- Backend health checks before frontend startup.
-- Dedicated uploads volume (`backend_uploads`).
+- DB health checks before backend startup
+- Backend health checks before frontend startup
+- Dedicated uploads volume (`backend_uploads`)
 
-Use:
+Run:
 
 ```bash
 docker compose --env-file .env up -d --build
@@ -70,9 +72,9 @@ docker compose --env-file .env up -d --build
 
 ## Operational Recommendations
 
-- Store secrets in a managed secret store, not in tracked files.
-- Restrict DB and backend ingress using network security groups/firewalls.
+- Keep secrets in a managed secret store, not tracked files.
+- Restrict DB and backend ingress using NSGs/firewalls.
 - Terminate TLS at the edge and preserve forwarded proto headers.
 - Monitor `/health/live` and `/health/ready`.
-- Add centralized log aggregation and alerting on 5xx/error spikes.
+- Add centralized logs and alerting on 5xx and auth spikes.
 - Introduce Alembic migrations for controlled schema evolution.

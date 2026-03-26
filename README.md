@@ -1,28 +1,31 @@
 # ScanMyBill
 
-AI-powered billing and GST workflow platform specially made for Indian MSMEs.
+Last updated: March 26, 2026
+
+AI-powered billing and GST workflow platform built for Indian MSMEs.
 
 ## Tech Stack
 - Frontend: Next.js 14 (App Router), TypeScript, Tailwind CSS
-- Backend: FastAPI, SQLAlchemy, JWT auth, Google OAuth login
+- Backend: FastAPI, SQLAlchemy, JWT auth, Google OAuth
 - Database: PostgreSQL
-- AI/Document Processing: OpenAI/Azure OpenAI, Tesseract OCR fallback, PDF/image parsers
-- Payments: Razorpay (order-based checkout with backend signature verification)
-- DevOps: Docker + Docker Compose
+- AI and document processing: OpenAI or Azure OpenAI, Tesseract OCR fallback, PDF/image parsing
+- Payments: Razorpay (order-based checkout with signature verification)
+- DevOps: Docker, Docker Compose, GitHub Actions, Azure Container Apps
 
 ## Core Capabilities
 - AI-assisted bill extraction and invoice creation from PDF/image uploads
-- GST analytics dashboard with period filters and trend views
-- Sales/Purchase invoice management with folder-style exports
+- GST analytics dashboard with period filters, trend views, and assistant summaries
+- Sales and purchase invoice management with folder-style export
 - Non-GST delivery challan workflows
 - Client analytics and reusable HSN/SAC master list
-- Subscription-based access control (Standard/Pro/Business)
+- Subscription-based access control (`FREE`, `STANDARD`, `PRO`, `BUSINESS`)
 - Newsletter subscriptions and admin broadcast tooling
-- Security hardening: rate limiting, cookie/session controls, trusted hosts, production guards
+- Undo flow for selected destructive actions via in-app notifications
+- Security guardrails: rate limiting, cookie/session hardening, trusted hosts, production checks
 
 ## Project Structure
 ```text
-ScanMyBill_IN/
+ScanMyBill/
   backend/
     app/
       api/v1/endpoints/
@@ -31,6 +34,8 @@ ScanMyBill_IN/
       schemas/
       services/
       utils/
+    tests/
+    SECURITY_DEPLOYMENT.md
     requirements.txt
     Dockerfile
     .env.example
@@ -38,19 +43,23 @@ ScanMyBill_IN/
     app/
     components/
     lib/
+    docs/
     Dockerfile
     .env.example
   docs/
     API.md
     DATABASE_SCHEMA.md
     ERD.md
+    CLOUD_DEPLOYMENT.md
+    AZURE_PRODUCTION_SETUP.md
   docker-compose.yml
+  docker-compose.cloud.yml
   .env.example
 ```
 
 ## Environment Setup
 
-1. Root env (Docker Compose level)
+1. Root env (Compose level)
 ```bash
 cp .env.example .env
 ```
@@ -69,14 +78,14 @@ cp frontend/.env.example frontend/.env
 
 Use separate values for local and production:
 
-- Local development profile (`.env`): keep localhost URLs and relaxed security flags:
+- Local profile (`.env`)
   - `ENVIRONMENT=development`
   - `ENABLE_DOCS=true`
   - `COOKIE_SECURE=false`
   - `ENFORCE_HTTPS=false`
   - `NEXT_PUBLIC_APP_URL=http://localhost:3000`
   - `NEXT_PUBLIC_API_URL=http://localhost:8000/api/v1`
-- Production profile (GitHub Variables + Azure runtime env):
+- Production profile (GitHub variables plus cloud runtime env)
   - `NEXT_PUBLIC_APP_URL=https://app.yourdomain.com`
   - `NEXT_PUBLIC_API_URL=https://api.yourdomain.com/api/v1` (or `/api/v1` with reverse proxy)
   - `CORS_ORIGINS=https://app.yourdomain.com`
@@ -84,13 +93,13 @@ Use separate values for local and production:
   - `COOKIE_SECURE=true`
   - `ENFORCE_HTTPS=true`
 
-## Local Development (without Docker)
+## Local Development (Without Docker)
 
 ### Prerequisites
 - Node.js 20+
 - Python 3.11+
 - PostgreSQL 14+
-- Tesseract OCR + Poppler utilities (for fallback OCR and scanned PDFs)
+- Tesseract OCR and Poppler utilities (fallback OCR + scanned PDFs)
 
 ### Backend
 ```bash
@@ -114,7 +123,7 @@ npm run dev
 Open:
 - Frontend: `http://localhost:3000`
 - API: `http://localhost:8000/api/v1`
-- Health: `http://localhost:8000/health`
+- Health: `http://localhost:8000/health/live`
 
 ## Docker Compose
 
@@ -129,19 +138,17 @@ Default mapped ports:
 Notes:
 - Frontend waits for backend health.
 - Backend waits for PostgreSQL health.
-- Uploaded files are persisted in the `backend_uploads` Docker volume.
+- Uploads persist in the `backend_uploads` Docker volume.
 
 ## Cloud Compatibility (Provider-Agnostic)
 
 The project is container-first and cloud-portable:
 - Backend supports managed DB via `DATABASE_URL_OVERRIDE`.
-- Backend and frontend support dynamic runtime port via `PORT` env.
-- Frontend supports `NEXT_PUBLIC_API_URL=/api/v1` for same-domain reverse proxy setups.
-- Frontend uses Next.js standalone runtime for leaner cloud deployments.
+- Backend and frontend support runtime `PORT` env.
+- Frontend supports `NEXT_PUBLIC_API_URL=/api/v1` for same-domain reverse proxy setup.
+- Frontend uses Next.js standalone runtime for leaner deployments.
 
-### Managed Database Compose Mode
-
-Use this when deploying on providers with external managed PostgreSQL:
+Managed DB Compose mode:
 
 ```bash
 docker compose -f docker-compose.cloud.yml --env-file .env up -d --build
@@ -154,50 +161,49 @@ Required:
 
 ## CI/CD
 
-GitHub Actions workflows are included:
-- `ci.yml`: backend tests + frontend lint/build + Docker build validation on PR/push.
-- `deploy.yml`: OIDC-based deployment to Azure Container Apps on `main` (and manual dispatch).
+GitHub Actions workflows:
+- `ci.yml`: backend tests + frontend lint/build + Docker build validation
+- `deploy.yml`: OIDC-based deployment to Azure Container Apps on `main` and manual dispatch
 
 Pipeline behavior:
-- Push to `develop`/PR: CI checks only.
-- Push to `main`: CI runs and production deploy workflow builds/pushes images, then deploys.
-- Deploy workflow now rejects production URL variables that still point to `localhost` or non-HTTPS values.
+- Push to `develop` or PR: CI checks only
+- Push to `main`: CI + production deploy
+- Deploy workflow rejects production URL variables that still point to `localhost` or non-HTTPS values
 
-Production pipeline configuration details:
+Production pipeline setup details:
 - `docs/AZURE_PRODUCTION_SETUP.md`
 
 ## Production Checklist
 
 Set strong values before deploying:
 - `POSTGRES_PASSWORD`
-- `SECRET_KEY` (in `backend/.env`, 32+ chars)
+- `SECRET_KEY` (32+ chars)
 - `ENVIRONMENT=production`
 - `COOKIE_SECURE=true`
 - `ENFORCE_HTTPS=true`
-- `CORS_ORIGINS` and `TRUSTED_HOSTS` with exact production domains
+- `CORS_ORIGINS` and `TRUSTED_HOSTS` set to exact production domains
 - `SEED_DEFAULT_ADMIN=false`
 - `EXPOSE_PASSWORD_RESET_TOKEN=false`
-- `RAZORPAY_*`, `SMTP_*`, and AI provider keys (`OPENAI_*` / `AZURE_OPENAI_*`) as needed
+- `RAZORPAY_*`, `SMTP_*`, and AI keys (`OPENAI_*` or `AZURE_OPENAI_*`) as needed
 
 ## Production Payment Flow
 
-The checkout implementation follows this flow:
-
-1. User clicks pay.
-2. Backend creates Razorpay order (`POST /payments/orders`).
-3. Frontend opens Razorpay Checkout with `order_id`.
-4. User completes payment.
-5. Backend verifies Razorpay signature (`POST /payments/verify`).
-6. Backend marks the order `PAID` in database (`payment_events`).
+1. Frontend calls `POST /api/v1/payments/orders`
+2. Backend creates Razorpay order
+3. Frontend opens Razorpay checkout
+4. User completes payment
+5. Frontend posts signature payload to `POST /api/v1/payments/verify`
+6. Backend verifies signature and updates `payment_events`
 
 ## Documentation
 - API summary: `docs/API.md`
 - Database schema: `docs/DATABASE_SCHEMA.md`
 - ERD description: `docs/ERD.md`
 - Cloud deployment guide: `docs/CLOUD_DEPLOYMENT.md`
-- Azure production + GoDaddy + CI/CD: `docs/AZURE_PRODUCTION_SETUP.md`
+- Azure production rollout: `docs/AZURE_PRODUCTION_SETUP.md`
+- Backend security hardening: `backend/SECURITY_DEPLOYMENT.md`
 
 ## Important Notes
 - API docs (`/docs`) are disabled when `ENVIRONMENT=production` and `ENABLE_DOCS=false`.
-- This project currently uses SQLAlchemy `create_all` style startup migrations.
-- Add Alembic migrations before strict production rollout.
+- The backend currently uses SQLAlchemy `create_all` + runtime guards for schema alignment.
+- Add Alembic migrations before strict long-term production rollout.

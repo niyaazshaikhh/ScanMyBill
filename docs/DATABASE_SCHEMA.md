@@ -1,8 +1,10 @@
 # Database Schema
 
-This document reflects the SQLAlchemy models currently defined in `backend/app/models`.
+Last updated: March 26, 2026
 
-## Core Identity and Access Tables
+This document reflects SQLAlchemy models in `backend/app/models`.
+
+## Core Identity and Access
 
 ### `users`
 - `id` (PK, UUID string)
@@ -99,7 +101,7 @@ This document reflects the SQLAlchemy models currently defined in `backend/app/m
 - `created_at`
 - Unique constraint: `(owner_id, hsn_sac_code)`
 
-## Invoicing and Document Tables
+## Invoices and Documents
 
 ### `invoices`
 - `id` (PK)
@@ -118,6 +120,7 @@ This document reflects the SQLAlchemy models currently defined in `backend/app/m
 - `original_file_path` (nullable)
 - `notes` (nullable)
 - `created_at`
+- Runtime index guard: unique owner + invoice number
 
 ### `invoice_items`
 - `id` (PK)
@@ -146,6 +149,7 @@ This document reflects the SQLAlchemy models currently defined in `backend/app/m
 - `owner_id` (FK -> `users.id`, indexed)
 - `client_id` (FK -> `clients.id`, nullable, indexed, `SET NULL` on delete)
 - `challan_number` (indexed)
+- `financial_year_start` (nullable, indexed)
 - `sequence_number` (nullable, indexed)
 - `challan_date` (indexed)
 - `subtotal`
@@ -154,7 +158,7 @@ This document reflects the SQLAlchemy models currently defined in `backend/app/m
 - `created_at`
 - Unique constraints:
   - `(owner_id, client_id, challan_number)`
-  - `(owner_id, sequence_number)`
+  - `(owner_id, financial_year_start, sequence_number)`
 
 ### `non_gst_challan_items`
 - `id` (PK)
@@ -164,7 +168,23 @@ This document reflects the SQLAlchemy models currently defined in `backend/app/m
 - `rate`
 - `line_total`
 
-## Platform and Engagement Tables
+### `recent_upload_states`
+- `owner_id` (PK, FK -> `users.id`)
+- `cleared_at` (nullable)
+- `created_at`
+- `updated_at`
+
+### `undo_delete_records`
+- `id` (PK)
+- `owner_id` (FK -> `users.id`, indexed)
+- `record_type` (`invoice`, `client`, indexed)
+- `record_id` (indexed)
+- `payload_json`
+- `expires_at` (indexed)
+- `consumed_at` (nullable, indexed)
+- `created_at` (indexed)
+
+## Platform and Engagement
 
 ### `payment_events`
 - `id` (PK)
@@ -195,5 +215,5 @@ This document reflects the SQLAlchemy models currently defined in `backend/app/m
 - `unsubscribed_at` (nullable)
 
 ## Notes
-- The project currently auto-creates/adjusts schema at startup.
-- Add explicit migrations (Alembic) before strict production rollout.
+- The backend currently auto-creates and adjusts schema at startup.
+- Add explicit Alembic migrations before strict production rollout.

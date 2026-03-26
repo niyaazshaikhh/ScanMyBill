@@ -1,18 +1,20 @@
 # Cloud Deployment Guide (Provider-Agnostic)
 
-This guide applies to free or paid providers that run Docker containers.
+Last updated: March 26, 2026
+
+This guide applies to providers that run Docker containers.
 
 For a complete Azure + GoDaddy + GitHub Actions rollout, see:
 - `docs/AZURE_PRODUCTION_SETUP.md`
 
 ## Supported Deployment Patterns
 
-## 1) Split Services (Recommended)
+### 1) Split Services (Recommended)
 - Deploy `backend` and `frontend` as separate container services.
-- Use managed PostgreSQL (`DATABASE_URL_OVERRIDE`).
+- Use managed PostgreSQL via `DATABASE_URL_OVERRIDE`.
 - Optionally use S3-compatible storage by setting `STORAGE_BACKEND=s3`.
 
-## 2) Same-Domain via Reverse Proxy
+### 2) Same-Domain Reverse Proxy
 - Route `/api/v1` to backend.
 - Route `/` to frontend.
 - Set `NEXT_PUBLIC_API_URL=/api/v1`.
@@ -33,25 +35,25 @@ For a complete Azure + GoDaddy + GitHub Actions rollout, see:
 ### Frontend (minimum production)
 - `NEXT_PUBLIC_APP_URL=https://your-frontend-domain`
 - `NEXT_PUBLIC_API_URL=https://your-backend-domain/api/v1`
-  - or `/api/v1` when same-domain reverse proxy is used
+- Use `NEXT_PUBLIC_API_URL=/api/v1` for same-domain reverse proxy deployments
 
 ## Runtime Port Compatibility
-- Backend container reads `PORT` (defaults to `8000`).
-- Frontend container reads `PORT` (defaults to `3000`).
+- Backend reads `PORT` (default `8000`).
+- Frontend reads `PORT` (default `3000`).
 - Most cloud providers inject `PORT` automatically.
 
-## Performance and Reliability
-- Use managed PostgreSQL with connection pooling enabled.
+## Health, Scale, and Reliability
+- Use managed PostgreSQL with pooling enabled.
 - Keep health probes enabled:
   - backend: `/health/live`, `/health/ready`
   - frontend: `/`
-- Scale horizontally at service level.
-- Keep CDN/static caching enabled in front of frontend where available.
+- Scale services horizontally based on CPU and request volume.
+- Keep CDN and static caching enabled in front of frontend where available.
 
 ## Security Baseline
 - Never commit real secrets in `.env` files.
 - Enforce HTTPS end-to-end.
-- Set strict `CORS_ORIGINS` and `TRUSTED_HOSTS`.
+- Keep `CORS_ORIGINS` and `TRUSTED_HOSTS` strict.
 - Keep docs disabled in production (`ENABLE_DOCS=false`).
 - Configure webhook secrets (`RAZORPAY_WEBHOOK_SECRET`) and verify signatures server-side.
 
