@@ -54,10 +54,11 @@ DEFAULT_LOCAL_TRUSTED_HOSTS = ['localhost', '127.0.0.1', '*.localhost']
 DEFAULT_PRODUCTION_TRUSTED_HOSTS = [
     'api.scanmybill.xyz',
     'app.scanmybill.xyz',
+    'scanmybill.xyz',
     'scanmybill-backend.kindriver-b1141450.centralindia.azurecontainerapps.io',
 ]
 DEFAULT_LOCAL_CORS_ORIGINS = ['http://localhost:3000', 'http://127.0.0.1:3000']
-DEFAULT_PRODUCTION_CORS_ORIGINS = ['https://app.scanmybill.xyz']
+DEFAULT_PRODUCTION_CORS_ORIGINS = ['https://app.scanmybill.xyz', 'https://scanmybill.xyz']
 
 
 def _split_csv(value: str | None) -> list[str]:
