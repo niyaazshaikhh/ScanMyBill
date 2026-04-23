@@ -22,7 +22,7 @@ pillow==11.3.0
 pytesseract==0.3.13
 pdf2image==1.17.0
 pypdf==6.0.0
-reportlab==4.4.4
+reportlab==4.4.10
 jinja2==3.1.6
 weasyprint==62.3
 
