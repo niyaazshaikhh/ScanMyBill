@@ -1,6 +1,6 @@
 # Security and Deployment Hardening
 
-Last updated: March 26, 2026
+Last updated: April 23, 2026
 
 This backend includes baseline hardening suitable for production once secrets and host policies are configured correctly.
 
@@ -32,11 +32,13 @@ When `ENVIRONMENT=production`, startup fails if any of these are unsafe:
 - `DEBUG=true`
 - `ENABLE_DOCS=true`
 - `COOKIE_SECURE=false`
+- `ENFORCE_HTTPS=false`
 - `EXPOSE_PASSWORD_RESET_TOKEN=true`
 - Wildcard CORS origin (`*`)
+- Missing `CORS_ORIGINS` or `TRUSTED_HOSTS`
+- Localhost or loopback values in `CORS_ORIGINS` or `TRUSTED_HOSTS`
 - `SEED_DEFAULT_ADMIN=true`
 - Weak/default DB password (unless `DATABASE_URL_OVERRIDE` is provided)
-- `ENFORCE_HTTPS=false`
 
 ## Required Production Environment Variables
 

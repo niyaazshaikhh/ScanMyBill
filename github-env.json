@@ -1,7 +1,7 @@
 {
-  "name": "github-actions-production",
+  "name": "github-actions-production-example",
   "issuer": "https://token.actions.githubusercontent.com",
-  "subject": "repo:niyaazshaikhh/ScanMyBill:environment:production",
-  "description": "GitHub Actions Production Deploy",
+  "subject": "repo:<your-org-or-user>/<your-repo>:environment:production",
+  "description": "Example GitHub Actions production environment credential",
   "audiences": ["api://AzureADTokenExchange"]
 }

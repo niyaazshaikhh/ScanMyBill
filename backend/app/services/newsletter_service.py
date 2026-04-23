@@ -18,8 +18,8 @@ logger = logging.getLogger(__name__)
 
 APP_ROOT = Path(__file__).resolve().parents[1]
 TEMPLATE_NAME = 'newsletter.html'
-DEFAULT_UNSUBSCRIBE_BASE_URL = 'https://api.scanmybill.xyz/api/v1/newsletter/unsubscribe'
-DEFAULT_LOGO_URL = 'https://app.scanmybill.xyz/icons/icon-512.png'
+DEFAULT_UNSUBSCRIBE_BASE_URL = 'https://api.example.com/api/v1/newsletter/unsubscribe'
+DEFAULT_LOGO_URL = 'https://app.example.com/icons/icon-512.png'
 DEFAULT_BRAND_NAME = 'ScanMyBill'
 DEFAULT_BRAND_COLOR = '#d85b1b'
 

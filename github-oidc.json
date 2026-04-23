@@ -1,7 +1,7 @@
 {
-  "name": "github-actions-scanmybill",
+  "name": "github-actions-main-branch-example",
   "issuer": "https://token.actions.githubusercontent.com",
-  "subject": "repo:niyaazshaikhh/ScanMyBill:ref:refs/heads/main",
-  "description": "GitHub Actions deployment",
+  "subject": "repo:<your-org-or-user>/<your-repo>:ref:refs/heads/main",
+  "description": "Example GitHub Actions branch credential",
   "audiences": ["api://AzureADTokenExchange"]
 }

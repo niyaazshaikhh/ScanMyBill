@@ -73,9 +73,9 @@ class Settings(BaseSettings):
     aws_region: str = 'ap-south-1'
     aws_s3_bucket: str | None = None
 
-    frontend_reset_password_url: str = 'https://app.scanmybill.xyz/reset-password'
-    newsletter_unsubscribe_base_url: str = 'https://api.scanmybill.xyz/api/v1/newsletter/unsubscribe'
-    newsletter_logo_url: str = 'https://app.scanmybill.xyz/icons/icon-512.png'
+    frontend_reset_password_url: str = 'https://app.example.com/reset-password'
+    newsletter_unsubscribe_base_url: str = 'https://api.example.com/api/v1/newsletter/unsubscribe'
+    newsletter_logo_url: str = 'https://app.example.com/icons/icon-512.png'
     newsletter_brand_name: str = 'ScanMyBill'
     newsletter_brand_color: str = '#d85b1b'
 
@@ -99,8 +99,8 @@ class Settings(BaseSettings):
     razorpay_webhook_secret: str | None = None
     expose_password_reset_token: bool = False
     seed_default_admin: bool = False
-    default_admin_user_id: str = 'admin_niyaz7'
-    default_admin_email: str = 'admin@scanmybill.xyz'
+    default_admin_user_id: str = 'admin'
+    default_admin_email: str = 'admin@example.com'
     default_admin_password: str = ''
     default_admin_full_name: str = 'Admin User'
     smtp_host: str | None = None

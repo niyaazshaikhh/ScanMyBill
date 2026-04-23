@@ -1,6 +1,6 @@
 # ScanMyBill
 
-Last updated: March 26, 2026
+Last updated: April 23, 2026
 
 AI-powered billing and GST workflow platform built for Indian MSMEs.
 
@@ -58,6 +58,8 @@ ScanMyBill/
 ```
 
 ## Environment Setup
+
+Do not commit populated env files. Keep `.env`, `backend/.env`, and `frontend/.env` local-only.
 
 1. Root env (Compose level)
 ```bash
@@ -173,6 +175,16 @@ Pipeline behavior:
 Production pipeline setup details:
 - `docs/AZURE_PRODUCTION_SETUP.md`
 
+## GitHub Publication
+
+Before making the repository public:
+
+- Keep only example env files in git. Never commit `.env`, `backend/.env`, or `frontend/.env`.
+- Replace placeholder values in `github-env.json` and `github-oidc.json` before creating federated credentials.
+- Store secrets in GitHub Secrets or your cloud secret manager, not in tracked files.
+- If a real secret was ever committed or pushed, rotate it and rewrite git history before publishing.
+- Review the publication checklist in `docs/GITHUB_PUBLISHING.md`.
+
 ## Production Checklist
 
 Set strong values before deploying:
@@ -201,6 +213,7 @@ Set strong values before deploying:
 - ERD description: `docs/ERD.md`
 - Cloud deployment guide: `docs/CLOUD_DEPLOYMENT.md`
 - Azure production rollout: `docs/AZURE_PRODUCTION_SETUP.md`
+- GitHub publication checklist: `docs/GITHUB_PUBLISHING.md`
 - Backend security hardening: `backend/SECURITY_DEPLOYMENT.md`
 
 ## Important Notes

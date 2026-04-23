@@ -13,7 +13,7 @@ import {
 import { emitSessionTimeout } from "@/lib/session-timeout";
 
 const DEFAULT_LOCAL_API_BASE = "http://localhost:8000/api/v1";
-const DEFAULT_PRODUCTION_API_BASE = "https://api.scanmybill.xyz/api/v1";
+const DEFAULT_PRODUCTION_API_BASE = "https://api.example.com/api/v1";
 const API_DEBUG_MAX_PAYLOAD_CHARS = 12_000;
 const NODE_ENV = process.env.NODE_ENV || "development";
 const API_BASE_CANDIDATE =
@@ -24,6 +24,10 @@ const DEFAULT_API_BASE =
   NODE_ENV === "development"
     ? DEFAULT_LOCAL_API_BASE
     : DEFAULT_PRODUCTION_API_BASE;
+const APP_URL_CANDIDATE = process.env.NEXT_PUBLIC_APP_URL || "";
+const IS_LOCAL_APP_BUILD =
+  APP_URL_CANDIDATE.includes("localhost") ||
+  APP_URL_CANDIDATE.includes("127.0.0.1");
 
 function resolveConfiguredApiBase(configuredBase: string): string {
   if (!configuredBase) return "";
@@ -44,7 +48,7 @@ if (process.env.NODE_ENV === "production") {
     throw new Error("NEXT_PUBLIC_API_URL must be defined in production build");
   }
 
-  if (process.env.NEXT_PUBLIC_API_URL.includes("localhost")) {
+  if (!IS_LOCAL_APP_BUILD && process.env.NEXT_PUBLIC_API_URL.includes("localhost")) {
     throw new Error("Production build cannot use localhost API");
   }
 }

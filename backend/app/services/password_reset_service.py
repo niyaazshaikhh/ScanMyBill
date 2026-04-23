@@ -18,7 +18,7 @@ PASSWORD_RESET_TOKEN_EXPIRY_MINUTES = 30
 def _normalized_reset_password_url() -> str:
     raw = (settings.frontend_reset_password_url or '').strip()
     if not raw:
-        raw = 'https://app.scanmybill.xyz/reset-password'
+        raw = 'https://app.example.com/reset-password'
     if not raw.startswith(('http://', 'https://')):
         raw = f'https://{raw.lstrip("/")}'
     return raw.rstrip('/')

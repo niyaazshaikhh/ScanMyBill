@@ -60,6 +60,7 @@ jobs:
           test -n "$AZURE_SUBSCRIPTION_ID" || (echo "Missing GitHub secret: AZURE_SUBSCRIPTION_ID" && exit 1)
           [[ "$NEXT_PUBLIC_APP_URL" =~ ^https://[^[:space:]]+$ ]] || (echo "NEXT_PUBLIC_APP_URL must be an HTTPS URL for production." && exit 1)
           [[ ! "$NEXT_PUBLIC_APP_URL" =~ localhost|127\.0\.0\.1 ]] || (echo "NEXT_PUBLIC_APP_URL cannot point to localhost in production." && exit 1)
+          [[ ! "$NEXT_PUBLIC_APP_URL" =~ example\.com ]] || (echo "NEXT_PUBLIC_APP_URL cannot use example.com in production." && exit 1)
           if [[ "$NEXT_PUBLIC_API_URL" == "/api/v1" ]]; then
             echo "NEXT_PUBLIC_API_URL uses same-domain reverse proxy mode (/api/v1)."
           elif [[ "$NEXT_PUBLIC_API_URL" =~ ^https://[^[:space:]]+/api/v1$ ]]; then
@@ -69,6 +70,7 @@ jobs:
             exit 1
           fi
           [[ ! "$NEXT_PUBLIC_API_URL" =~ localhost|127\.0\.0\.1 ]] || (echo "NEXT_PUBLIC_API_URL cannot point to localhost in production." && exit 1)
+          [[ ! "$NEXT_PUBLIC_API_URL" =~ example\.com ]] || (echo "NEXT_PUBLIC_API_URL cannot use example.com in production." && exit 1)
           [[ "$NEXT_PUBLIC_SESSION_IDLE_TIMEOUT_MINUTES" =~ ^[0-9]+$ ]] || (echo "NEXT_PUBLIC_SESSION_IDLE_TIMEOUT_MINUTES must be a positive integer." && exit 1)
           test "$NEXT_PUBLIC_SESSION_IDLE_TIMEOUT_MINUTES" -gt 0 || (echo "NEXT_PUBLIC_SESSION_IDLE_TIMEOUT_MINUTES must be > 0." && exit 1)
           if [[ -n "$NEXT_PUBLIC_IDLE_TIMEOUT_MINUTES" ]]; then
@@ -224,7 +226,7 @@ jobs:
           EXPOSE_PASSWORD_RESET_TOKEN: ${{ vars.EXPOSE_PASSWORD_RESET_TOKEN || 'false' }}
           SEED_DEFAULT_ADMIN: ${{ vars.SEED_DEFAULT_ADMIN || 'false' }}
           UPLOADS_DIR: ${{ vars.UPLOADS_DIR || 'uploads' }}
-          FRONTEND_RESET_PASSWORD_URL: ${{ vars.FRONTEND_RESET_PASSWORD_URL || 'https://app.scanmybill.xyz/reset-password' }}
+          FRONTEND_RESET_PASSWORD_URL: ${{ vars.FRONTEND_RESET_PASSWORD_URL || format('{0}/reset-password', vars.NEXT_PUBLIC_APP_URL) }}
           OPENAI_BASE_URL: ${{ vars.OPENAI_BASE_URL }}
           OPENAI_MODEL: ${{ vars.OPENAI_MODEL || 'gpt-4o-mini' }}
           AZURE_OPENAI_ENDPOINT: ${{ vars.AZURE_OPENAI_ENDPOINT }}

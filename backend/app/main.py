@@ -51,14 +51,7 @@ app = FastAPI(
 app.router.redirect_slashes = False
 
 DEFAULT_LOCAL_TRUSTED_HOSTS = ['localhost', '127.0.0.1', '*.localhost']
-DEFAULT_PRODUCTION_TRUSTED_HOSTS = [
-    'api.scanmybill.xyz',
-    'app.scanmybill.xyz',
-    'scanmybill.xyz',
-    'scanmybill-backend.kindriver-b1141450.centralindia.azurecontainerapps.io',
-]
 DEFAULT_LOCAL_CORS_ORIGINS = ['http://localhost:3000', 'http://127.0.0.1:3000']
-DEFAULT_PRODUCTION_CORS_ORIGINS = ['https://app.scanmybill.xyz', 'https://scanmybill.xyz']
 
 
 def _split_csv(value: str | None) -> list[str]:
@@ -92,14 +85,14 @@ def _resolve_trusted_hosts() -> list[str]:
     configured_hosts = _as_list(settings.trusted_hosts)
     hosts = env_hosts or configured_hosts
 
-    baseline_hosts = DEFAULT_PRODUCTION_TRUSTED_HOSTS if settings.is_production else DEFAULT_LOCAL_TRUSTED_HOSTS
-    missing_hosts = [host for host in baseline_hosts if host not in hosts]
-    if missing_hosts:
-        logger.warning(
-            'Appending baseline TRUSTED_HOSTS entries to avoid host-header rejections: %s',
-            ', '.join(missing_hosts),
-        )
-        hosts.extend(missing_hosts)
+    if not settings.is_production:
+        missing_hosts = [host for host in DEFAULT_LOCAL_TRUSTED_HOSTS if host not in hosts]
+        if missing_hosts:
+            logger.warning(
+                'Appending baseline TRUSTED_HOSTS entries to avoid host-header rejections: %s',
+                ', '.join(missing_hosts),
+            )
+            hosts.extend(missing_hosts)
     return _unique(hosts)
 
 
@@ -108,15 +101,20 @@ def _resolve_cors_origins() -> list[str]:
     configured_origins = _as_list(settings.cors_origins)
     origins = env_origins or configured_origins
 
-    baseline_origins = DEFAULT_PRODUCTION_CORS_ORIGINS if settings.is_production else DEFAULT_LOCAL_CORS_ORIGINS
-    missing_origins = [origin for origin in baseline_origins if origin not in origins]
-    if missing_origins:
-        logger.info(
-            'Appending baseline CORS origins: %s',
-            ', '.join(missing_origins),
-        )
-        origins.extend(missing_origins)
+    if not settings.is_production:
+        missing_origins = [origin for origin in DEFAULT_LOCAL_CORS_ORIGINS if origin not in origins]
+        if missing_origins:
+            logger.info(
+                'Appending baseline CORS origins: %s',
+                ', '.join(missing_origins),
+            )
+            origins.extend(missing_origins)
     return _unique(origins)
+
+
+def _is_local_host_value(value: str) -> bool:
+    normalized = value.strip().lower()
+    return any(token in normalized for token in ('localhost', '127.0.0.1', '0.0.0.0'))
 
 
 def _path_is_within(parent: Path, child: Path) -> bool:
@@ -139,10 +137,22 @@ def _validate_security_configuration() -> None:
             issues.append('ENABLE_DOCS must be false in production.')
         if not settings.cookie_secure:
             issues.append('COOKIE_SECURE must be true in production.')
+        if not settings.enforce_https:
+            issues.append('ENFORCE_HTTPS must be true in production.')
         if settings.expose_password_reset_token:
             issues.append('EXPOSE_PASSWORD_RESET_TOKEN must be false in production.')
+        resolved_cors_origins = _resolve_cors_origins()
+        resolved_trusted_hosts = _resolve_trusted_hosts()
+        if not resolved_cors_origins:
+            issues.append('CORS_ORIGINS must be configured in production.')
+        if not resolved_trusted_hosts:
+            issues.append('TRUSTED_HOSTS must be configured in production.')
         if '*' in settings.cors_origins:
             issues.append("CORS_ORIGINS cannot include '*' in production.")
+        if any(_is_local_host_value(origin) for origin in resolved_cors_origins):
+            issues.append('CORS_ORIGINS cannot include localhost or loopback values in production.')
+        if any(_is_local_host_value(host) for host in resolved_trusted_hosts):
+            issues.append('TRUSTED_HOSTS cannot include localhost or loopback values in production.')
         if settings.seed_default_admin:
             issues.append('SEED_DEFAULT_ADMIN must be false in production.')
         # When DATABASE_URL_OVERRIDE is provided (managed DB/cloud), POSTGRES_* values may be placeholders.
