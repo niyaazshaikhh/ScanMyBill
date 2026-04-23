@@ -34,4 +34,4 @@ google-auth==2.40.3
 requests==2.32.5
 
 # Runtime compatibility
-setuptools==69.5.1
+setuptools==82.0.1
