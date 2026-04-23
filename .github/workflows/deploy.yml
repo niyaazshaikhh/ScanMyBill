@@ -39,7 +39,7 @@ jobs:
       frontend_latest: ${{ steps.images.outputs.frontend_latest }}
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Validate required variables and secrets
         env:
