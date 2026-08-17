@@ -1,4 +1,5 @@
-import { NextResponse, type NextRequest } from 'next/server';
+import type { NextRequest } from 'next/dist/server/web/spec-extension/request';
+import { NextResponse } from 'next/dist/server/web/spec-extension/response';
 import { canAccessAppPath, isAppProtectedPath, resolveEffectiveSubscriptionPlan } from './lib/subscription-access';
 
 const authPaths = ['/signin', '/signup'];
