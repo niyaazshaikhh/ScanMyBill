@@ -27,6 +27,7 @@ backend/.env.*
 frontend/.env.*
 !backend/.env.example
 !frontend/.env.example
+keys-and-old-env/
 
 # Python
 __pycache__/
