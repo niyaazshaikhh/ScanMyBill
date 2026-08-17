@@ -1,5 +1,5 @@
 import { NextResponse, type NextRequest } from 'next/server';
-import { canAccessAppPath, isAppProtectedPath, resolveEffectiveSubscriptionPlan } from '@/lib/subscription-access';
+import { canAccessAppPath, isAppProtectedPath, resolveEffectiveSubscriptionPlan } from './lib/subscription-access';
 
 const authPaths = ['/signin', '/signup'];
 const adminAuthPaths = ['/admin/signin'];
