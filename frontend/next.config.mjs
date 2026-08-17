@@ -1,7 +1,7 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
-  output: 'standalone',
+  ...(process.env.VERCEL ? {} : { output: 'standalone' }),
   experimental: {
     typedRoutes: false
   }
