@@ -4,6 +4,8 @@ Last updated: April 23, 2026
 
 AI-powered billing and GST workflow platform built for Indian MSMEs.
 
+> **Live demo notice:** This project is no longer deployed on Azure because of cloud-platform billing costs. Features that depend on cloud services, including OpenAI API requests, are unavailable in the Vercel deployment. The live demo therefore includes only the essential features; the complete feature set is described in this README and requires a fully configured deployment.
+
 ## Tech Stack
 - Frontend: Next.js 14 (App Router), TypeScript, Tailwind CSS
 - Backend: FastAPI, SQLAlchemy, JWT auth, Google OAuth
