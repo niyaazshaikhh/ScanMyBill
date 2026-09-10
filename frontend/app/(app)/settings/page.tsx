@@ -3,14 +3,19 @@
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
+  ArrowUpRight,
   Bell,
   BellOff,
+  Building2,
   ChevronDown,
   ChevronRight,
   CircleHelp,
   CreditCard,
   Eye,
   EyeOff,
+  LifeBuoy,
+  Mail,
+  Settings2,
   UserCircle2,
   Wrench,
   X,
@@ -141,7 +146,7 @@ export default function SettingsPage() {
   const [notificationUpdating, setNotificationUpdating] = useState(false);
   const [cancelConfirmOpen, setCancelConfirmOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
-  const [subscriptionExpanded, setSubscriptionExpanded] = useState(false);
+  const [subscriptionExpanded, setSubscriptionExpanded] = useState(true);
   const [debugModeEnabled, setDebugModeEnabledState] = useState(false);
 
   const loadUser = useCallback(async () => {
@@ -288,41 +293,51 @@ export default function SettingsPage() {
   };
 
   return (
-    <div className="space-y-6">
-      <section className="rounded-xl border border-border bg-card/85 p-5">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-          <div className="space-y-1">
-            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-              Workspace Settings
-            </p>
-            <h2 className="font-[var(--font-space)] text-2xl font-semibold">
-              Settings
-            </h2>
-            <p className="text-sm text-muted-foreground">
-              Manage account access, subscriptions, notifications, and support from one place.
-            </p>
-          </div>
-          <div className="grid gap-2 sm:grid-cols-2">
-            <div className="rounded-md border border-border bg-background/70 px-3 py-2">
-              <p className="text-[11px] uppercase tracking-wide text-muted-foreground">
-                Current Plan
+    <div className="mx-auto max-w-6xl space-y-6 pb-8">
+      <section className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
+        <div className="bg-gradient-to-r from-primary/10 via-primary/5 to-transparent p-5 sm:p-6">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+            <div className="max-w-2xl space-y-2">
+              <p className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.14em] text-primary">
+                <Settings2 className="h-3.5 w-3.5" />
+                Account settings
               </p>
-              <div className="mt-1">
-                <SubscriptionBadge plan={currentPlan} />
-              </div>
+              <h2 className="font-[var(--font-space)] text-2xl font-semibold sm:text-3xl">
+                Manage your workspace
+              </h2>
+              <p className="text-sm text-muted-foreground">
+                Update your business profile, notification preferences, subscription, and support options.
+              </p>
             </div>
-            <div className="rounded-md border border-border bg-background/70 px-3 py-2">
-              <p className="text-[11px] uppercase tracking-wide text-muted-foreground">
-                Role
-              </p>
-              <div className="mt-1">
-                <Badge variant="secondary">
-                  {loadingUser ? "..." : user?.role || "user"}
-                </Badge>
+            <div className="grid gap-2 sm:grid-cols-2">
+              <div className="min-w-32 rounded-xl border border-border/80 bg-background/80 px-3 py-2.5 shadow-sm">
+                <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Current Plan</p>
+                <div className="mt-1"><SubscriptionBadge plan={currentPlan} /></div>
+              </div>
+              <div className="min-w-32 rounded-xl border border-border/80 bg-background/80 px-3 py-2.5 shadow-sm">
+                <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Role</p>
+                <div className="mt-1"><Badge variant="secondary">{loadingUser ? "..." : user?.role || "user"}</Badge></div>
               </div>
             </div>
           </div>
         </div>
+        <nav className="grid border-t border-border sm:grid-cols-3" aria-label="Settings shortcuts">
+          <a href="#business-profile" className="group flex items-center gap-3 border-b border-border px-5 py-3.5 text-sm transition hover:bg-muted/60 sm:border-b-0 sm:border-r">
+            <span className="rounded-lg bg-primary/10 p-2 text-primary"><Building2 className="h-4 w-4" /></span>
+            <span className="min-w-0 flex-1"><span className="block font-medium">Business profile</span><span className="block text-xs text-muted-foreground">GST and company details</span></span>
+            <ChevronRight className="h-4 w-4 text-muted-foreground transition-transform group-hover:translate-x-0.5" />
+          </a>
+          <a href="#preferences" className="group flex items-center gap-3 border-b border-border px-5 py-3.5 text-sm transition hover:bg-muted/60 sm:border-b-0 sm:border-r">
+            <span className="rounded-lg bg-primary/10 p-2 text-primary"><Bell className="h-4 w-4" /></span>
+            <span className="min-w-0 flex-1"><span className="block font-medium">Preferences</span><span className="block text-xs text-muted-foreground">Notifications and diagnostics</span></span>
+            <ChevronRight className="h-4 w-4 text-muted-foreground transition-transform group-hover:translate-x-0.5" />
+          </a>
+          <a href="#support" className="group flex items-center gap-3 px-5 py-3.5 text-sm transition hover:bg-muted/60">
+            <span className="rounded-lg bg-primary/10 p-2 text-primary"><LifeBuoy className="h-4 w-4" /></span>
+            <span className="min-w-0 flex-1"><span className="block font-medium">Need help?</span><span className="block text-xs text-muted-foreground">Find answers or contact support</span></span>
+            <ChevronRight className="h-4 w-4 text-muted-foreground transition-transform group-hover:translate-x-0.5" />
+          </a>
+        </nav>
       </section>
 
       {actionError ? (
@@ -338,7 +353,7 @@ export default function SettingsPage() {
 
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1.65fr)_minmax(0,1fr)]">
         <div className="space-y-4">
-          <Card className="bg-card/85">
+          <Card className="bg-card/85 shadow-sm">
             <CardHeader className="p-5 pb-3">
               <CardTitle className="flex items-center gap-2 text-base">
                 <UserCircle2 className="h-4 w-4 text-primary" />
@@ -370,7 +385,7 @@ export default function SettingsPage() {
             </CardContent>
           </Card>
 
-          <Card className="bg-card/85">
+          <Card className="bg-card/85 shadow-sm">
             <CardHeader className="p-5 pb-3">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div>
@@ -391,7 +406,7 @@ export default function SettingsPage() {
                   aria-expanded={subscriptionExpanded}
                   aria-label={subscriptionExpanded ? "Collapse subscription actions" : "Expand subscription actions"}
                 >
-                  {subscriptionExpanded ? "Hide actions" : "Show actions"}
+                  {subscriptionExpanded ? "Hide plan actions" : "Manage plan"}
                   <ChevronDown className={`h-4 w-4 transition-transform ${subscriptionExpanded ? "rotate-180" : ""}`} />
                 </Button>
               </div>
@@ -424,10 +439,10 @@ export default function SettingsPage() {
 
               {subscriptionExpanded ? (
                 <div className="grid gap-3 lg:grid-cols-[2fr_1fr]">
-                  <div className="space-y-2 rounded-md border border-border bg-background/70 p-3">
-                    <p className="text-sm font-medium">Upgrade Plan</p>
+                  <div className="space-y-2 rounded-lg border border-primary/20 bg-primary/5 p-4">
+                    <p className="text-sm font-medium">Upgrade your plan</p>
                     <p className="text-xs text-muted-foreground">
-                      Move to a higher plan with immediate checkout.
+                      Unlock more from ScanMyBill with a plan that fits your workflow.
                     </p>
                     <RazorpayCheckoutButton
                       className="w-full"
@@ -445,7 +460,7 @@ export default function SettingsPage() {
                   </div>
 
                   <div className="grid gap-3">
-                    <div className="space-y-2 rounded-md border border-border bg-background/70 p-3">
+                    <div className="space-y-2 rounded-lg border border-border bg-background/70 p-3">
                       <p className="text-sm font-medium">Renew Current Plan</p>
                       <RazorpayCheckoutButton
                         className="w-full"
@@ -457,7 +472,7 @@ export default function SettingsPage() {
                       />
                     </div>
 
-                    <div className="space-y-2 rounded-md border border-border bg-background/70 p-3">
+                    <div className="space-y-2 rounded-lg border border-destructive/20 bg-destructive/5 p-3">
                       <p className="text-sm font-medium">Cancel Subscription</p>
                       <Button
                         className="w-full"
@@ -476,9 +491,12 @@ export default function SettingsPage() {
             </CardContent>
           </Card>
 
-          <Card className="bg-card/85">
+          <Card id="business-profile" className="scroll-mt-6 bg-card/85 shadow-sm">
             <CardHeader className="p-5 pb-3">
-              <CardTitle className="text-base">Business Setup</CardTitle>
+              <CardTitle className="flex items-center gap-2 text-base">
+                <Building2 className="h-4 w-4 text-primary" />
+                Business setup
+              </CardTitle>
               <CardDescription>
                 Keep company and GST details updated for better document intelligence.
               </CardDescription>
@@ -486,30 +504,38 @@ export default function SettingsPage() {
             <CardContent className="p-5 pt-0">
               <Link
                 href="/settings/personal_details"
-                className="flex items-center justify-between rounded-md border border-border bg-background px-3 py-3 transition hover:bg-muted"
+                className="group flex items-center justify-between rounded-lg border border-border bg-background px-4 py-3.5 transition hover:border-primary/40 hover:bg-muted"
               >
-                <div>
-                  <p className="text-sm font-medium">Personal Details</p>
-                  <p className="text-xs text-muted-foreground">
-                    Add company profile, GST details, and banking information.
-                  </p>
+                <div className="flex items-start gap-3">
+                  <span className="rounded-lg bg-primary/10 p-2 text-primary">
+                    <Building2 className="h-4 w-4" />
+                  </span>
+                  <div>
+                    <p className="text-sm font-medium">Business details</p>
+                    <p className="text-xs text-muted-foreground">
+                      Add company profile, GST details, and banking information.
+                    </p>
+                  </div>
                 </div>
-                <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                <ArrowUpRight className="h-4 w-4 text-muted-foreground transition-transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5" />
               </Link>
             </CardContent>
           </Card>
         </div>
 
         <div className="space-y-4">
-          <Card className="bg-card/85">
+          <Card id="preferences" className="scroll-mt-6 bg-card/85 shadow-sm">
             <CardHeader className="p-5 pb-3">
-              <CardTitle className="text-base">Preferences</CardTitle>
+              <CardTitle className="flex items-center gap-2 text-base">
+                <Bell className="h-4 w-4 text-primary" />
+                Preferences
+              </CardTitle>
               <CardDescription>
                 Control workspace behavior and diagnostics.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-3 p-5 pt-0">
-              <div className="flex items-start justify-between gap-3 rounded-md border border-border bg-background/70 p-3">
+              <div className="flex items-start justify-between gap-3 rounded-lg border border-border bg-background/70 p-3">
                 <div>
                   <p className="text-sm font-medium">Notifications</p>
                   <p className="text-xs text-muted-foreground">
@@ -532,7 +558,7 @@ export default function SettingsPage() {
                 </Button>
               </div>
 
-              <div className="flex items-start justify-between gap-3 rounded-md border border-border bg-background/70 p-3">
+              <div className="flex items-start justify-between gap-3 rounded-lg border border-border bg-background/70 p-3">
                 <div>
                   <p className="text-sm font-medium">Debug Console</p>
                   <p className="text-xs text-muted-foreground">
@@ -556,7 +582,7 @@ export default function SettingsPage() {
             </CardContent>
           </Card>
 
-          <Card className="bg-card/85">
+          <Card id="support" className="scroll-mt-6 bg-card/85 shadow-sm">
             <CardHeader className="p-5 pb-3">
               <CardTitle className="flex items-center gap-2 text-base">
                 <CircleHelp className="h-4 w-4 text-primary" />
@@ -568,16 +594,22 @@ export default function SettingsPage() {
             </CardHeader>
             <CardContent className="space-y-3 p-5 pt-0">
               <a
-                className="block rounded-md border border-border bg-background px-3 py-2.5 text-sm transition hover:bg-muted"
+                className="group block rounded-lg border border-border bg-background px-3 py-2.5 text-sm transition hover:border-primary/40 hover:bg-muted"
                 href="mailto:scanmybill@gmail.com?subject=ScanMyBill%20Support%20Request"
               >
-                <span className="text-xs uppercase tracking-wide text-muted-foreground">Support Email</span>
-                <p className="mt-1 font-medium text-primary">scanmybill@gmail.com</p>
+                <span className="flex items-center gap-2 text-xs uppercase tracking-wide text-muted-foreground">
+                  <Mail className="h-3.5 w-3.5" />
+                  Support email
+                </span>
+                <p className="mt-1 flex items-center justify-between gap-2 font-medium text-primary">
+                  scanmybill@gmail.com
+                  <ArrowUpRight className="h-4 w-4 transition-transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5" />
+                </p>
               </a>
               <button
                 type="button"
                 onClick={() => setHelpOpen(true)}
-                className="inline-flex w-full items-center justify-between rounded-md border border-border bg-background px-3 py-2.5 text-left text-sm transition hover:bg-muted"
+                className="inline-flex w-full items-center justify-between rounded-lg border border-border bg-background px-3 py-2.5 text-left text-sm transition hover:border-primary/40 hover:bg-muted"
               >
                 <span className="flex items-center gap-2 font-medium">
                   <Wrench className="h-4 w-4 text-muted-foreground" />
